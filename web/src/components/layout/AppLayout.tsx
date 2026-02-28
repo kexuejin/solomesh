@@ -1,0 +1,33 @@
+import { useEffect } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import { NavRail } from './NavRail';
+import { BottomTabBar } from './BottomTabBar';
+import { ConnectionBanner } from '../common/ConnectionBanner';
+import { wsManager } from '../../api/ws';
+
+export function AppLayout() {
+  const location = useLocation();
+  const hideMobileTabBar = /^\/chat\/.+/.test(location.pathname);
+
+  // 应用级别建立 WebSocket 连接，确保所有页面（非仅 ChatView）都有连接
+  useEffect(() => {
+    wsManager.connect();
+  }, []);
+
+  return (
+    <div className="h-screen supports-[height:100dvh]:h-dvh flex flex-col lg:flex-row overflow-hidden safe-area-top app-canvas">
+      <div className="hidden lg:block h-full">
+        <NavRail />
+      </div>
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <ConnectionBanner />
+        <main className="flex-1 overflow-hidden lg:overflow-auto lg:pb-0">
+          <Outlet />
+        </main>
+      </div>
+
+      {!hideMobileTabBar && <BottomTabBar />}
+    </div>
+  );
+}

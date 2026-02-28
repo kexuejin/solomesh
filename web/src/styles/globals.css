@@ -1,0 +1,381 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+/* =====================================================
+   Tailwind CSS 4 Theme — shadcn/ui CSS variable mapping
+   Maps semantic CSS variables → Tailwind utility classes
+   e.g. --color-primary → bg-primary, text-primary, etc.
+   ===================================================== */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Brand color scale — available as bg-brand-500, text-brand-300, etc. */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+
+  /* Feedback semantic colors — bg-success, text-warning, etc. */
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-error: var(--error);
+  --color-error-bg: var(--error-bg);
+
+  /* Border radius tokens */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* =====================================================
+   Design Token values — SoloMesh Enterprise 2026
+   Primary: #0f6bff (Cobalt) | Accent: #0ea5a4 (Teal) | Base: Slate
+   ===================================================== */
+:root {
+  /* shadcn/ui semantic tokens */
+  --background: #f5f7fb;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0f6bff;
+  --primary-foreground: #ffffff;
+  --secondary: #edf2ff;
+  --secondary-foreground: #0f172a;
+  --muted: #edf2fb;
+  --muted-foreground: #5b6b82;
+  --accent: #ecf3ff;
+  --accent-foreground: #0b3ea1;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #d9e2ec;
+  --input: #d9e2ec;
+  --ring: #0f6bff;
+  --radius: 0.875rem;
+
+  /* Brand color scale (Cobalt) */
+  --brand-50: #eef4ff;
+  --brand-100: #dfeaff;
+  --brand-200: #bfd6ff;
+  --brand-300: #8ab6ff;
+  --brand-400: #5d94ff;
+  --brand-500: #0f6bff;
+  --brand-600: #0a52d1;
+  --brand-700: #0b3ea1;
+
+  /* Chart colors */
+  --chart-1: #0f6bff;
+  --chart-2: #0ea5a4;
+  --chart-3: #4f46e5;
+  --chart-4: #d97706;
+  --chart-5: #dc2626;
+
+  /* Sidebar */
+  --sidebar-background: #f8faff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #0f6bff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #edf2fb;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #d9e2ec;
+  --sidebar-ring: #0f6bff;
+
+  /* Feedback colors */
+  --success: #16a34a;
+  --success-bg: #dcfce7;
+  --warning: #d97706;
+  --warning-bg: #fef3c7;
+  --error: #dc2626;
+  --error-bg: #fee2e2;
+
+  /* iOS keyboard height */
+  --keyboard-height: 0px;
+
+  /* Liquid Glass design tokens */
+  --glass-blur: 20px;
+  --glass-saturate: 1.8;
+  --glass-bg: rgba(255, 255, 255, 0.68);
+  --glass-bg-heavy: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(217, 226, 236, 0.9);
+  --glass-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  --glass-highlight: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 60%);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255,255,255,0.6);
+}
+
+/* =====================================================
+   Base styles
+   ===================================================== */
+
+/* Tailwind v4 默认 border 使用 currentColor（黑色），
+   覆盖为设计系统的 border 色 */
+*,
+::after,
+::before,
+::backdrop,
+::file-selector-button {
+  border-color: var(--border, #e2e8f0);
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  font-family: 'IBM Plex Sans', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Manrope', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Shared enterprise surfaces */
+.app-canvas {
+  background:
+    radial-gradient(1200px 600px at 120% -20%, rgba(15, 107, 255, 0.08), transparent 55%),
+    radial-gradient(800px 500px at -20% 0%, rgba(14, 165, 164, 0.07), transparent 45%),
+    var(--background);
+}
+
+.surface-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.surface-card-soft {
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, white 20%);
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+/* Code highlighting theme override — GitHub light */
+pre code.hljs {
+  background: #f6f8fa !important;
+  border-radius: 8px;
+  padding: 16px !important;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Safe area insets for iOS */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* =====================================================
+   iOS PWA: 防止底部 TabBar 触发 Safari 工具栏
+
+   问题根因：
+   1. URL 变化（History API）会触发工具栏
+   2. 底部边缘触摸会触发系统工具栏（iOS 保留区域）
+
+   核心策略：
+   - 底部边缘是 iOS 系统保留区域，Web 无法完全阻止
+   - 解决方案：将交互元素移离底部边缘 + 触摸吸收层
+   - TabBar 内容必须完全在安全区域内（距底部 > 44px）
+   ===================================================== */
+
+/* PWA standalone 模式专用优化 */
+@media all and (display-mode: standalone) {
+  /* 全局禁止双击缩放 */
+  body {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+
+  /*
+   * 关键方案：底部触摸吸收层
+   * 这个透明层位于屏幕最底部，高度 44px（iOS 手势区域高度）
+   * 它会拦截所有底部边缘的触摸事件，防止触发系统工具栏
+   */
+  .pwa-bottom-guard {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    background: transparent;
+    touch-action: none;
+    z-index: 9999;
+    pointer-events: auto;
+    /* 确保这个层可以接收触摸事件 */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 聊天输入框底部安全区域 */
+  .ios-pwa-bottom-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 34px);
+  }
+}
+
+/* Floating Navigation (Liquid Glass Capsule) */
+.floating-nav-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.floating-nav-container.compact {
+  transform: translateX(-50%) scale(0.85) translateY(8px);
+  opacity: 0.7;
+}
+
+.floating-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--glass-bg-heavy);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  pointer-events: auto;
+}
+
+.floating-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  color: color-mix(in srgb, var(--muted-foreground) 90%, transparent);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.floating-nav-item:active { transform: scale(0.92); }
+.floating-nav-item:hover {
+  color: var(--brand-700);
+  background: color-mix(in srgb, var(--brand-50) 72%, white 28%);
+  border-color: color-mix(in srgb, var(--brand-200) 70%, transparent);
+}
+
+.floating-nav-item.active {
+  border-color: color-mix(in srgb, var(--brand-200) 86%, white 14%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand-100) 78%, white 22%) 0%,
+    color-mix(in srgb, var(--brand-50) 88%, white 12%) 100%
+  );
+  color: var(--brand-700);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--brand-500) 24%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: all 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.floating-nav-item.active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--brand-300) 40%, transparent) 0%,
+    transparent 70%
+  );
+  animation: glass-ripple 400ms ease-out;
+  pointer-events: none;
+}
+
+@keyframes glass-ripple {
+  from { transform: scale(0.8); opacity: 0.8; }
+  to { transform: scale(1.2); opacity: 0; }
+}
+
+@media (min-width: 1024px) {
+  .floating-nav-container { display: none; }
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  .floating-nav-container {
+    bottom: max(24px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Terminal visual safety: avoid last line clipping at the bottom edge */
+.terminal-panel .xterm-viewport {
+  padding-bottom: 8px;
+  box-sizing: border-box;
+}

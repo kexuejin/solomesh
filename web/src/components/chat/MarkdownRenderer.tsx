@@ -1,0 +1,223 @@
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import { useState, memo } from 'react';
+import { Copy, Check } from 'lucide-react';
+import { MermaidDiagram } from './MermaidDiagram';
+import { ImageLightbox } from './ImageLightbox';
+import { toBase64Url } from '../../stores/files';
+import { withBasePath } from '../../utils/url';
+import 'highlight.js/styles/github.css';
+
+interface MarkdownRendererProps {
+  content: string;
+  groupJid?: string;
+  variant?: 'chat' | 'docs';
+}
+
+/** Resolve relative image paths to the file download API */
+function resolveImageSrc(src: string, groupJid?: string): string {
+  if (!groupJid || !src) return src;
+  if (/^(https?:\/\/|data:|\/\/)/.test(src) || src.startsWith('/')) return src;
+  const encoded = toBase64Url(src);
+  return withBasePath(`/api/groups/${encodeURIComponent(groupJid)}/files/download/${encoded}`);
+}
+
+/** Inline image component with lightbox support */
+function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [error, setError] = useState(false);
+
+  if (!src) return null;
+
+  if (error) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-muted text-muted-foreground rounded text-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+        </svg>
+        {alt || '图片加载失败'}
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <img
+        src={src}
+        alt={alt || ''}
+        className="my-3 max-h-[400px] max-w-full cursor-pointer rounded-xl border border-border/70 bg-card object-contain shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:shadow-[0_12px_24px_rgba(15,23,42,0.14)]"
+        style={{ maxHeight: '400px', objectFit: 'contain' }}
+        onClick={() => setExpanded(true)}
+        onError={() => setError(true)}
+      />
+      {expanded && (
+        <ImageLightbox images={[src]} initialIndex={0} onClose={() => setExpanded(false)} />
+      )}
+    </>
+  );
+}
+
+/** Allow class names on code/span elements so rehype-highlight styles survive sanitization */
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [...(defaultSchema.attributes?.code || []), 'className'],
+    span: [...(defaultSchema.attributes?.span || []), 'className'],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    src: [...(defaultSchema.protocols?.src || []), 'data'],
+  },
+};
+
+/** Code block / inline code renderer extracted from MarkdownRenderer */
+function CodeBlock({
+  className,
+  children,
+  variant = 'chat',
+  ...props
+}: React.ComponentPropsWithoutRef<'code'> & { className?: string; variant?: 'chat' | 'docs' }) {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || '');
+  const lang = match?.[1];
+  const isBlock = Boolean(match);
+  const codeString = String(children).replace(/\n$/, '');
+
+  if (lang === 'mermaid') {
+    return <MermaidDiagram code={codeString} />;
+  }
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(codeString);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (isBlock) {
+    return (
+      <div className="relative group my-4 overflow-hidden">
+        <div className="absolute right-2 top-2 opacity-70 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleCopy}
+            className="p-2 rounded-lg bg-muted hover:bg-accent text-foreground/80 text-xs flex items-center gap-1 transition-colors"
+          >
+            {copied ? (
+              <>
+                <Check size={14} />
+                已复制
+              </>
+            ) : (
+              <>
+                <Copy size={14} />
+                复制
+              </>
+            )}
+          </button>
+        </div>
+        <pre className="!bg-[#f6f8fa] rounded-lg p-4 overflow-x-auto">
+          <code className={className} {...props}>
+            {children}
+          </code>
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <code
+      className={
+        variant === 'chat'
+          ? 'bg-brand-50 text-primary px-1.5 py-0.5 rounded text-[0.9em] leading-relaxed font-mono break-all'
+          : 'bg-brand-50 text-primary px-1.5 py-0.5 rounded text-sm font-mono break-all'
+      }
+      {...props}
+    >
+      {children}
+    </code>
+  );
+}
+
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, groupJid, variant = 'chat' }: MarkdownRendererProps) {
+  const textSizeClass = variant === 'chat'
+    ? 'text-[15px] leading-7 text-foreground'
+    : 'text-sm leading-6 text-foreground';
+  const tableTextClass = variant === 'chat' ? 'text-[0.95em]' : 'text-sm';
+
+  return (
+    <div className={textSizeClass}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeHighlight, { plainText: ['mermaid'] }], [rehypeSanitize, sanitizeSchema]]}
+        components={{
+          code: (props) => <CodeBlock {...props} variant={variant} />,
+          img: ({ src, alt }) => <MarkdownImage src={src ? resolveImageSrc(src, groupJid) : undefined} alt={alt} />,
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:text-primary underline break-all"
+            >
+              {children}
+            </a>
+          ),
+          table: ({ children }) => (
+            <div
+              className="my-4 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] [touch-action:pan-x]"
+              data-swipe-back-ignore="true"
+            >
+              <table className="w-max min-w-full border-collapse border border-border">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-muted/60">{children}</thead>
+          ),
+          tbody: ({ children }) => <tbody className="divide-y divide-border">{children}</tbody>,
+          tr: ({ children }) => (
+            <tr className="even:bg-card odd:bg-muted/30">
+              {children}
+            </tr>
+          ),
+          th: ({ children }) => (
+            <th className={`px-4 py-2 text-left font-semibold text-foreground border border-border whitespace-nowrap break-normal align-top ${tableTextClass}`}>
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className={`px-4 py-2 text-foreground/85 border border-border whitespace-nowrap break-normal align-top ${tableTextClass}`}>
+              {children}
+            </td>
+          ),
+          ul: ({ children }) => (
+            <ul className="list-disc list-inside my-2 space-y-1">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="list-decimal list-inside my-2 space-y-1">{children}</ol>
+          ),
+          p: ({ children }) => <p className="my-2">{children}</p>,
+          h1: ({ children }) => (
+            <h1 className="text-2xl font-bold mt-6 mb-4 leading-tight">{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-xl font-bold mt-5 mb-3 leading-tight">{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-lg font-semibold mt-4 mb-2 leading-snug">{children}</h3>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-border pl-4 my-4 text-muted-foreground italic">
+              {children}
+            </blockquote>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+});

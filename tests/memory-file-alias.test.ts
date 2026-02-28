@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  getPrimaryMemoryFileName,
+} from '../src/memory-file-alias.ts';
+
+test('returns CLAUDE.md for claude provider', () => {
+  assert.equal(getPrimaryMemoryFileName('claude'), 'CLAUDE.md');
+});
+
+test('returns AGENTS.md for codex provider', () => {
+  assert.equal(getPrimaryMemoryFileName('codex'), 'AGENTS.md');
+});
