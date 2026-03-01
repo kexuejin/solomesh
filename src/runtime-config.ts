@@ -375,6 +375,25 @@ function normalizeGeminiModel(input: unknown): string {
   return value;
 }
 
+function isHttpUrlLike(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function normalizeApiKeyValue(value: string): string {
+  const sanitized = sanitizeEnvValue(value).trim();
+  if (!sanitized) return '';
+  if (isHttpUrlLike(sanitized)) return '';
+  return sanitized;
+}
+
 function normalizeGeminiAuthMode(input: unknown): GeminiAuthMode {
   if (typeof input !== 'string') {
     throw new Error('Invalid field: geminiAuthMode');
@@ -1025,6 +1044,8 @@ export function toPublicRuntimeProviderConfig(
   config: RuntimeProviderConfig,
 ): RuntimeProviderPublicConfig {
   const geminiOAuthCredentials = getGeminiOAuthCredentials();
+  const codexApiKey = normalizeApiKeyValue(config.codexApiKey);
+  const geminiApiKey = normalizeApiKeyValue(config.geminiApiKey);
   return {
     agentRuntime: config.agentRuntime,
     anthropicBaseUrl: config.anthropicBaseUrl,
@@ -1037,14 +1058,14 @@ export function toPublicRuntimeProviderConfig(
     hasAnthropicAuthToken: !!config.anthropicAuthToken,
     hasAnthropicApiKey: !!config.anthropicApiKey,
     hasClaudeCodeOauthToken: !!config.claudeCodeOauthToken,
-    hasCodexApiKey: !!config.codexApiKey,
-    hasGeminiApiKey: !!config.geminiApiKey,
+    hasCodexApiKey: !!codexApiKey,
+    hasGeminiApiKey: !!geminiApiKey,
     hasGeminiOAuthCredentials: !!geminiOAuthCredentials,
     anthropicAuthTokenMasked: maskSecret(config.anthropicAuthToken),
     anthropicApiKeyMasked: maskSecret(config.anthropicApiKey),
     claudeCodeOauthTokenMasked: maskSecret(config.claudeCodeOauthToken),
-    codexApiKeyMasked: maskSecret(config.codexApiKey),
-    geminiApiKeyMasked: maskSecret(config.geminiApiKey),
+    codexApiKeyMasked: maskSecret(codexApiKey),
+    geminiApiKeyMasked: maskSecret(geminiApiKey),
     hasRuntimeOAuthCredentials: !!config.claudeOAuthCredentials,
     claudeOAuthCredentialsExpiresAt: config.claudeOAuthCredentials?.expiresAt ?? null,
     claudeOAuthCredentialsAccessTokenMasked: config.claudeOAuthCredentials
@@ -1203,9 +1224,13 @@ export function buildRuntimeEnvLines(config: RuntimeProviderConfig): string[] {
   );
 
   if (config.agentRuntime === 'codex') {
-    if (config.codexApiKey) {
-      lines.push(`CODEX_API_KEY=${sanitizeEnvValue(config.codexApiKey)}`);
-      lines.push(`OPENAI_API_KEY=${sanitizeEnvValue(config.codexApiKey)}`);
+    const codexApiKey = normalizeApiKeyValue(config.codexApiKey);
+    if (config.codexApiKey && !codexApiKey) {
+      logger.warn('Skipping invalid CODEX_API_KEY because it looks like a URL');
+    }
+    if (codexApiKey) {
+      lines.push(`CODEX_API_KEY=${codexApiKey}`);
+      lines.push(`OPENAI_API_KEY=${codexApiKey}`);
     }
     if (config.codexBaseUrl) {
       lines.push(`OPENAI_BASE_URL=${sanitizeEnvValue(config.codexBaseUrl)}`);
@@ -1217,8 +1242,12 @@ export function buildRuntimeEnvLines(config: RuntimeProviderConfig): string[] {
     lines.push(
       `GEMINI_AUTH_MODE=${sanitizeEnvValue(config.geminiAuthMode)}`,
     );
-    if (config.geminiAuthMode === 'api_key' && config.geminiApiKey) {
-      lines.push(`GEMINI_API_KEY=${sanitizeEnvValue(config.geminiApiKey)}`);
+    const geminiApiKey = normalizeApiKeyValue(config.geminiApiKey);
+    if (config.geminiAuthMode === 'api_key' && config.geminiApiKey && !geminiApiKey) {
+      logger.warn('Skipping invalid GEMINI_API_KEY because it looks like a URL');
+    }
+    if (config.geminiAuthMode === 'api_key' && geminiApiKey) {
+      lines.push(`GEMINI_API_KEY=${geminiApiKey}`);
     }
     if (config.geminiBaseUrl) {
       lines.push(
@@ -1423,6 +1452,8 @@ export function deleteContainerEnvConfig(folder: string): void {
 export function toPublicContainerEnvConfig(
   config: ContainerEnvConfig,
 ): ContainerEnvPublicConfig {
+  const codexApiKey = normalizeApiKeyValue(config.codexApiKey || '');
+  const geminiApiKey = normalizeApiKeyValue(config.geminiApiKey || '');
   return {
     agentRuntime: normalizeAgentProvider(config.agentRuntime),
     anthropicBaseUrl: config.anthropicBaseUrl || '',
@@ -1435,13 +1466,13 @@ export function toPublicContainerEnvConfig(
     hasAnthropicAuthToken: !!config.anthropicAuthToken,
     hasAnthropicApiKey: !!config.anthropicApiKey,
     hasClaudeCodeOauthToken: !!config.claudeCodeOauthToken,
-    hasCodexApiKey: !!config.codexApiKey,
-    hasGeminiApiKey: !!config.geminiApiKey,
+    hasCodexApiKey: !!codexApiKey,
+    hasGeminiApiKey: !!geminiApiKey,
     anthropicAuthTokenMasked: maskSecret(config.anthropicAuthToken || ''),
     anthropicApiKeyMasked: maskSecret(config.anthropicApiKey || ''),
     claudeCodeOauthTokenMasked: maskSecret(config.claudeCodeOauthToken || ''),
-    codexApiKeyMasked: maskSecret(config.codexApiKey || ''),
-    geminiApiKeyMasked: maskSecret(config.geminiApiKey || ''),
+    codexApiKeyMasked: maskSecret(codexApiKey),
+    geminiApiKeyMasked: maskSecret(geminiApiKey),
     customEnv: config.customEnv || {},
   };
 }
@@ -1454,6 +1485,11 @@ export function mergeRuntimeEnvConfig(
   global: RuntimeProviderConfig,
   override: ContainerEnvConfig,
 ): RuntimeProviderConfig {
+  const overrideCodexApiKey = normalizeApiKeyValue(override.codexApiKey || '');
+  const globalCodexApiKey = normalizeApiKeyValue(global.codexApiKey);
+  const overrideGeminiApiKey = normalizeApiKeyValue(override.geminiApiKey || '');
+  const globalGeminiApiKey = normalizeApiKeyValue(global.geminiApiKey);
+
   return {
     agentRuntime: normalizeAgentProvider(
       override.agentRuntime || global.agentRuntime,
@@ -1469,8 +1505,8 @@ export function mergeRuntimeEnvConfig(
     anthropicApiKey: override.anthropicApiKey || global.anthropicApiKey,
     claudeCodeOauthToken:
       override.claudeCodeOauthToken || global.claudeCodeOauthToken,
-    codexApiKey: override.codexApiKey || global.codexApiKey,
-    geminiApiKey: override.geminiApiKey || global.geminiApiKey,
+    codexApiKey: overrideCodexApiKey || globalCodexApiKey,
+    geminiApiKey: overrideGeminiApiKey || globalGeminiApiKey,
     claudeOAuthCredentials:
       override.claudeOAuthCredentials ?? global.claudeOAuthCredentials,
     updatedAt: global.updatedAt,

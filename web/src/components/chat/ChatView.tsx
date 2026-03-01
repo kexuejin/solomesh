@@ -379,8 +379,12 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
 
-  const handleSend = async (content: string, attachments?: Array<{ data: string; mimeType: string }>) => {
-    await sendMessage(groupJid, content, attachments);
+  const handleSend = async (
+    content: string,
+    attachments?: Array<{ data: string; mimeType: string }>,
+    operationPermissionMode?: 'default' | 'bypass',
+  ) => {
+    await sendMessage(groupJid, content, attachments, operationPermissionMode);
     setScrollTrigger(n => n + 1);
   };
 
@@ -840,8 +844,8 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                 agentId={activeAgentTab}
               />
               <MessageInput
-                onSend={async (content) => {
-                  sendAgentMessage(groupJid, activeAgentTab, content);
+                onSend={async (content, _attachments, operationPermissionMode) => {
+                  sendAgentMessage(groupJid, activeAgentTab, content, operationPermissionMode);
                   setScrollTrigger(n => n + 1);
                 }}
                 groupJid={groupJid}
@@ -964,10 +968,15 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                         消息将发送到主对话，由 Team Lead 转发
                       </div>
                       <MessageInput
-                        onSend={async (content) => {
+                        onSend={async (content, _attachments, operationPermissionMode) => {
                           const taskDesc = (activeSdkTask?.description || 'Teammate').replace(/"/g, '\\"');
                           const wrappedContent = `[发送给 Teammate "${taskDesc}"]: ${content}`;
-                          await sendMessage(groupJid, wrappedContent);
+                          await sendMessage(
+                            groupJid,
+                            wrappedContent,
+                            undefined,
+                            operationPermissionMode,
+                          );
                           setScrollTrigger(n => n + 1);
                         }}
                         groupJid={groupJid}

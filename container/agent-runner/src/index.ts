@@ -37,11 +37,36 @@ import {
 } from './runtime-memory-profile.js';
 
 type AgentProviderId = 'claude' | 'codex' | 'gemini';
+type OperationPermissionMode = 'default' | 'bypass';
 
 function normalizeAgentProvider(input: unknown): AgentProviderId {
   if (input === 'codex') return 'codex';
   if (input === 'gemini') return 'gemini';
   return 'claude';
+}
+
+function normalizeOperationPermissionMode(
+  input: unknown,
+): OperationPermissionMode | undefined {
+  if (input === 'default' || input === 'bypass') return input;
+  return undefined;
+}
+
+function resolveOperationPermissionModeForProvider(
+  provider: AgentProviderId,
+  requested: unknown,
+): OperationPermissionMode {
+  const normalized = normalizeOperationPermissionMode(requested);
+  if (provider === 'claude') {
+    return normalized ?? 'bypass';
+  }
+  return 'default';
+}
+
+function toClaudePermissionMode(
+  mode: OperationPermissionMode,
+): 'default' | 'bypassPermissions' {
+  return mode === 'default' ? 'default' : 'bypassPermissions';
 }
 
 function parseBooleanEnv(
@@ -87,6 +112,7 @@ interface ContainerInput {
   sessionId?: string;
   groupFolder: string;
   chatJid: string;
+  operationPermissionMode?: OperationPermissionMode;
   /** @deprecated Use isHome + isAdminHome instead. Kept for backward compatibility with older host processes. */
   isMain?: boolean;
   /** Whether this is the user's home container (admin or member). */
@@ -1090,6 +1116,10 @@ async function runClaudeQuery(
     normalizedUserMcpServers,
     builtInSolomesh,
   );
+  const operationPermissionMode = resolveOperationPermissionModeForProvider(
+    'claude',
+    containerInput.operationPermissionMode,
+  );
 
   try {
     const q = query({
@@ -1103,8 +1133,8 @@ async function runClaudeQuery(
       systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: systemPromptAppend },
       allowedTools,
       ...(disallowedTools && { disallowedTools }),
-      permissionMode: 'bypassPermissions',
-      allowDangerouslySkipPermissions: true,
+      permissionMode: toClaudePermissionMode(operationPermissionMode),
+      allowDangerouslySkipPermissions: operationPermissionMode === 'bypass',
       settingSources: ['project', 'user'],
       includePartialMessages: true,
       mcpServers: claudeMcpServers,

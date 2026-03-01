@@ -6,6 +6,7 @@ import { DATA_DIR } from './config.js';
 import { getSystemSettings } from './runtime-config.js';
 import { logger } from './logger.js';
 import { type MessageIntent } from './intent-analyzer.js';
+import { type OperationPermissionMode } from './operation-permission-mode.js';
 
 export type SendMessageResult = 'sent' | 'no_active' | 'interrupted_stop' | 'interrupted_correction';
 
@@ -27,6 +28,7 @@ interface GroupState {
   displayName: string | null;
   groupFolder: string | null;
   agentId: string | null;
+  operationPermissionMode: OperationPermissionMode | null;
   retryCount: number;
   restarting: boolean;
 }
@@ -61,6 +63,7 @@ export class GroupQueue {
         displayName: null,
         groupFolder: null,
         agentId: null,
+        operationPermissionMode: null,
         retryCount: 0,
         restarting: false,
       };
@@ -223,6 +226,7 @@ export class GroupQueue {
     groupFolder?: string,
     displayName?: string,
     agentId?: string,
+    operationPermissionMode?: OperationPermissionMode,
   ): void {
     const state = this.getGroup(groupJid);
     state.process = proc;
@@ -230,6 +234,7 @@ export class GroupQueue {
     state.displayName = displayName || null;
     if (groupFolder) state.groupFolder = groupFolder;
     state.agentId = agentId || null;
+    state.operationPermissionMode = operationPermissionMode ?? null;
   }
 
   /**
@@ -258,9 +263,28 @@ export class GroupQueue {
     text: string,
     images?: Array<{ data: string; mimeType?: string }>,
     intent: MessageIntent = 'continue',
+    options?: { operationPermissionMode?: OperationPermissionMode },
   ): SendMessageResult {
     const state = this.resolveActiveState(groupJid);
     if (!state) return 'no_active';
+
+    const requestedMode = options?.operationPermissionMode;
+    if (
+      requestedMode
+      && state.operationPermissionMode
+      && state.operationPermissionMode !== requestedMode
+    ) {
+      this.closeStdin(groupJid);
+      logger.info(
+        {
+          groupJid,
+          currentMode: state.operationPermissionMode,
+          requestedMode,
+        },
+        'Operation permission mode changed, forcing a new run',
+      );
+      return 'no_active';
+    }
 
     if (intent === 'stop') {
       this.interruptQuery(groupJid);
@@ -575,6 +599,7 @@ export class GroupQueue {
       state.displayName = null;
       state.groupFolder = null;
       state.agentId = null;
+      state.operationPermissionMode = null;
       this.activeCount--;
       if (isHostMode) {
         this.activeHostProcessCount--;
@@ -627,6 +652,7 @@ export class GroupQueue {
       state.displayName = null;
       state.groupFolder = null;
       state.agentId = null;
+      state.operationPermissionMode = null;
       this.activeCount--;
       if (isHostMode) {
         this.activeHostProcessCount--;

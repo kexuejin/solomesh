@@ -24,6 +24,18 @@ export const MODEL_PROVIDER_IDS = [
 export const AgentRuntimeIdSchema = z.enum(AGENT_RUNTIME_IDS);
 export const ModelProviderIdSchema = z.enum(MODEL_PROVIDER_IDS);
 
+function isHttpUrlLike(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Terminology-safe runtime/model payload.
  * New contracts should use this schema and avoid ambiguous `provider`.
@@ -105,6 +117,7 @@ export const MessageCreateSchema = z.object({
   chatJid: z.string().min(1),
   content: z.string().optional().default(''),
   attachments: z.array(MessageAttachmentSchema).max(10).optional(),
+  operationPermissionMode: z.enum(['default', 'bypass']).optional(),
 }).superRefine((data, ctx) => {
   const hasContent = data.content.trim().length > 0;
   const hasAttachments = (data.attachments?.length ?? 0) > 0;
@@ -338,7 +351,31 @@ export const RuntimeSecretsSchema = z
       );
     },
     { message: 'At least one secret field must be provided' },
-  );
+  )
+  .superRefine((data, ctx) => {
+    if (
+      typeof data.codexApiKey === 'string' &&
+      data.codexApiKey.trim().length > 0 &&
+      isHttpUrlLike(data.codexApiKey)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['codexApiKey'],
+        message: 'CODEX_API_KEY cannot be a URL',
+      });
+    }
+    if (
+      typeof data.geminiApiKey === 'string' &&
+      data.geminiApiKey.trim().length > 0 &&
+      isHttpUrlLike(data.geminiApiKey)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['geminiApiKey'],
+        message: 'GEMINI_API_KEY cannot be a URL',
+      });
+    }
+  });
 
 export const FeishuConfigSchema = z
   .object({
@@ -374,26 +411,51 @@ export const RuntimeCustomEnvSchema = z.object({
   customEnv: z.record(z.string().max(256), z.string().max(4096)),
 });
 
-export const ContainerEnvSchema = z.object({
-  agentRuntime: z.enum(AGENT_PROVIDER_IDS).optional(),
-  anthropicBaseUrl: z.string().max(2000).optional(),
-  codexBaseUrl: z.string().max(2000).optional(),
-  codexModel: z.string().max(2000).optional(),
-  geminiBaseUrl: z.string().max(2000).optional(),
-  geminiModel: z.string().max(2000).optional(),
-  geminiAuthMode: z.enum(['api_key', 'oauth']).optional(),
-  anthropicAuthToken: z.string().max(2000).optional(),
-  anthropicApiKey: z.string().max(2000).optional(),
-  claudeCodeOauthToken: z.string().max(2000).optional(),
-  codexApiKey: z.string().max(2000).optional(),
-  geminiApiKey: z.string().max(2000).optional(),
-  customEnv: z
-    .record(z.string().max(256), z.string().max(4096))
-    .optional()
-    .refine((env) => !env || Object.keys(env).length <= 50, {
-      message: 'customEnv must have at most 50 entries',
-    }),
-});
+export const ContainerEnvSchema = z
+  .object({
+    agentRuntime: z.enum(AGENT_PROVIDER_IDS).optional(),
+    anthropicBaseUrl: z.string().max(2000).optional(),
+    codexBaseUrl: z.string().max(2000).optional(),
+    codexModel: z.string().max(2000).optional(),
+    geminiBaseUrl: z.string().max(2000).optional(),
+    geminiModel: z.string().max(2000).optional(),
+    geminiAuthMode: z.enum(['api_key', 'oauth']).optional(),
+    anthropicAuthToken: z.string().max(2000).optional(),
+    anthropicApiKey: z.string().max(2000).optional(),
+    claudeCodeOauthToken: z.string().max(2000).optional(),
+    codexApiKey: z.string().max(2000).optional(),
+    geminiApiKey: z.string().max(2000).optional(),
+    customEnv: z
+      .record(z.string().max(256), z.string().max(4096))
+      .optional()
+      .refine((env) => !env || Object.keys(env).length <= 50, {
+        message: 'customEnv must have at most 50 entries',
+      }),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      typeof data.codexApiKey === 'string' &&
+      data.codexApiKey.trim().length > 0 &&
+      isHttpUrlLike(data.codexApiKey)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['codexApiKey'],
+        message: 'CODEX_API_KEY cannot be a URL',
+      });
+    }
+    if (
+      typeof data.geminiApiKey === 'string' &&
+      data.geminiApiKey.trim().length > 0 &&
+      isHttpUrlLike(data.geminiApiKey)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['geminiApiKey'],
+        message: 'GEMINI_API_KEY cannot be a URL',
+      });
+    }
+  });
 
 // Terminal WebSocket message schemas
 export const TerminalStartSchema = z.object({

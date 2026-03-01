@@ -24,6 +24,7 @@ import {
   buildThirdPartySecretsPayload,
 } from '../components/settings/provider-secrets-payloads';
 import { useAuthStore } from '../stores/auth';
+import { looksLikeHttpUrl } from '../lib/runtime-input-validation';
 
 type ClaudeAccessMode = 'official' | 'third_party';
 type GeminiAccessMode = 'api_key' | 'oauth';
@@ -327,8 +328,16 @@ export function SetupProvidersPage() {
       setError(`${codexRuntime?.label ?? 'Codex'} 必须填写 CODEX_API_KEY`);
       return;
     }
+    if (wantsCodex && looksLikeHttpUrl(codexApiKey.trim())) {
+      setError('CODEX_API_KEY 不能填写 URL，请填写真实 API Key');
+      return;
+    }
     if (wantsGemini && geminiAccessMode === 'api_key' && !geminiApiKey.trim()) {
       setError(`${geminiRuntime?.label ?? 'Gemini CLI'} 必须填写 GEMINI_API_KEY`);
+      return;
+    }
+    if (wantsGemini && geminiAccessMode === 'api_key' && looksLikeHttpUrl(geminiApiKey.trim())) {
+      setError('GEMINI_API_KEY 不能填写 URL，请填写真实 API Key');
       return;
     }
 

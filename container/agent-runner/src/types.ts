@@ -13,6 +13,7 @@ export interface ContainerInput {
   sessionId?: string;
   groupFolder: string;
   chatJid: string;
+  operationPermissionMode?: 'default' | 'bypass';
   /** @deprecated Use isHome + isAdminHome instead. Kept for backward compatibility with older host processes. */
   isMain?: boolean;
   /** Whether this is the user's home container (admin or member). */

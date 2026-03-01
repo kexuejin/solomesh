@@ -70,6 +70,10 @@ import { logger } from './logger.js';
 import { parseProviderDirective } from './provider-directive.js';
 import { analyzeIntent } from './intent-analyzer.js';
 import { parseWorkflowCommand } from './workflow.js';
+import {
+  setChatRequestedOperationPermissionMode,
+  type OperationPermissionMode,
+} from './operation-permission-mode.js';
 
 // --- App Setup ---
 
@@ -200,7 +204,7 @@ app.post('/api/messages', authMiddleware, async (c) => {
     );
   }
 
-  const { chatJid, content, attachments } = validation.data;
+  const { chatJid, content, attachments, operationPermissionMode } = validation.data;
   const group = getRegisteredGroup(chatJid);
   if (!group) return c.json({ error: 'Group not found' }, 404);
   const authUser = c.get('user') as AuthUser;
@@ -214,7 +218,14 @@ app.post('/api/messages', authMiddleware, async (c) => {
     );
   }
 
-  const result = await handleWebUserMessage(chatJid, content.trim(), attachments, authUser.id, authUser.display_name || authUser.username);
+  const result = await handleWebUserMessage(
+    chatJid,
+    content.trim(),
+    attachments,
+    authUser.id,
+    authUser.display_name || authUser.username,
+    operationPermissionMode,
+  );
   if (!result.ok) return c.json({ error: result.error }, result.status);
   return c.json({
     success: true,
@@ -231,6 +242,7 @@ async function handleWebUserMessage(
   attachments?: Array<{ type: 'image'; data: string; mimeType?: string }>,
   userId = 'web-user',
   displayName = 'Web',
+  operationPermissionMode?: OperationPermissionMode,
 ): Promise<
   | {
       ok: true;
@@ -281,6 +293,7 @@ async function handleWebUserMessage(
   });
 
   const shared = !group.is_home && isGroupShared(group.folder);
+  setChatRequestedOperationPermissionMode(chatJid, operationPermissionMode);
   const providerDirective = parseProviderDirective(content);
   const workflowCommand = parseWorkflowCommand(content);
   const hasWorkflowControl = workflowCommand.type !== 'none';
@@ -316,7 +329,13 @@ async function handleWebUserMessage(
       mimeType: attachment.mimeType,
     }));
     const intent = analyzeIntent(formatted);
-    const sendResult = deps.queue.sendMessage(chatJid, formatted, images, intent);
+    const sendResult = deps.queue.sendMessage(
+      chatJid,
+      formatted,
+      images,
+      intent,
+      { operationPermissionMode },
+    );
     pipedToActive = sendResult !== 'no_active';
     if (sendResult === 'no_active') {
       deps.queue.enqueueMessageCheck(chatJid);
@@ -341,6 +360,7 @@ async function handleAgentConversationMessage(
   userId: string,
   displayName: string,
   attachments?: Array<{ type: 'image'; data: string; mimeType?: string }>,
+  operationPermissionMode?: OperationPermissionMode,
 ): Promise<void> {
   if (!deps) return;
 
@@ -351,6 +371,7 @@ async function handleAgentConversationMessage(
   }
 
   const virtualChatJid = `${chatJid}#agent:${agentId}`;
+  setChatRequestedOperationPermissionMode(virtualChatJid, operationPermissionMode);
 
   // Store message with virtual chat_jid
   const messageId = crypto.randomUUID();
@@ -413,6 +434,7 @@ async function handleAgentConversationMessage(
       formatted,
       undefined,
       analyzeIntent(formatted),
+      { operationPermissionMode },
     );
   if (sendResult === 'no_active' || sendResult === false) {
     // No running process — start one via processAgentConversation
@@ -554,11 +576,12 @@ function setupWebSocket(server: any): WebSocketServer {
             chatJid: msg.chatJid,
             content: msg.content,
             attachments: msg.attachments,
+            operationPermissionMode: msg.operationPermissionMode,
           });
           if (!wsValidation.success) {
             return;
           }
-          const { chatJid, content, attachments } = wsValidation.data;
+          const { chatJid, content, attachments, operationPermissionMode } = wsValidation.data;
           const agentId = (msg as { agentId?: string }).agentId;
 
           // 群组访问权限检查
@@ -588,11 +611,19 @@ function setupWebSocket(server: any): WebSocketServer {
               chatJid, agentId, content.trim(),
               session.user_id, session.display_name || session.username,
               attachments,
+              operationPermissionMode,
             );
             return;
           }
 
-          const result = await handleWebUserMessage(chatJid, content.trim(), attachments, session.user_id, session.display_name || session.username);
+          const result = await handleWebUserMessage(
+            chatJid,
+            content.trim(),
+            attachments,
+            session.user_id,
+            session.display_name || session.username,
+            operationPermissionMode,
+          );
           if (!result.ok) {
             logger.warn(
               { chatJid, status: result.status, error: result.error },

@@ -27,10 +27,13 @@ export interface Message {
   provider?: 'claude' | 'codex' | 'gemini' | null;
 }
 
+export type OperationPermissionMode = 'default' | 'bypass';
+
 export interface QueuedOutgoingMessage {
   id: string;
   content: string;
   attachments?: Array<{ data: string; mimeType: string }>;
+  operationPermissionMode?: OperationPermissionMode;
   createdAt: number;
 }
 
@@ -171,6 +174,7 @@ function isTerminalSystemMessage(content: string): boolean {
 function createQueuedMessage(
   content: string,
   attachments?: Array<{ data: string; mimeType: string }>,
+  operationPermissionMode?: OperationPermissionMode,
 ): QueuedOutgoingMessage {
   const id =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -182,6 +186,7 @@ function createQueuedMessage(
     attachments: attachments && attachments.length > 0
       ? attachments.map((att) => ({ ...att }))
       : undefined,
+    operationPermissionMode,
     createdAt: Date.now(),
   };
 }
@@ -235,8 +240,18 @@ interface ChatState {
   selectGroup: (jid: string) => void;
   loadMessages: (jid: string, loadMore?: boolean) => Promise<void>;
   refreshMessages: (jid: string) => Promise<void>;
-  sendMessage: (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>) => Promise<void>;
-  sendMessageNow: (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>) => Promise<void>;
+  sendMessage: (
+    jid: string,
+    content: string,
+    attachments?: Array<{ data: string; mimeType: string }>,
+    operationPermissionMode?: OperationPermissionMode,
+  ) => Promise<void>;
+  sendMessageNow: (
+    jid: string,
+    content: string,
+    attachments?: Array<{ data: string; mimeType: string }>,
+    operationPermissionMode?: OperationPermissionMode,
+  ) => Promise<void>;
   flushQueuedMainMessages: (jid: string) => Promise<void>;
   removeQueuedMainMessage: (jid: string, queuedMessageId: string) => void;
   clearQueuedMainMessages: (jid: string) => void;
@@ -263,8 +278,18 @@ interface ChatState {
   // Conversation agent actions
   createConversation: (jid: string, name: string, description?: string) => Promise<AgentInfo | null>;
   loadAgentMessages: (jid: string, agentId: string, loadMore?: boolean) => Promise<void>;
-  sendAgentMessage: (jid: string, agentId: string, content: string) => void;
-  sendAgentMessageNow: (jid: string, agentId: string, content: string) => void;
+  sendAgentMessage: (
+    jid: string,
+    agentId: string,
+    content: string,
+    operationPermissionMode?: OperationPermissionMode,
+  ) => void;
+  sendAgentMessageNow: (
+    jid: string,
+    agentId: string,
+    content: string,
+    operationPermissionMode?: OperationPermissionMode,
+  ) => void;
   flushQueuedAgentMessages: (jid: string, agentId: string) => Promise<void>;
   removeQueuedAgentMessage: (agentId: string, queuedMessageId: string) => void;
   clearQueuedAgentMessages: (agentId: string) => void;
@@ -676,7 +701,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessageNow: async (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>) => {
+  sendMessageNow: async (
+    jid: string,
+    content: string,
+    attachments?: Array<{ data: string; mimeType: string }>,
+    operationPermissionMode?: OperationPermissionMode,
+  ) => {
     try {
       set((s) => {
         const next = { ...s.streaming };
@@ -684,9 +714,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return { streaming: next };
       });
 
-      const body: { chatJid: string; content: string; attachments?: Array<{ type: 'image'; data: string; mimeType: string }> } = { chatJid: jid, content };
+      const body: {
+        chatJid: string;
+        content: string;
+        attachments?: Array<{ type: 'image'; data: string; mimeType: string }>;
+        operationPermissionMode?: OperationPermissionMode;
+      } = { chatJid: jid, content };
       if (attachments && attachments.length > 0) {
         body.attachments = attachments.map(att => ({ type: 'image', ...att }));
+      }
+      if (operationPermissionMode) {
+        body.operationPermissionMode = operationPermissionMode;
       }
 
       const data = await api.post<{ success: boolean; messageId: string; timestamp: string }>('/api/messages', body);
@@ -753,7 +791,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (jid: string, content: string, attachments?: Array<{ data: string; mimeType: string }>) => {
+  sendMessage: async (
+    jid: string,
+    content: string,
+    attachments?: Array<{ data: string; mimeType: string }>,
+    operationPermissionMode?: OperationPermissionMode,
+  ) => {
     const state = get();
     const queued = state.queuedMainMessages[jid] || [];
     if (
@@ -761,7 +804,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       queued.length > 0 ||
       !!state.sendingQueuedMain[jid]
     ) {
-      const queuedMessage = createQueuedMessage(content, attachments);
+      const queuedMessage = createQueuedMessage(
+        content,
+        attachments,
+        operationPermissionMode,
+      );
       set((s) => ({
         queuedMainMessages: {
           ...s.queuedMainMessages,
@@ -770,7 +817,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
       return;
     }
-    await get().sendMessageNow(jid, content, attachments);
+    await get().sendMessageNow(
+      jid,
+      content,
+      attachments,
+      operationPermissionMode,
+    );
   },
 
   flushQueuedMainMessages: async (jid: string) => {
@@ -792,7 +844,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      await get().sendMessageNow(jid, next.content, next.attachments);
+      await get().sendMessageNow(
+        jid,
+        next.content,
+        next.attachments,
+        next.operationPermissionMode,
+      );
     } finally {
       set((s) => ({
         sendingQueuedMain: {
@@ -1628,7 +1685,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendAgentMessageNow: (jid, agentId, content) => {
+  sendAgentMessageNow: (
+    jid,
+    agentId,
+    content,
+    operationPermissionMode,
+  ) => {
     // Clear agent streaming state before sending
     set((s) => {
       const next = { ...s.agentStreaming };
@@ -1636,7 +1698,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { agentStreaming: next };
     });
     // Send via WebSocket with agentId
-    wsManager.send({ type: 'send_message', chatJid: jid, content, agentId });
+    wsManager.send({
+      type: 'send_message',
+      chatJid: jid,
+      content,
+      agentId,
+      operationPermissionMode,
+    });
     const directiveProvider = getDirectiveProvider(content);
     const workflowDirective = parseWorkflowDirectiveInput(content);
     set((s) => ({
@@ -1656,7 +1724,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
 
-  sendAgentMessage: (jid, agentId, content) => {
+  sendAgentMessage: (jid, agentId, content, operationPermissionMode) => {
     const state = get();
     const queued = state.queuedAgentMessages[agentId] || [];
     if (
@@ -1664,7 +1732,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       queued.length > 0 ||
       !!state.sendingQueuedAgent[agentId]
     ) {
-      const queuedMessage = createQueuedMessage(content);
+      const queuedMessage = createQueuedMessage(
+        content,
+        undefined,
+        operationPermissionMode,
+      );
       set((s) => ({
         queuedAgentMessages: {
           ...s.queuedAgentMessages,
@@ -1673,7 +1745,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
       return;
     }
-    get().sendAgentMessageNow(jid, agentId, content);
+    get().sendAgentMessageNow(jid, agentId, content, operationPermissionMode);
   },
 
   flushQueuedAgentMessages: async (jid, agentId) => {
@@ -1695,7 +1767,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      get().sendAgentMessageNow(jid, agentId, next.content);
+      get().sendAgentMessageNow(
+        jid,
+        agentId,
+        next.content,
+        next.operationPermissionMode,
+      );
     } finally {
       set((s) => ({
         sendingQueuedAgent: {

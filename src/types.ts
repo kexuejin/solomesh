@@ -329,7 +329,14 @@ export type WsMessageOut =
   | { type: 'terminal_error'; chatJid: string; error: string };
 
 export type WsMessageIn =
-  | { type: 'send_message'; chatJid: string; content: string; attachments?: MessageAttachment[]; agentId?: string }
+  | {
+      type: 'send_message';
+      chatJid: string;
+      content: string;
+      attachments?: MessageAttachment[];
+      agentId?: string;
+      operationPermissionMode?: 'default' | 'bypass';
+    }
   | { type: 'terminal_start'; chatJid: string; cols: number; rows: number }
   | { type: 'terminal_input'; chatJid: string; data: string }
   | { type: 'terminal_resize'; chatJid: string; cols: number; rows: number }

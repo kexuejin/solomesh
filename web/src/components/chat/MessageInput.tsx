@@ -13,7 +13,10 @@ import {
 import { useFileStore } from '../../stores/files';
 import { api } from '../../api/client';
 import type { ProviderId } from '@/lib/provider-directive';
-import { getProviderMentionSuggestions } from '@/lib/provider-directive';
+import {
+  getProviderMentionSuggestions,
+  parseProviderDirectiveInput,
+} from '@/lib/provider-directive';
 import { getMessageProviderLabel } from '@/lib/message-provider';
 import {
   getWorkflowCommandSuggestions,
@@ -35,9 +38,55 @@ interface PendingImage {
 
 /** 单张图片大小上限 5MB */
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+type OperationPermissionMode = 'default' | 'bypass';
+
+interface OperationPermissionModeOption {
+  value: OperationPermissionMode;
+  label: string;
+  hint: string;
+}
+
+const DEFAULT_PERMISSION_MODE_BY_PROVIDER: Record<ProviderId, OperationPermissionMode> = {
+  claude: 'bypass',
+  codex: 'default',
+  gemini: 'default',
+};
+
+const PERMISSION_MODE_OPTIONS_BY_PROVIDER: Record<ProviderId, OperationPermissionModeOption[]> = {
+  claude: [
+    {
+      value: 'default',
+      label: '默认',
+      hint: '按工具权限策略执行（更安全）',
+    },
+    {
+      value: 'bypass',
+      label: '放行',
+      hint: '自动放行工具调用（效率更高）',
+    },
+  ],
+  codex: [
+    {
+      value: 'default',
+      label: '默认',
+      hint: 'Codex 当前仅支持默认权限模式',
+    },
+  ],
+  gemini: [
+    {
+      value: 'default',
+      label: '默认',
+      hint: 'Gemini 当前仅支持默认权限模式',
+    },
+  ],
+};
 
 interface MessageInputProps {
-  onSend: (content: string, attachments?: Array<{ data: string; mimeType: string }>) => void;
+  onSend: (
+    content: string,
+    attachments?: Array<{ data: string; mimeType: string }>,
+    operationPermissionMode?: OperationPermissionMode,
+  ) => void;
   groupJid?: string;
   disabled?: boolean;
   currentProvider?: ProviderId | null;
@@ -100,6 +149,21 @@ export function MessageInput({
   const [commandSuggestions, setCommandSuggestions] = useState<WorkflowCommandSuggestion[]>([]);
   const [commandActiveIndex, setCommandActiveIndex] = useState(0);
   const [workflowTemplateSuggestions, setWorkflowTemplateSuggestions] = useState<WorkflowTemplateSuggestionSource[]>([]);
+  const [permissionModeByProvider, setPermissionModeByProvider] = useState<Record<ProviderId, OperationPermissionMode>>(
+    { ...DEFAULT_PERMISSION_MODE_BY_PROVIDER },
+  );
+
+  const getResolvedPermissionMode = (
+    provider: ProviderId,
+    requested?: OperationPermissionMode,
+  ): OperationPermissionMode => {
+    if (provider === 'claude') {
+      return requested === 'default' || requested === 'bypass'
+        ? requested
+        : DEFAULT_PERMISSION_MODE_BY_PROVIDER.claude;
+    }
+    return 'default';
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -350,7 +414,15 @@ export function MessageInput({
       ? pendingImages.map((img) => ({ data: img.data, mimeType: img.mimeType }))
       : undefined;
 
-    onSend(message, attachments);
+    const messageProvider = parseProviderDirectiveInput(message).provider
+      ?? currentProvider
+      ?? 'claude';
+    const operationPermissionMode = getResolvedPermissionMode(
+      messageProvider,
+      permissionModeByProvider[messageProvider],
+    );
+
+    onSend(message, attachments, operationPermissionMode);
     setContent('');
     closeMention();
     closeCommand();
@@ -535,6 +607,16 @@ export function MessageInput({
 
   const hasContent = content.trim().length > 0;
   const canSend = hasContent || pendingFiles.length > 0 || pendingImages.length > 0;
+  const directiveProvider = parseProviderDirectiveInput(content).provider;
+  const activePermissionProvider: ProviderId = directiveProvider ?? currentProvider ?? 'claude';
+  const permissionModeOptions = PERMISSION_MODE_OPTIONS_BY_PROVIDER[activePermissionProvider];
+  const selectedPermissionMode = getResolvedPermissionMode(
+    activePermissionProvider,
+    permissionModeByProvider[activePermissionProvider],
+  );
+  const selectedPermissionModeOption = permissionModeOptions.find(
+    (item) => item.value === selectedPermissionMode,
+  ) ?? permissionModeOptions[0];
   const workflowRunning =
     workflowContext?.status === 'running'
     && !!workflowContext.templateId;
@@ -887,6 +969,44 @@ export function MessageInput({
             >
               <ArrowUp className="w-4.5 h-4.5" />
             </button>
+          </div>
+
+          <div className="border-t border-border/70 px-3 pb-2.5 pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                操作权限
+              </span>
+              <div className="flex items-center gap-1 rounded-[10px] border border-border/70 bg-muted/20 p-1">
+                {permissionModeOptions.map((option) => {
+                  const active = option.value === selectedPermissionMode;
+                  return (
+                    <button
+                      key={`${activePermissionProvider}-${option.value}`}
+                      type="button"
+                      onClick={() => {
+                        setPermissionModeByProvider((prev) => ({
+                          ...prev,
+                          [activePermissionProvider]: getResolvedPermissionMode(
+                            activePermissionProvider,
+                            option.value,
+                          ),
+                        }));
+                      }}
+                      className={`cursor-pointer rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                        active
+                          ? 'bg-card text-primary shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              {selectedPermissionModeOption?.hint}
+            </div>
           </div>
         </div>
       </div>

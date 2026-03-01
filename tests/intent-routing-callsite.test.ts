@@ -12,10 +12,9 @@ test('index message loop pipes active messages with intent-aware send result han
 
   assert.ok(source.includes('const intent = analyzeIntent(formatted);'));
   assert.ok(
-    source.includes(
-      'const sendResult = queue.sendMessage(chatJid, formatted, imagesForAgent, intent);',
-    ),
+    source.includes('const sendResult = queue.sendMessage('),
   );
+  assert.ok(source.includes('{ operationPermissionMode },'));
   assert.ok(source.includes("const handledByActiveRunner = sendResult !== 'no_active';"));
 });
 
@@ -24,6 +23,7 @@ test('web message handler uses intent-aware queue piping for active sessions', (
 
   assert.ok(source.includes("import { analyzeIntent } from './intent-analyzer.js';"));
   assert.ok(source.includes('const intent = analyzeIntent(formatted);'));
-  assert.ok(source.includes('const sendResult = deps.queue.sendMessage(chatJid, formatted, images, intent);'));
+  assert.ok(source.includes('const sendResult = deps.queue.sendMessage('));
+  assert.ok(source.includes('{ operationPermissionMode },'));
   assert.ok(source.includes("pipedToActive = sendResult !== 'no_active';"));
 });

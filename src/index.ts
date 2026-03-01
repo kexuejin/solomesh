@@ -158,6 +158,11 @@ import {
   type AgentProvider,
 } from './agent-providers.js';
 import {
+  getChatRequestedOperationPermissionMode,
+  resolveOperationPermissionModeForRuntime,
+  type OperationPermissionMode,
+} from './operation-permission-mode.js';
+import {
   buildProviderHandoffPrompt,
   resolveProviderHandoffTransition,
 } from './provider-handoff.js';
@@ -1872,6 +1877,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const selectedProvider = directiveProvider ?? workflowStageProvider ?? persistedProvider;
   const providerOverride = selectedProvider ?? undefined;
   const effectiveProvider = resolveEffectiveProvider(effectiveGroup, providerOverride);
+  const requestedOperationPermissionMode = getChatRequestedOperationPermissionMode(chatJid);
+  const operationPermissionMode = resolveOperationPermissionModeForRuntime(
+    effectiveProvider,
+    requestedOperationPermissionMode,
+  );
   const shared = isGroupShared(group.folder);
   let prompt = formatMessages(directiveResolved.messages, shared);
   const workflowStagePrompt = buildWorkflowStagePrompt(workflowState, workflowStageProvider);
@@ -1934,6 +1944,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       group: group.name,
       messageCount: missedMessages.length,
       providerOverride: providerOverride ?? null,
+      operationPermissionMode,
       shouldReplyToFeishu,
       imageCount: images.length,
       shared,
@@ -2133,6 +2144,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       }
     },
     imagesForAgent,
+    operationPermissionMode,
   );
 
   await setTyping(chatJid, false);
@@ -2399,11 +2411,16 @@ async function runAgent(
   providerOverride?: AgentProvider,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   images?: Array<{ data: string; mimeType?: string }>,
+  operationPermissionMode?: OperationPermissionMode,
 ): Promise<{ status: 'success' | 'error'; error?: string }> {
   const isHome = !!group.is_home;
   // For the agent-runner: isMain means this is an admin home container (full privileges)
   const isAdminHome = isHome && group.folder === MAIN_GROUP_FOLDER;
   const effectiveProvider = resolveEffectiveProvider(group, providerOverride);
+  const resolvedOperationPermissionMode = resolveOperationPermissionModeForRuntime(
+    effectiveProvider,
+    operationPermissionMode,
+  );
   const sessionSlot = getProviderSessionSlot(effectiveProvider);
   const sessionId = getSession(group.folder, sessionSlot) || undefined;
 
@@ -2451,7 +2468,15 @@ async function runAgent(
     const onProcessCb = (proc: ChildProcess, identifier: string) => {
       // 宿主机模式：containerName 传 null，走 process.kill() 路径
       const containerName = executionMode === 'container' ? identifier : null;
-      queue.registerProcess(chatJid, proc, containerName, group.folder, identifier);
+      queue.registerProcess(
+        chatJid,
+        proc,
+        containerName,
+        group.folder,
+        identifier,
+        undefined,
+        resolvedOperationPermissionMode,
+      );
     };
 
     let output: ContainerOutput;
@@ -2469,6 +2494,7 @@ async function runAgent(
           isHome,
           isAdminHome,
           images,
+          operationPermissionMode: resolvedOperationPermissionMode,
         },
         onProcessCb,
         wrappedOnOutput,
@@ -2486,6 +2512,7 @@ async function runAgent(
           isHome,
           isAdminHome,
           images,
+          operationPermissionMode: resolvedOperationPermissionMode,
         },
         onProcessCb,
         wrappedOnOutput,
@@ -3176,6 +3203,11 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
     effectiveGroup,
     providerOverride,
   );
+  const requestedOperationPermissionMode = getChatRequestedOperationPermissionMode(virtualChatJid);
+  const operationPermissionMode = resolveOperationPermissionModeForRuntime(
+    effectiveProvider,
+    requestedOperationPermissionMode,
+  );
   let prompt = formatMessages(directiveResolved.messages, false);
   const workflowStagePrompt = buildWorkflowStagePrompt(workflowState, workflowStageProvider);
   if (workflowStagePrompt) {
@@ -3330,7 +3362,15 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
     const executionMode = effectiveGroup.executionMode || 'container';
     const onProcessCb = (proc: ChildProcess, identifier: string) => {
       const containerName = executionMode === 'container' ? identifier : null;
-      queue.registerProcess(virtualJid, proc, containerName, effectiveGroup.folder, identifier, agentId);
+      queue.registerProcess(
+        virtualJid,
+        proc,
+        containerName,
+        effectiveGroup.folder,
+        identifier,
+        agentId,
+        operationPermissionMode,
+      );
     };
 
     const containerInput: ContainerInput = {
@@ -3345,6 +3385,7 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
       agentName: agent.name,
       agentRuntimeOverride: providerOverride,
       images: imagesForAgent,
+      operationPermissionMode,
     };
 
     // Write tasks/groups snapshots
@@ -3537,6 +3578,17 @@ async function startMessageLoop(): Promise<void> {
           const workflowState = getRunningWorkflowState(chatJid);
           const workflowStageProvider =
             providerPreflight.provider ?? getWorkflowStageProvider(workflowState);
+          const persistedProvider = chatProviderSelections[chatJid] ?? null;
+          const selectedProvider = workflowStageProvider ?? persistedProvider;
+          const effectiveProvider = resolveEffectiveProvider(
+            group,
+            selectedProvider ?? undefined,
+          );
+          const requestedOperationPermissionMode = getChatRequestedOperationPermissionMode(chatJid);
+          const operationPermissionMode = resolveOperationPermissionModeForRuntime(
+            effectiveProvider,
+            requestedOperationPermissionMode,
+          );
           const workflowStagePrompt = buildWorkflowStagePrompt(
             workflowState,
             workflowStageProvider,
@@ -3559,7 +3611,13 @@ async function startMessageLoop(): Promise<void> {
           }
 
           const intent = analyzeIntent(formatted);
-          const sendResult = queue.sendMessage(chatJid, formatted, imagesForAgent, intent);
+          const sendResult = queue.sendMessage(
+            chatJid,
+            formatted,
+            imagesForAgent,
+            intent,
+            { operationPermissionMode },
+          );
           const handledByActiveRunner = sendResult !== 'no_active';
 
           if (handledByActiveRunner) {
@@ -3570,6 +3628,7 @@ async function startMessageLoop(): Promise<void> {
                 imageCount: images.length,
                 sendResult,
                 intent,
+                operationPermissionMode,
               },
               'Piped messages to active container',
             );

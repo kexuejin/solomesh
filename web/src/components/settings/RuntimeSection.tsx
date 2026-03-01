@@ -35,6 +35,7 @@ import type {
   SettingsNotification,
 } from './types';
 import { getErrorMessage } from './types';
+import { looksLikeHttpUrl } from '../../lib/runtime-input-validation';
 
 type ClaudeAccessMode = 'official' | 'third_party';
 type GeminiAccessMode = 'api_key' | 'oauth';
@@ -412,6 +413,10 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       isCodexRuntime || effectiveGeminiAccessMode === 'api_key';
     if (requiresApiKey && !keyDirty && !hasSavedKey && !keyValue) {
       setError(`请填写 ${currentRuntime.label} 所需的 ${keyName}`);
+      return;
+    }
+    if (requiresApiKey && keyDirty && keyValue && looksLikeHttpUrl(keyValue)) {
+      setError(`${keyName} 不能填写 URL，请填写真实 API Key`);
       return;
     }
 

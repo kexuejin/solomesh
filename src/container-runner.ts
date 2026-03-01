@@ -38,6 +38,7 @@ export interface ContainerInput {
   sessionId?: string;
   groupFolder: string;
   chatJid: string;
+  operationPermissionMode?: 'default' | 'bypass';
   agentRuntimeOverride?: AgentProvider;
   /** @deprecated Use isHome + isAdminHome instead */
   isMain: boolean;
