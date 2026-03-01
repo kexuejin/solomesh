@@ -24,6 +24,13 @@ import {
   resolveGeminiApiKey,
   resolveGeminiCliHomeCandidates,
 } from './gemini-auth.js';
+import {
+  buildClaudeMcpServers,
+  buildCodexMcpServers,
+  buildGeminiMcpServers,
+  loadRawUserMcpServers,
+  normalizeUserMcpServers,
+} from './mcp-config.js';
 
 type AgentProviderId = 'claude' | 'codex' | 'gemini';
 
@@ -1058,6 +1065,27 @@ async function runClaudeQuery(
   const extraDirs = isHome
     ? [WORKSPACE_GLOBAL, WORKSPACE_MEMORY]
     : [WORKSPACE_MEMORY];
+  const mcpEnv = {
+    SOLOMESH_CHAT_JID: containerInput.chatJid,
+    SOLOMESH_GROUP_FOLDER: containerInput.groupFolder,
+    SOLOMESH_IS_HOME: isHome ? '1' : '0',
+    SOLOMESH_IS_ADMIN_HOME: isAdminHome ? '1' : '0',
+    SOLOMESH_IS_MAIN: isAdminHome ? '1' : '0',
+    SOLOMESH_WORKSPACE_GROUP: WORKSPACE_GROUP,
+    SOLOMESH_WORKSPACE_GLOBAL: WORKSPACE_GLOBAL,
+    SOLOMESH_WORKSPACE_MEMORY: WORKSPACE_MEMORY,
+    SOLOMESH_WORKSPACE_IPC: WORKSPACE_IPC,
+  };
+  const builtInSolomesh = {
+    command: 'node',
+    args: [mcpServerPath],
+    env: mcpEnv,
+  };
+  const normalizedUserMcpServers = normalizeUserMcpServers(loadRawUserMcpServers());
+  const claudeMcpServers = buildClaudeMcpServers(
+    normalizedUserMcpServers,
+    builtInSolomesh,
+  );
 
   try {
     const q = query({
@@ -1075,24 +1103,7 @@ async function runClaudeQuery(
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
       includePartialMessages: true,
-      mcpServers: {
-        solomesh: {
-          command: 'node',
-          args: [mcpServerPath],
-          env: {
-            SOLOMESH_CHAT_JID: containerInput.chatJid,
-            SOLOMESH_GROUP_FOLDER: containerInput.groupFolder,
-            SOLOMESH_IS_HOME: isHome ? '1' : '0',
-            SOLOMESH_IS_ADMIN_HOME: isAdminHome ? '1' : '0',
-            // Legacy compat: keep IS_MAIN for any external tools that may read it
-            SOLOMESH_IS_MAIN: isAdminHome ? '1' : '0',
-            SOLOMESH_WORKSPACE_GROUP: WORKSPACE_GROUP,
-            SOLOMESH_WORKSPACE_GLOBAL: WORKSPACE_GLOBAL,
-            SOLOMESH_WORKSPACE_MEMORY: WORKSPACE_MEMORY,
-            SOLOMESH_WORKSPACE_IPC: WORKSPACE_IPC,
-          },
-        },
-      },
+      mcpServers: claudeMcpServers,
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(isHome, isAdminHome)] }]
       },
@@ -1735,16 +1746,20 @@ async function runCodexQuery(
     SOLOMESH_WORKSPACE_MEMORY: WORKSPACE_MEMORY,
     SOLOMESH_WORKSPACE_IPC: WORKSPACE_IPC,
   };
+  const builtInSolomesh = {
+    command: 'node',
+    args: [mcpServerPath],
+    env: mcpEnv,
+  };
+  const normalizedUserMcpServers = normalizeUserMcpServers(loadRawUserMcpServers());
+  const codexMcpServers = buildCodexMcpServers(
+    normalizedUserMcpServers,
+    builtInSolomesh,
+  );
 
   const codexOptions: Record<string, unknown> = {
     config: {
-      mcp_servers: {
-        solomesh: {
-          command: 'node',
-          args: [mcpServerPath],
-          env: mcpEnv,
-        },
-      },
+      mcp_servers: codexMcpServers,
     },
   };
   if (process.env.OPENAI_BASE_URL) {
@@ -2040,8 +2055,8 @@ async function runCodexQuery(
 async function runGeminiQuery(
   prompt: string,
   sessionId: string | undefined,
-  _mcpServerPath: string,
-  _containerInput: ContainerInput,
+  mcpServerPath: string,
+  containerInput: ContainerInput,
   memoryRecall: string,
   _resumeAt?: string,
   emitOutput = true,
@@ -2072,6 +2087,28 @@ async function runGeminiQuery(
   const newSessionId = sessionId || 'latest';
   const envSource = process.env as Record<string, string | undefined>;
   const authMode = normalizeGeminiAuthMode(envSource.GEMINI_AUTH_MODE);
+  const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
+  const mcpEnv = {
+    SOLOMESH_CHAT_JID: containerInput.chatJid,
+    SOLOMESH_GROUP_FOLDER: containerInput.groupFolder,
+    SOLOMESH_IS_HOME: isHome ? '1' : '0',
+    SOLOMESH_IS_ADMIN_HOME: isAdminHome ? '1' : '0',
+    SOLOMESH_IS_MAIN: isAdminHome ? '1' : '0',
+    SOLOMESH_WORKSPACE_GROUP: WORKSPACE_GROUP,
+    SOLOMESH_WORKSPACE_GLOBAL: WORKSPACE_GLOBAL,
+    SOLOMESH_WORKSPACE_MEMORY: WORKSPACE_MEMORY,
+    SOLOMESH_WORKSPACE_IPC: WORKSPACE_IPC,
+  };
+  const builtInSolomesh = {
+    command: 'node',
+    args: [mcpServerPath],
+    env: mcpEnv,
+  };
+  const normalizedUserMcpServers = normalizeUserMcpServers(loadRawUserMcpServers());
+  const geminiMcpServers = buildGeminiMcpServers(
+    normalizedUserMcpServers,
+    builtInSolomesh,
+  );
   if (authMode === 'api_key' && !resolveGeminiApiKey(envSource)) {
     throw new Error(
       'Gemini API Key 模式未检测到 GEMINI_API_KEY。请在设置中填写 API Key，或切换到 Google 官方模式并执行 gemini login。',
@@ -2086,6 +2123,7 @@ async function runGeminiQuery(
 
   for (let idx = 0; idx < cliHomeCandidates.length; idx++) {
     const cliHome = cliHomeCandidates[idx];
+    ensureGeminiSettingsJson(cliHome, geminiMcpServers);
     const attempt = await runGeminiCliOnce(args, {
       ...(process.env as Record<string, string>),
       GEMINI_CLI_HOME: cliHome,
@@ -2161,6 +2199,47 @@ async function runGeminiQuery(
   throw new Error(
     'Gemini 官方模式未检测到登录凭据。请先在设置页点击“一键登录 Google”，或在运行环境执行 gemini login。',
   );
+}
+
+function ensureGeminiSettingsJson(
+  homeRoot: string,
+  mcpServers: Record<string, unknown>,
+): void {
+  const geminiConfigDir = path.join(homeRoot, '.gemini');
+  const settingsFile = path.join(geminiConfigDir, 'settings.json');
+
+  let existing: Record<string, unknown> = {};
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const parsed = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')) as unknown;
+      const asObj = asRecord(parsed);
+      if (asObj) existing = asObj;
+    }
+  } catch {
+    // Ignore malformed settings; rewrite with MCP block.
+  }
+
+  const existingMcpServers = asRecord(existing.mcpServers) || {};
+  const merged: Record<string, unknown> = {
+    ...existing,
+    mcpServers: {
+      ...existingMcpServers,
+      ...mcpServers,
+    },
+  };
+  const nextContent = `${JSON.stringify(merged, null, 2)}\n`;
+
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const current = fs.readFileSync(settingsFile, 'utf-8');
+      if (current === nextContent) return;
+    }
+  } catch {
+    // Fall through and rewrite.
+  }
+
+  fs.mkdirSync(geminiConfigDir, { recursive: true });
+  fs.writeFileSync(settingsFile, nextContent, 'utf-8');
 }
 
 interface GeminiCliRunResult {
