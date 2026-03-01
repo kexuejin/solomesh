@@ -5,7 +5,11 @@
 <h1 align="center">SoloMesh</h1>
 
 <p align="center">
-  Self-hosted multi-user AI agent workspace with runtime abstraction (Claude/Codex), workflow orchestration, and multi-channel collaboration.
+  One control plane for your AI team.
+</p>
+
+<p align="center">
+  SoloMesh is a self-hosted multi-user AI Agent workspace that unifies <b>Claude Code</b>, <b>Codex</b>, and <b>Gemini CLI</b> with shared governance, collaboration, and automation.
 </p>
 
 <p align="center">
@@ -21,195 +25,78 @@
 
 ---
 
-## Overview
+## TL;DR
 
-SoloMesh turns agent runtimes into a practical collaboration system.
+- You keep the power of native runtimes, but add team-level control.
+- You get Web + Feishu + Telegram entrypoints in one place.
+- You can run repeatable workflows and scheduled automation without glue scripts.
+- You keep data in your own environment.
 
-SoloMesh is built on a runtime abstraction (`claude` / `codex`) and provides workspace isolation, channel routing, workflow orchestration, and operational controls.
+## Why Teams Pick SoloMesh
 
-## Product Positioning
+- One workspace for multiple runtimes: `claude`, `codex`, `gemini`
+- Real multi-user collaboration: roles, permissions, personal workspaces, shared workspaces
+- Built-in channels: Web, Feishu, Telegram
+- Built-in operations: workflow templates, scheduler, logs, runtime config, MCP/Skills
+- Safe-by-default controls: encrypted secrets, mount allowlist, host-mode permission checks
 
-Based on the current codebase, SoloMesh is positioned around five core directions:
+If you want your team to use AI runtimes like a real internal tool (not just scattered CLI sessions), SoloMesh is built for that.
 
-1. **Runtime abstraction**: uses `agentRuntime` (`claude` / `codex`) as the runtime selection model.
-2. **Capability-driven setup**: setup and settings are rendered from runtime capabilities, not hard-coded provider assumptions.
-3. **Workflow orchestration**: multi-stage templates with dependency precheck and lifecycle management.
-4. **Session binding and merge logic**: IM sessions can bind to target workspaces, with controlled message-merge rules.
-5. **Provider-aware Skills/MCP**: runtime-aware skill install/sync and per-user MCP server management.
+## Who It's For
 
-## Core Capabilities
+- Engineering teams that want shared AI workflows instead of personal-only local sessions
+- AI platform / DevOps teams that need runtime governance, permission boundaries, and auditability
+- Product teams that need one place to run Claude/Codex/Gemini without switching tools
 
-### Runtime and Provider Control
+## Typical Scenarios
 
-- Runtime catalog and active runtime state via `/api/config/runtimes`.
-- Runtime config API family under `/api/config/runtime*`:
-  - default runtime
-  - encrypted secrets
-  - custom environment overrides
-  - runtime-wide apply/reload actions
-- Claude official OAuth flow: `/api/config/runtime/oauth/start` and `/api/config/runtime/oauth/callback`.
-- Codex credentials with optional base URL and model override.
+1. Team Daily Operations
+Use scheduled prompts to generate standups, release notes, or issue digests.
 
-### Collaboration Channels
+2. Multi-Stage Delivery Workflow
+Run analysis -> implementation -> review templates with dependency checks.
+Example: Claude for architecture, Codex for coding/testing, Gemini for final wrap-up.
 
-- Native channels: **Web**, **Feishu**, **Telegram**.
-- System-level channel config: `/api/config/feishu`, `/api/config/telegram`.
-- User-level channel config and bindings: `/api/config/user-im/*`.
-- Telegram pairing-code flow for user-level linking.
+3. IM-to-Workspace Routing
+Route Feishu/Telegram conversations to specific workspaces with per-user controls.
 
-### Workspace Execution Model
+4. Runtime Governance
+Set default runtime, expose source of secrets, and prevent risky host access by role.
 
-- Per-user home workspace defaults:
-  - admin: `folder=main`, default `host` execution
-  - member: `folder=home-{userId}`, default `container` execution
-- Host and container modes can run side by side.
-- Queue-based execution scheduling and session lifecycle management.
+## Why Not Just Run CLI Directly?
 
-### Workflow Templates
-
-- Built-in templates plus user/global templates.
-- Template lifecycle: `draft` -> `published` -> `archived`.
-- Stage dependency types: `provider`, `skill`, `channel`, `mcp`.
-- Publish-time dependency checks with optional auto-fix paths.
-
-### Tooling and Operations
-
-- Memory management across `user-global`, `main`, `flow`, and `session` scopes.
-- Scheduled tasks: `cron`, `interval`, `once`, with run logs.
-- Skills: search, install, sync-host (toggle is intentionally read-only in Web/API).
-- MCP servers per user (`stdio`, `http`, `sse`) with host sync support.
-- File browser, web terminal, monitor dashboard, and sub-agent conversation management.
-
-### Security and Governance
-
-- Cookie session auth and login lockout controls.
-- RBAC plus permission templates (`admin_full`, `member_basic`, `ops_manager`, `user_admin`).
-- Encrypted secret storage for runtime and channel credentials.
-- Mount allowlist checks and path traversal protection.
-
-## Architecture
-
-### Terminology Contract
-
-SoloMesh follows a strict 3-layer terminology model:
-
-- `agentRuntime`: execution engine (`claude`, `codex`)
-- `modelProvider`: model vendor (`anthropic`, `openai`, `openrouter`, ...)
-- `model`: concrete model id (`claude-sonnet-*`, `gpt-*`, ...)
-
-References:
-
-- `docs/architecture/runtime-model-glossary.md`
-- `docs/architecture/adr-0001-runtime-model-separation.md`
-
-### Architecture Planes
-
-| Plane | Responsibility | Key Modules |
+| Topic | Raw CLI Sessions | SoloMesh |
 | --- | --- | --- |
-| **Experience Layer** | UI and IM entrypoints | `web/src/*`, Feishu/Telegram adapters |
-| **Control Plane** | auth, RBAC, config, routing, workflows, scheduling | `src/web.ts`, `src/routes/*`, `src/workflow.ts`, `src/group-queue.ts` |
-| **Execution Plane** | host/container runtime execution and stream handling | `src/container-runner.ts`, `container/agent-runner/src/index.ts` |
-| **State Plane** | durable state, workspace files, memory, IPC | `src/db.ts`, `data/*` |
+| Team Collaboration | Mostly personal sessions | Shared workspaces + permissions |
+| Runtime Switching | Manual and fragmented | Unified runtime abstraction |
+| Channels | Usually local terminal only | Web + Feishu + Telegram |
+| Automation | External scripts needed | Built-in scheduler + templates |
+| Governance | Ad hoc | RBAC + encrypted secrets + mount allowlist |
 
-### Architecture Diagram (Reworked)
+## What You Can Do Today
 
-```mermaid
-flowchart TB
-  subgraph L1[Experience Layer]
-    W[Web App]
-    F[Feishu]
-    T[Telegram]
-  end
+1. Chat in a clean web UI and switch runtime quickly.
+2. Configure Claude/Codex/Gemini with official login or API key flow.
+3. Bind Feishu/Telegram sessions to target workspaces.
+4. Create automation tasks from templates and edit schedule visually.
+5. Run workflow templates with stage dependencies and publish precheck.
+6. Manage MCP servers and Skills per user/workspace.
+7. Use Chinese/English UI (auto-detect system language, user override supported).
+8. Keep runtime credentials and operational settings visible and governable for the team.
 
-  subgraph L2[Control Plane]
-    API[Hono API + WebSocket]
-    AUTH[Auth + RBAC]
-    CFG[Runtime/Channel Config]
-    WF[Workflow Engine]
-    QUEUE[Execution Queue + Scheduler]
-  end
+## Runtime Support
 
-  subgraph L3[Execution Plane]
-    HOST[Host Runner]
-    CTR[Container Runner]
-    RT[Runtime Adapter: Claude/Codex]
-    MCP[MCP Bridge + IPC]
-  end
+| Runtime | ID | Auth | Model Override | Custom Base URL | Memory File |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | OAuth / setup-token / third-party token | No | Yes | `CLAUDE.md` |
+| Codex | `codex` | `CODEX_API_KEY` / `OPENAI_API_KEY` | Yes | Yes (`OPENAI_BASE_URL`) | `AGENTS.md` |
+| Gemini CLI | `gemini` | OAuth or `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Yes | Yes (`GOOGLE_GEMINI_BASE_URL`) | `GEMINI.md` |
 
-  subgraph L4[State Plane]
-    DB[(SQLite)]
-    FILES[data/groups + data/memory]
-    SESS[data/sessions]
-    IPC[data/ipc]
-  end
+## Quick Start (3 Minutes)
 
-  W --> API
-  F --> API
-  T --> API
+For a local trial or internal team pilot:
 
-  API --> AUTH
-  API --> CFG
-  API --> WF
-  API --> QUEUE
-
-  QUEUE --> HOST
-  QUEUE --> CTR
-  HOST --> RT
-  CTR --> RT
-  RT --> MCP
-
-  AUTH --> DB
-  CFG --> DB
-  WF --> DB
-  API --> DB
-
-  RT --> FILES
-  RT --> SESS
-  MCP --> IPC
-  API <--> IPC
-```
-
-### Request Lifecycle
-
-1. A message enters through Web, Feishu, or Telegram.
-2. Control plane authenticates user/session, resolves workspace and runtime context.
-3. Queue dispatches execution to host or container runner.
-4. Runtime produces streaming events and optional MCP interactions.
-5. State updates are persisted (DB/files), and output is pushed back to the originating channel.
-
-### Key Source Map
-
-- `src/index.ts`: application bootstrap and orchestration loop
-- `src/web.ts`: API + WS server composition
-- `src/runtime-config.ts`: runtime/channel config and secret encryption
-- `src/routes/config.ts`: runtime and channel endpoints
-- `src/workflow.ts`, `src/routes/workflows.ts`: workflow template model and APIs
-- `src/group-message-merge.ts`: message query merge policy
-- `src/im-channel-config-descriptor.ts`: channel config descriptor abstraction
-- `container/agent-runner/src/index.ts`: runtime-side execution loop
-
-### Runtime Data Layout
-
-```text
-data/
-  config/          # runtime/channel configs and encrypted keys
-  db/              # SQLite database
-  groups/          # workspace data (incl. user-global memory folders)
-  sessions/        # runtime session state (.claude/.codex)
-  memory/          # scoped memory files
-  skills/          # per-user skills
-  mcp-servers/     # per-user MCP server configs
-  ipc/             # host <-> runner IPC files
-```
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js >= 20
-- Optional: Docker (recommended for container execution mode)
-
-### Install and Run
+### 1) Clone and start
 
 ```bash
 git clone https://github.com/kexuejin/solomesh.git
@@ -217,49 +104,126 @@ cd solomesh
 make start
 ```
 
-Open `http://localhost:3000`, then complete setup:
+### 2) Open app
 
-1. Create initial admin account (`/setup`)
+Open `http://localhost:3000`.
+
+### 3) Finish setup wizard
+
+1. Create admin account (`/setup`)
 2. Configure runtime credentials (`/setup/providers`)
-3. Optionally configure user channels (`/setup/channels`)
+3. Optionally configure channels (`/setup/channels`)
+
+`make start` auto-installs missing dependencies and builds required parts.
+
+## How It Works
+
+1. A message enters from Web / Feishu / Telegram.
+2. SoloMesh resolves workspace, runtime, and permissions.
+3. Request is dispatched to host or container runner.
+4. Runtime streams output and tool events.
+5. Results and state are persisted, then pushed back to the channel.
+
+## Under the Hood
+
+### Runtime Control
+
+- Runtime abstraction by `agentRuntime` (`claude` / `codex` / `gemini`)
+- Runtime list and active runtime via `/api/config/runtimes`
+- Gemini OAuth endpoints:
+  - `/api/config/runtime/gemini/oauth/start`
+  - `/api/config/runtime/gemini/oauth/callback`
+- Key source visibility (`runtime` / `env` / `none`) and degraded-key detection
+
+### Collaboration Channels
+
+- System-level config: `/api/config/feishu`, `/api/config/telegram`
+- User-level config and binding: `/api/config/user-im/*`
+- Session binding + merged message query support
+
+### Automation and Workflow
+
+- Task schedules: `cron`, `interval`, `once`
+- Template-based automation creation
+- Workflow template lifecycle: `draft -> published -> archived`
+- Dependency precheck (`provider`, `skill`, `channel`, `mcp`)
+- Stage-level runtime strategy: assign different runtimes per stage (for example: Claude -> Codex -> Gemini)
+
+### Skills, MCP, and Memory
+
+- Provider-aware skills behavior
+- Per-user MCP servers (`stdio`, `http`, `sse`)
+- Runtime memory profile mapping:
+  - `claude -> CLAUDE.md`
+  - `codex -> AGENTS.md`
+  - `gemini -> GEMINI.md`
+
+### UI Localization
+
+- Supported UI languages: `zh-CN`, `en`
+- Default: system/browser language
+- User-level language switch in profile
+
+## Architecture at a Glance
+
+```mermaid
+flowchart TB
+  U[Web / Feishu / Telegram] --> API[Hono API + WebSocket]
+  API --> CTRL[Auth + RBAC + Config + Workflow + Scheduler]
+  CTRL --> RUN[Host Runner / Container Runner]
+  RUN --> RT[Claude / Codex / Gemini]
+  RT --> MCP[MCP Bridge]
+  API --> DB[(SQLite + Files + Sessions)]
+```
+
+### Data Layout
+
+```text
+data/
+  config/          # runtime/channel config, encrypted secrets, OAuth artifacts
+  db/              # sqlite
+  groups/          # workspaces
+  sessions/        # runtime sessions (.claude/.codex/.gemini)
+  memory/          # scoped memory files
+  skills/          # per-user skills
+  mcp-servers/     # per-user MCP config
+  ipc/             # host <-> runner IPC
+```
 
 ## Development
 
 ```bash
-make install         # install all dependencies
-make dev             # backend + frontend dev mode
+make install         # install dependencies + build agent-runner
+make dev             # backend + frontend
 make dev-backend     # backend only
 make dev-web         # frontend only
-make build           # build backend + web + agent-runner
-make typecheck       # full type check
-make start           # production start (with build)
+make build           # build all
+make typecheck       # type check all
 make reset-init      # reset runtime data (destructive)
 ```
 
-## API Surface (Key)
+## Key APIs
 
-- Runtime: `/api/config/runtimes`, `/api/config/runtime`, `/api/config/runtime/secrets`, `/api/config/runtime/custom-env`, `/api/config/runtime/apply`
-- Channels (system): `/api/config/feishu`, `/api/config/telegram`
-- Channels (user): `/api/config/user-im/*`
+- Runtime config: `/api/config/runtime*`, `/api/config/runtimes`
+- Channels: `/api/config/feishu`, `/api/config/telegram`, `/api/config/user-im/*`
 - Workflows: `/api/workflows/templates/*`
 - Tasks: `/api/tasks/*`
 - Skills: `/api/skills/*`
-- MCP Servers: `/api/mcp-servers/*`
+- MCP servers: `/api/mcp-servers/*`
 
 ## Repository Layout
 
 ```text
-src/                     # backend (Hono + orchestration + integrations)
+src/                     # backend (routing, orchestration, integrations)
 web/                     # frontend (React + Vite + PWA)
-container/agent-runner/  # runtime runner for host/container execution
+container/agent-runner/  # runtime runner
 container/skills/        # project-level skills
-config/                  # static configuration
-docs/architecture/       # glossary + ADRs
+docs/architecture/       # architecture notes and ADRs
 ```
 
 ## Contributing
 
-Issues and pull requests are welcome.
+Issues and PRs are welcome.
 
 ## License
 
