@@ -57,6 +57,17 @@ export async function runScript(
           activeScriptCount--;
           const durationMs = Date.now() - startTime;
           const timedOut = error?.killed === true;
+          const errorCode = (error as NodeJS.ErrnoException | null | undefined)?.code;
+          const exitCode =
+            timedOut
+              ? null
+              : typeof errorCode === 'number'
+                ? errorCode
+                : typeof child.exitCode === 'number'
+                  ? child.exitCode
+                  : error
+                    ? 1
+                    : 0;
 
           if (timedOut) {
             logger.warn(
@@ -68,7 +79,7 @@ export async function runScript(
           resolve({
             stdout: stdout.slice(0, MAX_BUFFER),
             stderr: stderr.slice(0, MAX_BUFFER),
-            exitCode: timedOut ? null : (child.exitCode ?? 0),
+            exitCode,
             timedOut,
             durationMs,
           });

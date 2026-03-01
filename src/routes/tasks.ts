@@ -18,6 +18,7 @@ import {
 import type { AuthUser } from '../types.js';
 import { TIMEZONE } from '../config.js';
 import { isHostExecutionGroup, hasHostExecutionPermission, canAccessGroup } from '../web-context.js';
+import { isScriptTaskAdminOnlyMutation } from '../task-script-policy.js';
 
 const tasksRoutes = new Hono<{ Variables: Variables }>();
 
@@ -145,10 +146,11 @@ tasksRoutes.patch('/:id', authMiddleware, async (c) => {
     );
   }
 
-  const isScriptTask =
-    validation.data.execution_type === 'script' ||
-    (existing.execution_type === 'script' && validation.data.script_command !== undefined);
-  if (isScriptTask && authUser.role !== 'admin') {
+  const scriptAdminOnly = isScriptTaskAdminOnlyMutation(
+    existing.execution_type,
+    validation.data,
+  );
+  if (scriptAdminOnly && authUser.role !== 'admin') {
     return c.json(
       { error: 'Only admin can create or modify script tasks' },
       403,

@@ -261,7 +261,9 @@ async function runScriptTask(
   const groupDir = path.join(GROUPS_DIR, task.group_folder);
   fs.mkdirSync(groupDir, { recursive: true });
 
-  if (!task.script_command) {
+  const scriptCommand = task.script_command?.trim() || '';
+  if (!scriptCommand) {
+    const reason = 'script_command is empty';
     logger.error({ taskId: task.id }, 'Script task has no script_command, skipping');
     logTaskRun({
       task_id: task.id,
@@ -269,8 +271,10 @@ async function runScriptTask(
       duration_ms: Date.now() - startTime,
       status: 'error',
       result: null,
-      error: 'script_command is empty',
+      error: reason,
     });
+    const nextRun = computeNextRun(task);
+    updateTaskAfterRun(task.id, nextRun, `Error: ${reason}`);
     runningTaskIds.delete(task.id);
     return;
   }
@@ -279,7 +283,7 @@ async function runScriptTask(
   let error: string | null = null;
 
   try {
-    const scriptResult = await runScript(task.script_command, task.group_folder);
+    const scriptResult = await runScript(scriptCommand, task.group_folder);
 
     if (scriptResult.timedOut) {
       error = `Script timed out (${Math.round(scriptResult.durationMs / 1000)}s)`;
