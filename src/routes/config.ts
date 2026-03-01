@@ -36,6 +36,7 @@ import {
 import { listImChannelConfigDescriptors } from '../im-channel-config-descriptor.js';
 import {
   getRuntimeProviderConfig,
+  resolveRuntimeProviderConfigWithEnvFallback,
   toPublicRuntimeProviderConfig,
   saveRuntimeProviderConfig,
   appendRuntimeConfigAudit,
@@ -210,10 +211,11 @@ function isSystemChannelConfigConnectable(
 configRoutes.get('/runtimes', authMiddleware, systemConfigMiddleware, (c) => {
   try {
     const current = getRuntimeProviderConfig();
+    const effective = resolveRuntimeProviderConfigWithEnvFallback(current);
     return c.json({
       runtimes: listAgentProviderDefinitions(),
       activeRuntime: current.agentRuntime,
-      configuredRuntimes: getAgentProviderConfiguredMap(current),
+      configuredRuntimes: getAgentProviderConfiguredMap(effective),
     });
   } catch (err) {
     logger.error({ err }, 'Failed to load agent provider definitions');

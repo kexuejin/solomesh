@@ -123,6 +123,7 @@ export interface GeminiOAuthCredentials {
 }
 
 export type GeminiAuthMode = 'api_key' | 'oauth';
+export type RuntimeSecretSource = 'runtime' | 'env' | 'none';
 
 export type { AgentProvider } from './agent-providers.js';
 
@@ -163,6 +164,10 @@ export interface RuntimeProviderPublicConfig {
   claudeCodeOauthTokenMasked: string | null;
   codexApiKeyMasked: string | null;
   geminiApiKeyMasked: string | null;
+  codexApiKeySource: RuntimeSecretSource;
+  geminiApiKeySource: RuntimeSecretSource;
+  codexApiKeyDegraded: boolean;
+  geminiApiKeyDegraded: boolean;
   hasRuntimeOAuthCredentials: boolean;
   claudeOAuthCredentialsExpiresAt: number | null;
   claudeOAuthCredentialsAccessTokenMasked: string | null;
@@ -392,6 +397,141 @@ function normalizeApiKeyValue(value: string): string {
   if (!sanitized) return '';
   if (isHttpUrlLike(sanitized)) return '';
   return sanitized;
+}
+
+function resolveApiKeyWithSource(
+  runtimeValue: string,
+  envValue: string,
+): {
+  value: string;
+  source: RuntimeSecretSource;
+  degraded: boolean;
+} {
+  const runtimeTrimmed = sanitizeEnvValue(runtimeValue).trim();
+  const runtimeValid = normalizeApiKeyValue(runtimeTrimmed);
+  if (runtimeValid) {
+    return { value: runtimeValid, source: 'runtime', degraded: false };
+  }
+  const envValid = normalizeApiKeyValue(envValue);
+  if (envValid) {
+    return {
+      value: envValid,
+      source: 'env',
+      degraded: runtimeTrimmed.length > 0,
+    };
+  }
+  return {
+    value: '',
+    source: 'none',
+    degraded: runtimeTrimmed.length > 0,
+  };
+}
+
+function pickPreferredValue(primary: string, fallback: string): string {
+  const preferred = sanitizeEnvValue(primary).trim();
+  if (preferred) return preferred;
+  return sanitizeEnvValue(fallback).trim();
+}
+
+/**
+ * Resolve effective runtime config with environment fallback.
+ * Priority: explicit config value > process env fallback.
+ * URL-like API keys are treated as invalid and ignored.
+ */
+export function resolveRuntimeProviderConfigWithEnvFallback(
+  config: RuntimeProviderConfig,
+  envFallbackConfig?: RuntimeProviderConfig,
+): RuntimeProviderConfig {
+  const fallback = envFallbackConfig ?? defaultsFromEnv();
+  const resolvedCodexApiKey = resolveApiKeyWithSource(
+    config.codexApiKey,
+    fallback.codexApiKey,
+  );
+  const resolvedGeminiApiKey = resolveApiKeyWithSource(
+    config.geminiApiKey,
+    fallback.geminiApiKey,
+  );
+  const resolved: RuntimeProviderConfig = {
+    agentRuntime: config.agentRuntime,
+    anthropicBaseUrl: pickPreferredValue(
+      config.anthropicBaseUrl,
+      fallback.anthropicBaseUrl,
+    ),
+    codexBaseUrl: pickPreferredValue(config.codexBaseUrl, fallback.codexBaseUrl),
+    codexModel: pickPreferredValue(config.codexModel, fallback.codexModel),
+    geminiBaseUrl: pickPreferredValue(
+      config.geminiBaseUrl,
+      fallback.geminiBaseUrl,
+    ),
+    geminiModel: pickPreferredValue(config.geminiModel, fallback.geminiModel),
+    geminiAuthMode: config.geminiAuthMode,
+    anthropicAuthToken: pickPreferredValue(
+      config.anthropicAuthToken,
+      fallback.anthropicAuthToken,
+    ),
+    anthropicApiKey: pickPreferredValue(
+      config.anthropicApiKey,
+      fallback.anthropicApiKey,
+    ),
+    claudeCodeOauthToken: pickPreferredValue(
+      config.claudeCodeOauthToken,
+      fallback.claudeCodeOauthToken,
+    ),
+    codexApiKey: resolvedCodexApiKey.value,
+    geminiApiKey: resolvedGeminiApiKey.value,
+    claudeOAuthCredentials: config.claudeOAuthCredentials,
+    updatedAt: config.updatedAt,
+  };
+  if (resolved.geminiAuthMode === 'oauth') {
+    resolved.geminiApiKey = '';
+  }
+  return resolved;
+}
+
+export function getRuntimeApiKeyAutoRepairPatch(
+  config: RuntimeProviderConfig,
+  envFallbackConfig?: RuntimeProviderConfig,
+): {
+  nextConfig: Omit<RuntimeProviderConfig, 'updatedAt'>;
+  changedFields: string[];
+} {
+  const fallback = envFallbackConfig ?? defaultsFromEnv();
+  const nextConfig: Omit<RuntimeProviderConfig, 'updatedAt'> = {
+    agentRuntime: config.agentRuntime,
+    anthropicBaseUrl: config.anthropicBaseUrl,
+    codexBaseUrl: config.codexBaseUrl,
+    codexModel: config.codexModel,
+    geminiBaseUrl: config.geminiBaseUrl,
+    geminiModel: config.geminiModel,
+    geminiAuthMode: config.geminiAuthMode,
+    anthropicAuthToken: config.anthropicAuthToken,
+    anthropicApiKey: config.anthropicApiKey,
+    claudeCodeOauthToken: config.claudeCodeOauthToken,
+    codexApiKey: config.codexApiKey,
+    geminiApiKey: config.geminiApiKey,
+    claudeOAuthCredentials: config.claudeOAuthCredentials,
+  };
+  const changedFields: string[] = [];
+
+  const codexCurrent = sanitizeEnvValue(config.codexApiKey).trim();
+  const codexCurrentValid = normalizeApiKeyValue(codexCurrent);
+  const codexFallbackValid = normalizeApiKeyValue(fallback.codexApiKey);
+  if (codexCurrent && !codexCurrentValid && codexFallbackValid) {
+    nextConfig.codexApiKey = codexFallbackValid;
+    changedFields.push('codexApiKey:auto_repair_from_env');
+  }
+
+  if (config.geminiAuthMode === 'api_key') {
+    const geminiCurrent = sanitizeEnvValue(config.geminiApiKey).trim();
+    const geminiCurrentValid = normalizeApiKeyValue(geminiCurrent);
+    const geminiFallbackValid = normalizeApiKeyValue(fallback.geminiApiKey);
+    if (geminiCurrent && !geminiCurrentValid && geminiFallbackValid) {
+      nextConfig.geminiApiKey = geminiFallbackValid;
+      changedFields.push('geminiApiKey:auto_repair_from_env');
+    }
+  }
+
+  return { nextConfig, changedFields };
 }
 
 function normalizeGeminiAuthMode(input: unknown): GeminiAuthMode {
@@ -1043,33 +1183,51 @@ function maskSecret(value: string): string | null {
 export function toPublicRuntimeProviderConfig(
   config: RuntimeProviderConfig,
 ): RuntimeProviderPublicConfig {
+  const envFallback = defaultsFromEnv();
+  const resolved = resolveRuntimeProviderConfigWithEnvFallback(
+    config,
+    envFallback,
+  );
+  const codexApiKeyInfo = resolveApiKeyWithSource(
+    config.codexApiKey,
+    envFallback.codexApiKey,
+  );
+  const geminiApiKeyInfo =
+    resolved.geminiAuthMode === 'oauth'
+      ? { value: '', source: 'none' as const, degraded: false }
+      : resolveApiKeyWithSource(config.geminiApiKey, envFallback.geminiApiKey);
   const geminiOAuthCredentials = getGeminiOAuthCredentials();
-  const codexApiKey = normalizeApiKeyValue(config.codexApiKey);
-  const geminiApiKey = normalizeApiKeyValue(config.geminiApiKey);
+  const codexApiKey = codexApiKeyInfo.value;
+  const geminiApiKey = geminiApiKeyInfo.value;
   return {
-    agentRuntime: config.agentRuntime,
-    anthropicBaseUrl: config.anthropicBaseUrl,
-    codexBaseUrl: config.codexBaseUrl,
-    codexModel: config.codexModel,
-    geminiBaseUrl: config.geminiBaseUrl,
-    geminiModel: config.geminiModel,
-    geminiAuthMode: config.geminiAuthMode,
-    updatedAt: config.updatedAt,
-    hasAnthropicAuthToken: !!config.anthropicAuthToken,
-    hasAnthropicApiKey: !!config.anthropicApiKey,
-    hasClaudeCodeOauthToken: !!config.claudeCodeOauthToken,
+    agentRuntime: resolved.agentRuntime,
+    anthropicBaseUrl: resolved.anthropicBaseUrl,
+    codexBaseUrl: resolved.codexBaseUrl,
+    codexModel: resolved.codexModel,
+    geminiBaseUrl: resolved.geminiBaseUrl,
+    geminiModel: resolved.geminiModel,
+    geminiAuthMode: resolved.geminiAuthMode,
+    updatedAt: resolved.updatedAt,
+    hasAnthropicAuthToken: !!resolved.anthropicAuthToken,
+    hasAnthropicApiKey: !!resolved.anthropicApiKey,
+    hasClaudeCodeOauthToken: !!resolved.claudeCodeOauthToken,
     hasCodexApiKey: !!codexApiKey,
     hasGeminiApiKey: !!geminiApiKey,
     hasGeminiOAuthCredentials: !!geminiOAuthCredentials,
-    anthropicAuthTokenMasked: maskSecret(config.anthropicAuthToken),
-    anthropicApiKeyMasked: maskSecret(config.anthropicApiKey),
-    claudeCodeOauthTokenMasked: maskSecret(config.claudeCodeOauthToken),
+    anthropicAuthTokenMasked: maskSecret(resolved.anthropicAuthToken),
+    anthropicApiKeyMasked: maskSecret(resolved.anthropicApiKey),
+    claudeCodeOauthTokenMasked: maskSecret(resolved.claudeCodeOauthToken),
     codexApiKeyMasked: maskSecret(codexApiKey),
     geminiApiKeyMasked: maskSecret(geminiApiKey),
-    hasRuntimeOAuthCredentials: !!config.claudeOAuthCredentials,
-    claudeOAuthCredentialsExpiresAt: config.claudeOAuthCredentials?.expiresAt ?? null,
-    claudeOAuthCredentialsAccessTokenMasked: config.claudeOAuthCredentials
-      ? maskSecret(config.claudeOAuthCredentials.accessToken)
+    codexApiKeySource: codexApiKeyInfo.source,
+    geminiApiKeySource: geminiApiKeyInfo.source,
+    codexApiKeyDegraded: codexApiKeyInfo.degraded,
+    geminiApiKeyDegraded: geminiApiKeyInfo.degraded,
+    hasRuntimeOAuthCredentials: !!resolved.claudeOAuthCredentials,
+    claudeOAuthCredentialsExpiresAt:
+      resolved.claudeOAuthCredentials?.expiresAt ?? null,
+    claudeOAuthCredentialsAccessTokenMasked: resolved.claudeOAuthCredentials
+      ? maskSecret(resolved.claudeOAuthCredentials.accessToken)
       : null,
   };
 }
@@ -1196,15 +1354,20 @@ export function shellQuoteEnvLines(lines: string[]): string[] {
 }
 
 export function buildRuntimeEnvLines(config: RuntimeProviderConfig): string[] {
+  const envFallback = defaultsFromEnv();
+  const resolved = resolveRuntimeProviderConfigWithEnvFallback(
+    config,
+    envFallback,
+  );
   const lines: string[] = [];
-  lines.push(`AGENT_RUNTIME=${config.agentRuntime}`);
-  const runtimeDef = getAgentProviderDefinition(config.agentRuntime);
+  lines.push(`AGENT_RUNTIME=${resolved.agentRuntime}`);
+  const runtimeDef = getAgentProviderDefinition(resolved.agentRuntime);
   lines.push(
     `SOLOMESH_RUNTIME_LABEL=${sanitizeEnvValue(runtimeDef.label)}`,
   );
   lines.push(
     `SOLOMESH_PRIMARY_MEMORY_FILE_NAME=${sanitizeEnvValue(
-      getPrimaryMemoryFileName(config.agentRuntime),
+      getPrimaryMemoryFileName(resolved.agentRuntime),
     )}`,
   );
   lines.push(
@@ -1223,61 +1386,80 @@ export function buildRuntimeEnvLines(config: RuntimeProviderConfig): string[] {
     }`,
   );
 
-  if (config.agentRuntime === 'codex') {
-    const codexApiKey = normalizeApiKeyValue(config.codexApiKey);
-    if (config.codexApiKey && !codexApiKey) {
+  if (resolved.agentRuntime === 'codex') {
+    const codexApiKey = normalizeApiKeyValue(resolved.codexApiKey);
+    const configuredCodexApiKey = normalizeApiKeyValue(config.codexApiKey);
+    if (config.codexApiKey && !configuredCodexApiKey && codexApiKey) {
+      logger.warn(
+        'Runtime config CODEX_API_KEY is invalid, falling back to process env',
+      );
+    } else if (config.codexApiKey && !configuredCodexApiKey) {
       logger.warn('Skipping invalid CODEX_API_KEY because it looks like a URL');
     }
     if (codexApiKey) {
       lines.push(`CODEX_API_KEY=${codexApiKey}`);
       lines.push(`OPENAI_API_KEY=${codexApiKey}`);
     }
-    if (config.codexBaseUrl) {
-      lines.push(`OPENAI_BASE_URL=${sanitizeEnvValue(config.codexBaseUrl)}`);
+    if (resolved.codexBaseUrl) {
+      lines.push(`OPENAI_BASE_URL=${sanitizeEnvValue(resolved.codexBaseUrl)}`);
     }
-    if (config.codexModel) {
-      lines.push(`CODEX_MODEL=${sanitizeEnvValue(config.codexModel)}`);
+    if (resolved.codexModel) {
+      lines.push(`CODEX_MODEL=${sanitizeEnvValue(resolved.codexModel)}`);
     }
-  } else if (config.agentRuntime === 'gemini') {
+  } else if (resolved.agentRuntime === 'gemini') {
     lines.push(
-      `GEMINI_AUTH_MODE=${sanitizeEnvValue(config.geminiAuthMode)}`,
+      `GEMINI_AUTH_MODE=${sanitizeEnvValue(resolved.geminiAuthMode)}`,
     );
-    const geminiApiKey = normalizeApiKeyValue(config.geminiApiKey);
-    if (config.geminiAuthMode === 'api_key' && config.geminiApiKey && !geminiApiKey) {
+    const geminiApiKey = normalizeApiKeyValue(resolved.geminiApiKey);
+    const configuredGeminiApiKey = normalizeApiKeyValue(config.geminiApiKey);
+    if (
+      resolved.geminiAuthMode === 'api_key' &&
+      config.geminiApiKey &&
+      !configuredGeminiApiKey &&
+      geminiApiKey
+    ) {
+      logger.warn(
+        'Runtime config GEMINI_API_KEY is invalid, falling back to process env',
+      );
+    } else if (
+      resolved.geminiAuthMode === 'api_key' &&
+      config.geminiApiKey &&
+      !configuredGeminiApiKey
+    ) {
       logger.warn('Skipping invalid GEMINI_API_KEY because it looks like a URL');
     }
-    if (config.geminiAuthMode === 'api_key' && geminiApiKey) {
+    if (resolved.geminiAuthMode === 'api_key' && geminiApiKey) {
       lines.push(`GEMINI_API_KEY=${geminiApiKey}`);
     }
-    if (config.geminiBaseUrl) {
+    if (resolved.geminiBaseUrl) {
       lines.push(
-        `GOOGLE_GEMINI_BASE_URL=${sanitizeEnvValue(config.geminiBaseUrl)}`,
+        `GOOGLE_GEMINI_BASE_URL=${sanitizeEnvValue(resolved.geminiBaseUrl)}`,
       );
     }
-    if (config.geminiModel) {
-      lines.push(`GEMINI_MODEL=${sanitizeEnvValue(config.geminiModel)}`);
+    if (resolved.geminiModel) {
+      lines.push(`GEMINI_MODEL=${sanitizeEnvValue(resolved.geminiModel)}`);
     }
   } else {
     // When full OAuth credentials exist, authentication is handled by .credentials.json file.
     // Otherwise use CLAUDE_CODE_OAUTH_TOKEN for single-token mode.
-    if (!config.claudeOAuthCredentials && config.claudeCodeOauthToken) {
+    if (!resolved.claudeOAuthCredentials && resolved.claudeCodeOauthToken) {
       lines.push(
-        `CLAUDE_CODE_OAUTH_TOKEN=${sanitizeEnvValue(config.claudeCodeOauthToken)}`,
+        `CLAUDE_CODE_OAUTH_TOKEN=${sanitizeEnvValue(resolved.claudeCodeOauthToken)}`,
       );
     }
-    if (config.anthropicApiKey) {
+    if (resolved.anthropicApiKey) {
       lines.push(
-        `ANTHROPIC_API_KEY=${sanitizeEnvValue(config.anthropicApiKey)}`,
+        `ANTHROPIC_API_KEY=${sanitizeEnvValue(resolved.anthropicApiKey)}`,
       );
     }
-    if (config.anthropicBaseUrl) {
+    if (resolved.anthropicBaseUrl) {
       lines.push(
-        `ANTHROPIC_BASE_URL=${sanitizeEnvValue(config.anthropicBaseUrl)}`,
+        `ANTHROPIC_BASE_URL=${sanitizeEnvValue(resolved.anthropicBaseUrl)}`,
       );
     }
-    if (config.anthropicAuthToken) {
+    if (resolved.anthropicAuthToken) {
       lines.push(
-        `ANTHROPIC_AUTH_TOKEN=${sanitizeEnvValue(config.anthropicAuthToken)}`,
+        `ANTHROPIC_AUTH_TOKEN=${sanitizeEnvValue(resolved.anthropicAuthToken)}`,
       );
     }
   }
@@ -1354,6 +1536,10 @@ export interface ContainerEnvPublicConfig {
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
   hasGeminiApiKey: boolean;
+  codexApiKeySource: 'override' | RuntimeSecretSource;
+  geminiApiKeySource: 'override' | RuntimeSecretSource;
+  codexApiKeyDegraded: boolean;
+  geminiApiKeyDegraded: boolean;
   customEnv: Record<string, string>;
 }
 
@@ -1449,11 +1635,64 @@ export function deleteContainerEnvConfig(folder: string): void {
   }
 }
 
+function resolveContainerApiKeyWithSource(
+  overrideValue: string,
+  runtimeSourceInfo: ReturnType<typeof resolveApiKeyWithSource>,
+): {
+  value: string;
+  source: 'override' | RuntimeSecretSource;
+  degraded: boolean;
+} {
+  const overrideTrimmed = sanitizeEnvValue(overrideValue).trim();
+  const overrideValid = normalizeApiKeyValue(overrideTrimmed);
+  if (overrideValid) {
+    return { value: overrideValid, source: 'override', degraded: false };
+  }
+  if (runtimeSourceInfo.value) {
+    return {
+      value: runtimeSourceInfo.value,
+      source: runtimeSourceInfo.source,
+      degraded: overrideTrimmed.length > 0 || runtimeSourceInfo.degraded,
+    };
+  }
+  return {
+    value: '',
+    source: 'none',
+    degraded: overrideTrimmed.length > 0 || runtimeSourceInfo.degraded,
+  };
+}
+
 export function toPublicContainerEnvConfig(
   config: ContainerEnvConfig,
+  runtimeConfig?: RuntimeProviderConfig,
 ): ContainerEnvPublicConfig {
-  const codexApiKey = normalizeApiKeyValue(config.codexApiKey || '');
-  const geminiApiKey = normalizeApiKeyValue(config.geminiApiKey || '');
+  const runtime = runtimeConfig ?? getRuntimeProviderConfig();
+  const envFallback = defaultsFromEnv();
+  const runtimeCodexApiKeyInfo = resolveApiKeyWithSource(
+    runtime.codexApiKey,
+    envFallback.codexApiKey,
+  );
+  const runtimeGeminiApiKeyInfo = resolveApiKeyWithSource(
+    runtime.geminiApiKey,
+    envFallback.geminiApiKey,
+  );
+  const codexApiKeyInfo = resolveContainerApiKeyWithSource(
+    config.codexApiKey || '',
+    runtimeCodexApiKeyInfo,
+  );
+  const effectiveGeminiAuthMode =
+    config.geminiAuthMode === 'oauth'
+      ? 'oauth'
+      : runtime.geminiAuthMode === 'oauth'
+        ? 'oauth'
+        : 'api_key';
+  const geminiApiKeyInfo =
+    effectiveGeminiAuthMode === 'oauth'
+      ? { value: '', source: 'none' as const, degraded: false }
+      : resolveContainerApiKeyWithSource(
+          config.geminiApiKey || '',
+          runtimeGeminiApiKeyInfo,
+        );
   return {
     agentRuntime: normalizeAgentProvider(config.agentRuntime),
     anthropicBaseUrl: config.anthropicBaseUrl || '',
@@ -1466,13 +1705,17 @@ export function toPublicContainerEnvConfig(
     hasAnthropicAuthToken: !!config.anthropicAuthToken,
     hasAnthropicApiKey: !!config.anthropicApiKey,
     hasClaudeCodeOauthToken: !!config.claudeCodeOauthToken,
-    hasCodexApiKey: !!codexApiKey,
-    hasGeminiApiKey: !!geminiApiKey,
+    hasCodexApiKey: !!codexApiKeyInfo.value,
+    hasGeminiApiKey: !!geminiApiKeyInfo.value,
     anthropicAuthTokenMasked: maskSecret(config.anthropicAuthToken || ''),
     anthropicApiKeyMasked: maskSecret(config.anthropicApiKey || ''),
     claudeCodeOauthTokenMasked: maskSecret(config.claudeCodeOauthToken || ''),
-    codexApiKeyMasked: maskSecret(codexApiKey),
-    geminiApiKeyMasked: maskSecret(geminiApiKey),
+    codexApiKeyMasked: maskSecret(codexApiKeyInfo.value),
+    geminiApiKeyMasked: maskSecret(geminiApiKeyInfo.value),
+    codexApiKeySource: codexApiKeyInfo.source,
+    geminiApiKeySource: geminiApiKeyInfo.source,
+    codexApiKeyDegraded: codexApiKeyInfo.degraded,
+    geminiApiKeyDegraded: geminiApiKeyInfo.degraded,
     customEnv: config.customEnv || {},
   };
 }

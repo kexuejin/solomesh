@@ -102,6 +102,8 @@ import {
 import { imManager } from './im-manager.js';
 import { analyzeIntent } from './intent-analyzer.js';
 import {
+  appendRuntimeConfigAudit,
+  getRuntimeApiKeyAutoRepairPatch,
   getRuntimeProviderConfig as getRuntimeProviderConfigForRefresh,
   getContainerEnvConfig,
   mergeRuntimeEnvConfig,
@@ -3921,6 +3923,31 @@ async function main(): Promise<void> {
   migrateDataDirectories();
   initDatabase();
   logger.info('Database initialized');
+
+  // Auto-repair legacy misfilled SDK keys: if a URL-like key was saved but env has a valid key, persist the valid fallback.
+  try {
+    const current = getRuntimeProviderConfigForRefresh();
+    const { nextConfig, changedFields } =
+      getRuntimeApiKeyAutoRepairPatch(current);
+    if (changedFields.length > 0) {
+      saveRuntimeProviderConfigForRefresh(nextConfig);
+      appendRuntimeConfigAudit(
+        'system',
+        'auto_repair_runtime_api_keys',
+        changedFields,
+        { reason: 'url_like_saved_key_fallback_to_env' },
+      );
+      logger.warn(
+        { changedFields },
+        'Auto-repaired invalid runtime SDK keys using process env fallback',
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      { err },
+      'Failed to auto-repair invalid runtime SDK keys at startup',
+    );
+  }
 
   // Clean up stale completed task agents (older than 1 hour) to prevent DB bloat
   try {

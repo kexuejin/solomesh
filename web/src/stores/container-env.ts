@@ -20,6 +20,10 @@ export interface ContainerEnvPublicConfig {
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
   hasGeminiApiKey: boolean;
+  codexApiKeySource: 'override' | 'runtime' | 'env' | 'none';
+  geminiApiKeySource: 'override' | 'runtime' | 'env' | 'none';
+  codexApiKeyDegraded: boolean;
+  geminiApiKeyDegraded: boolean;
   customEnv: Record<string, string>;
 }
 

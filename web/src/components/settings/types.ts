@@ -18,6 +18,10 @@ export interface RuntimeConfigPublic {
   claudeCodeOauthTokenMasked: string | null;
   codexApiKeyMasked: string | null;
   geminiApiKeyMasked: string | null;
+  codexApiKeySource: 'runtime' | 'env' | 'none';
+  geminiApiKeySource: 'runtime' | 'env' | 'none';
+  codexApiKeyDegraded: boolean;
+  geminiApiKeyDegraded: boolean;
   hasRuntimeOAuthCredentials: boolean;
   claudeOAuthCredentialsExpiresAt: number | null;
   claudeOAuthCredentialsAccessTokenMasked: string | null;
@@ -165,6 +169,14 @@ export function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 export function sourceLabel(source: FeishuConfigPublic['source']): string {
+  if (source === 'runtime') return '来自设置页';
+  if (source === 'env') return '来自环境变量';
+  return '未配置';
+}
+
+export function runtimeSecretSourceLabel(
+  source: RuntimeConfigPublic['codexApiKeySource'],
+): string {
   if (source === 'runtime') return '来自设置页';
   if (source === 'env') return '来自环境变量';
   return '未配置';

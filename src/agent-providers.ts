@@ -102,16 +102,32 @@ function hasValue(value: unknown): boolean {
   return typeof value === 'string' ? value.trim().length > 0 : !!value;
 }
 
+function hasApiKeyValue(value: unknown): boolean {
+  if (typeof value !== 'string') return !!value;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return false;
+    }
+  } catch {
+    // non-url string, treat as key
+  }
+  return true;
+}
+
 export function isAgentProviderConfigured(
   provider: AgentProvider,
   config: AgentProviderConfigSnapshot,
 ): boolean {
   switch (provider) {
     case 'codex':
-      return hasValue(config.codexApiKey);
+      return hasApiKeyValue(config.codexApiKey);
     case 'gemini':
       if (config.geminiAuthMode === 'oauth') return true;
-      return hasValue(config.geminiApiKey);
+      return hasApiKeyValue(config.geminiApiKey);
     case 'claude': {
       const officialConfigured =
         hasValue(config.claudeCodeOauthToken) || !!config.claudeOAuthCredentials;

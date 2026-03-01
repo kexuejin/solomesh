@@ -16,6 +16,15 @@ interface ContainerEnvPanelProps {
   onClose?: () => void;
 }
 
+function containerSecretSourceLabel(
+  source: 'override' | 'runtime' | 'env' | 'none',
+): string {
+  if (source === 'override') return '来自当前工作区';
+  if (source === 'runtime') return '来自全局设置';
+  if (source === 'env') return '来自环境变量';
+  return '未配置';
+}
+
 export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps) {
   const { configs, loading, saving, loadConfig, saveConfig } = useContainerEnvStore();
   const config = configs[groupJid];
@@ -100,6 +109,15 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
       ? true
       : !!config?.hasGeminiApiKey || !!geminiApiKey.trim();
   const sdkDraftReady = isGeminiRuntime ? geminiDraftReady : codexDraftReady;
+  const sdkHasApiKey = isGeminiRuntime
+    ? !!config?.hasGeminiApiKey
+    : !!config?.hasCodexApiKey;
+  const sdkApiKeySource = isGeminiRuntime
+    ? (config?.geminiApiKeySource ?? 'none')
+    : (config?.codexApiKeySource ?? 'none');
+  const sdkApiKeyDegraded = isGeminiRuntime
+    ? !!config?.geminiApiKeyDegraded
+    : !!config?.codexApiKeyDegraded;
 
   useEffect(() => {
     if (!runtimeOptions.some((item) => item.id === agentRuntime)) {
@@ -344,6 +362,16 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                         </span>
                       )}
                     </label>
+                    {(sdkHasApiKey || sdkApiKeyDegraded) && (
+                      <div className="mb-2 text-[11px] text-muted-foreground">
+                        当前来源：{containerSecretSourceLabel(sdkApiKeySource)}
+                      </div>
+                    )}
+                    {sdkApiKeyDegraded && (
+                      <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                        检测到已保存的 Key 值无效，系统已自动回退到其他可用来源。
+                      </div>
+                    )}
                     <Input
                       type="password"
                       value={isGeminiRuntime ? geminiApiKey : codexApiKey}

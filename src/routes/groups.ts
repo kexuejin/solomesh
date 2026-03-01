@@ -480,7 +480,7 @@ function toPublicContainerEnvForUser(
   config: ReturnType<typeof getContainerEnvConfig>,
   user: AuthUser,
 ) {
-  const base = toPublicContainerEnvConfig(config);
+  const base = toPublicContainerEnvConfig(config, getRuntimeProviderConfig());
   if (
     user.role === 'admin' ||
     (user.permissions && user.permissions.includes('manage_group_env'))
@@ -1462,7 +1462,7 @@ groupRoutes.put('/:jid/env', authMiddleware, async (c) => {
       );
     }
 
-    return c.json(toPublicContainerEnvConfig(updated));
+    return c.json(toPublicContainerEnvConfig(updated, getRuntimeProviderConfig()));
   } catch (err) {
     logger.error({ err }, 'Failed to save container env config');
     return c.json({ error: 'Failed to save config' }, 500);

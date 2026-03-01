@@ -37,6 +37,7 @@ import {
 import {
   getRegistrationConfig,
   getRuntimeProviderConfig,
+  resolveRuntimeProviderConfigWithEnvFallback,
   getFeishuProviderConfigWithSource,
   getAppearanceConfig,
 } from '../runtime-config.js';
@@ -104,7 +105,9 @@ export function toUserPublic(u: User): UserPublic {
 }
 
 function buildSetupStatus() {
-  const runtimeConfig = getRuntimeProviderConfig();
+  const runtimeConfig = resolveRuntimeProviderConfigWithEnvFallback(
+    getRuntimeProviderConfig(),
+  );
   const agentRuntime = runtimeConfig.agentRuntime || 'claude';
   const configuredRuntimes = getAgentProviderConfiguredMap(runtimeConfig);
   const activeRuntimeConfigured = isAgentProviderConfigured(agentRuntime, runtimeConfig);

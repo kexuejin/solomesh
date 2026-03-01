@@ -34,7 +34,7 @@ import type {
   EnvRow,
   SettingsNotification,
 } from './types';
-import { getErrorMessage } from './types';
+import { getErrorMessage, runtimeSecretSourceLabel } from './types';
 import { looksLikeHttpUrl } from '../../lib/runtime-input-validation';
 
 type ClaudeAccessMode = 'official' | 'third_party';
@@ -181,6 +181,14 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const geminiOAuthConfigured = !!config?.hasGeminiOAuthCredentials;
   const isGeminiRuntime = engineMode === 'gemini';
   const effectiveGeminiAccessMode: GeminiAccessMode = geminiAccessMode;
+  const sdkKeySource =
+    isGeminiRuntime
+      ? (config?.geminiApiKeySource ?? 'none')
+      : (config?.codexApiKeySource ?? 'none');
+  const sdkKeyDegraded =
+    isGeminiRuntime
+      ? !!config?.geminiApiKeyDegraded
+      : !!config?.codexApiKeyDegraded;
   const claudeOfficialDraftReady = officialConfigured || !!officialCode.trim();
   const claudeThirdPartyDraftReady = thirdPartyConfigured || (!!baseUrl.trim() && !!authToken.trim());
   const codexDraftReady = codexConfigured || !!codexApiKey.trim();
@@ -935,6 +943,16 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                       ? (config?.hasGeminiApiKey ? `(${config.geminiApiKeyMasked})` : '')
                       : (config?.hasCodexApiKey ? `(${config.codexApiKeyMasked})` : '')}
                   </label>
+                  {(isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey) && (
+                    <div className="mb-2 text-[11px] text-muted-foreground">
+                      当前来源：{runtimeSecretSourceLabel(sdkKeySource)}
+                    </div>
+                  )}
+                  {sdkKeyDegraded && (
+                    <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                      已保存的 Key 值无效，系统已自动回退到环境变量中的有效值。
+                    </div>
+                  )}
                   <Input
                     type="password"
                     value={isGeminiRuntime ? geminiApiKey : codexApiKey}

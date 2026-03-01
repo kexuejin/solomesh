@@ -59,3 +59,19 @@ test('gemini oauth mode is treated as configured without api key', () => {
     false,
   );
 });
+
+test('url-like keys are not treated as configured for sdk runtimes', () => {
+  assert.equal(
+    isAgentProviderConfigured('codex', {
+      codexApiKey: 'https://gateway.example.com/openai',
+    }),
+    false,
+  );
+  assert.equal(
+    isAgentProviderConfigured('gemini', {
+      geminiAuthMode: 'api_key',
+      geminiApiKey: 'https://generativelanguage.googleapis.com',
+    }),
+    false,
+  );
+});
