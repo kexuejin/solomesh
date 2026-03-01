@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
 import type { Permission, UserPublic } from './auth';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export type PermissionTemplateKey =
   | 'admin_full'
@@ -106,13 +108,18 @@ interface UsersState {
   fetchAuditLogs: (query?: AuditQuery) => Promise<void>;
 }
 
-function asMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) return err.message;
-  if (typeof err === 'object' && err !== null && 'message' in err) {
-    const message = (err as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim()) return message;
-  }
-  return fallback;
+type UsersStoreMessageKey =
+  | 'users.store.loadPermissionMetaFailed'
+  | 'users.store.fetchUsersFailed'
+  | 'users.store.fetchInvitesFailed'
+  | 'users.store.fetchAuditLogsFailed';
+
+function getStoreMessage(key: UsersStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
+function asMessage(err: unknown, fallbackKey: UsersStoreMessageKey): string {
+  return extractStoreErrorMessage(err) ?? getStoreMessage(fallbackKey);
 }
 
 function toQueryString(params: Record<string, string | number | undefined>): string {
@@ -144,7 +151,7 @@ export const useUsersStore = create<UsersState>((set) => ({
       );
       set({ permissions: data.permissions, templates: data.templates });
     } catch (err) {
-      set({ error: asMessage(err, 'Failed to load permission metadata') });
+      set({ error: asMessage(err, 'users.store.loadPermissionMetaFailed') });
     }
   },
 
@@ -170,7 +177,7 @@ export const useUsersStore = create<UsersState>((set) => ({
         loading: false,
       });
     } catch (err) {
-      set({ error: asMessage(err, 'Failed to fetch users'), loading: false });
+      set({ error: asMessage(err, 'users.store.fetchUsersFailed'), loading: false });
     }
   },
 
@@ -200,7 +207,7 @@ export const useUsersStore = create<UsersState>((set) => ({
       const data = await api.get<{ invites: InviteCode[] }>('/api/admin/invites');
       set({ invites: data.invites, loading: false });
     } catch (err) {
-      set({ error: asMessage(err, 'Failed to fetch invites'), loading: false });
+      set({ error: asMessage(err, 'users.store.fetchInvitesFailed'), loading: false });
     }
   },
 
@@ -234,7 +241,7 @@ export const useUsersStore = create<UsersState>((set) => ({
       }>(`/api/admin/audit-log${qs}`);
       set({ auditLogs: data.logs, loading: false });
     } catch (err) {
-      set({ error: asMessage(err, 'Failed to fetch audit logs'), loading: false });
+      set({ error: asMessage(err, 'users.store.fetchAuditLogsFailed'), loading: false });
     }
   },
 }));

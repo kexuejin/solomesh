@@ -13,6 +13,7 @@ import {
   type WorkflowTemplateEditSystemPayload,
 } from '../../lib/system-message';
 import { Loader2, ChevronUp, ChevronDown, AlertTriangle, Square, Workflow, Rocket } from 'lucide-react';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface MessageListProps {
   messages: Message[];
@@ -47,15 +48,11 @@ type FlatItem =
 
 type WorkflowSettingsTab = WorkflowDependencyBlockedSystemPayload['suggestedTabs'][number];
 
-function getWorkflowSettingsTabLabel(tab: WorkflowSettingsTab): string {
-  if (tab === 'runtime') return 'Agent 运行时';
-  if (tab === 'my-channels') return '消息通道';
-  if (tab === 'skills') return '技能管理';
-  return 'Workflow 模板';
-}
-
-function parseSystemMessage(message: Message): FlatItem {
-  const parsed = parseSystemChatMessage(message.content);
+function parseSystemMessage(
+  message: Message,
+  t: ReturnType<typeof useI18n>['t'],
+): FlatItem {
+  const parsed = parseSystemChatMessage(message.content, t);
   if (parsed.type === 'workflow_dependency_blocked') {
     return {
       type: 'workflow_dependency_blocked',
@@ -85,6 +82,7 @@ function parseSystemMessage(message: Message): FlatItem {
 }
 
 export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrigger, groupJid, isWaiting, onInterrupt, agents, onAgentClick, agentId }: MessageListProps) {
+  const { locale, t } = useI18n();
   const thinkingCache = useChatStore(s => s.thinkingCache ?? {});
   const isShared = useChatStore(s => !!s.groups[groupJid ?? '']?.is_shared);
   const navigate = useNavigate();
@@ -95,6 +93,12 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
   const [retryingDependencyMessageId, setRetryingDependencyMessageId] = useState<string | null>(null);
   const [templateActionResult, setTemplateActionResult] = useState<Record<string, string>>({});
   const prevMessageCount = useRef(messages.length);
+  const getWorkflowSettingsTabLabel = useCallback((tab: WorkflowSettingsTab): string => {
+    if (tab === 'runtime') return t('chat.list.settingsTab.runtime');
+    if (tab === 'my-channels') return t('chat.list.settingsTab.myChannels');
+    if (tab === 'skills') return t('chat.list.settingsTab.skills');
+    return t('chat.list.settingsTab.workflows');
+  }, [t]);
 
   const publishTemplateDraft = useCallback(async (messageId: string, payload: WorkflowTemplateEditSystemPayload) => {
     setTemplateActionResult((prev) => ({ ...prev, [messageId]: '' }));
@@ -107,22 +111,22 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
       if (!groupJid) {
         setTemplateActionResult((prev) => ({
           ...prev,
-          [messageId]: `模板 ${payload.templateId} 已发布`,
+          [messageId]: t('chat.list.template.publishedTemplate', { templateId: payload.templateId }),
         }));
       }
     } catch (err) {
       const message =
         typeof err === 'object' && err !== null && 'message' in err
-          ? String((err as { message?: unknown }).message || '发布失败')
-          : '发布失败';
+          ? String((err as { message?: unknown }).message || t('chat.list.template.publishFailedShort'))
+          : t('chat.list.template.publishFailedShort');
       setTemplateActionResult((prev) => ({
         ...prev,
-        [messageId]: `发布失败：${message}`,
+        [messageId]: t('chat.list.template.publishFailed', { message }),
       }));
     } finally {
       setPublishingTemplateMessageId((current) => (current === messageId ? null : current));
     }
-  }, [groupJid]);
+  }, [groupJid, t]);
 
   const retryDependencyCheck = useCallback(async (messageId: string) => {
     if (!groupJid) return;
@@ -135,26 +139,26 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
       });
       setTemplateActionResult((prev) => ({
         ...prev,
-        [messageId]: '已触发依赖重试检查，请查看后续 workflow 系统消息。',
+        [messageId]: t('chat.list.dependency.retryTriggered'),
       }));
     } catch (err) {
       const message =
         typeof err === 'object' && err !== null && 'message' in err
-          ? String((err as { message?: unknown }).message || '重试失败')
-          : '重试失败';
+          ? String((err as { message?: unknown }).message || t('chat.list.dependency.retryFailedShort'))
+          : t('chat.list.dependency.retryFailedShort');
       setTemplateActionResult((prev) => ({
         ...prev,
-        [messageId]: `重试失败：${message}`,
+        [messageId]: t('chat.list.dependency.retryFailed', { message }),
       }));
     } finally {
       setRetryingDependencyMessageId((current) => (current === messageId ? null : current));
     }
-  }, [groupJid]);
+  }, [groupJid, t]);
 
   // Compute flatMessages (with date headers) before virtualizer
   const flatMessages = useMemo<FlatItem[]>(() => {
     const grouped = messages.reduce((acc, msg) => {
-      const date = new Date(msg.timestamp).toLocaleDateString('zh-CN', {
+      const date = new Date(msg.timestamp).toLocaleDateString(localeForDateTime(locale), {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -169,14 +173,14 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
       items.push({ type: 'date', content: date });
       msgs.forEach((msg) => {
         if (msg.sender === '__system__') {
-          items.push(parseSystemMessage(msg));
+          items.push(parseSystemMessage(msg, t));
         } else {
           items.push({ type: 'message', content: msg });
         }
       });
     });
     return items;
-  }, [messages]);
+  }, [locale, messages, t]);
 
   // Chat always starts at bottom — no scroll position restoration.
   // key={...} on <MessageList> guarantees a fresh mount on group/tab switch.
@@ -218,7 +222,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
     overscan: 8,
   });
 
-  // 检测向上滚动触发 loadMore + 保存滚动位置
+  // Trigger loadMore while scrolling near top.
   useEffect(() => {
     const parent = parentRef.current;
     if (!parent) return;
@@ -238,7 +242,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
     return () => parent.removeEventListener('scroll', handleScroll);
   }, [hasMore, loading, onLoadMore, groupJid]);
 
-  // 新消息自动滚到底部
+  // Auto-scroll to bottom on new messages.
   useEffect(() => {
     if (autoScroll && messages.length > prevMessageCount.current) {
       requestAnimationFrame(() => {
@@ -248,7 +252,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
     prevMessageCount.current = messages.length;
   }, [messages.length, autoScroll]);
 
-  // 外部触发滚到底部（发送消息后）
+  // External trigger to scroll bottom after send.
   useEffect(() => {
     if (scrollTrigger && scrollTrigger > 0) {
       setAutoScroll(true);
@@ -258,8 +262,8 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
     }
   }, [scrollTrigger]);
 
-  // Fallback: 消息在挂载后加载（首次页面加载时 store 为空）
-  // initialOffset 只在挂载时生效，消息后加载需要手动定位
+  // Fallback when messages load after mount.
+  // initialOffset only applies on mount.
   const initialScrollDone = useRef(flatMessages.length > 0);
   useLayoutEffect(() => {
     if (!initialScrollDone.current && flatMessages.length > 0) {
@@ -414,10 +418,10 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
               const publishing = publishingTemplateMessageId === item.id;
               const statusLabel =
                 payload.status === 'published'
-                  ? '已发布'
+                  ? t('chat.list.template.statusPublished')
                   : payload.status === 'publish_failed'
-                    ? '发布失败'
-                    : '草稿已更新';
+                    ? t('chat.list.template.statusFailed')
+                    : t('chat.list.template.statusDraftUpdated');
               return (
                 <div
                   key={virtualItem.key}
@@ -435,7 +439,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                     <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
                       <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                         <Workflow className="w-4 h-4 text-sky-600" />
-                        模板更新：{payload.templateId}
+                        {t('chat.list.template.updatedLabel', { templateId: payload.templateId })}
                         {typeof payload.version === 'number' && (
                           <span className="text-xs font-normal text-muted-foreground">
                             v{payload.version}
@@ -468,7 +472,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                             className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                           >
                             {publishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rocket className="w-3 h-3" />}
-                            发布草稿
+                            {t('chat.list.template.publishDraft')}
                           </button>
                         )}
                         <button
@@ -476,7 +480,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                           onClick={() => navigate('/settings?tab=workflows')}
                           className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/70 bg-muted/60 px-2 py-1 text-xs text-foreground hover:bg-muted"
                         >
-                          打开模板设置
+                          {t('chat.list.template.openSettings')}
                         </button>
                       </div>
                       {actionResult && (
@@ -512,7 +516,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                     <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4">
                       <div className="flex items-center gap-2 text-sm font-medium text-rose-700">
                         <AlertTriangle className="w-4 h-4" />
-                        阶段依赖阻塞：{payload.stageName}
+                        {t('chat.list.dependency.blockedTitle', { stageName: payload.stageName })}
                       </div>
                       <div className="mt-2 text-xs text-rose-700 whitespace-pre-wrap">
                         {payload.blockedReason}
@@ -534,7 +538,9 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                                   onClick={() => navigate(`/settings?tab=${dependency.suggestedTab}`)}
                                   className="shrink-0 cursor-pointer rounded-md border border-border/70 bg-card px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted"
                                 >
-                                  去{getWorkflowSettingsTabLabel(dependency.suggestedTab)}
+                                  {t('chat.list.dependency.goto', {
+                                    tab: getWorkflowSettingsTabLabel(dependency.suggestedTab),
+                                  })}
                                 </button>
                               )}
                             </div>
@@ -549,7 +555,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                             onClick={() => navigate(`/settings?tab=${tab}`)}
                             className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-1 text-xs text-foreground hover:bg-muted"
                           >
-                            打开{getWorkflowSettingsTabLabel(tab)}
+                            {t('chat.list.dependency.open', { tab: getWorkflowSettingsTabLabel(tab) })}
                           </button>
                         ))}
                         <button
@@ -559,7 +565,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
                           className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-100 px-2 py-1 text-xs text-rose-700 hover:bg-rose-200 disabled:opacity-60 cursor-pointer"
                         >
                           {retrying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
-                          重试检查
+                          {t('chat.list.dependency.retry')}
                         </button>
                       </div>
                       {actionResult && (
@@ -597,8 +603,8 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
 
         {messages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <p className="text-sm">暂无消息</p>
-            <p className="text-xs mt-2">发送消息开始对话</p>
+            <p className="text-sm">{t('chat.list.emptyTitle')}</p>
+            <p className="text-xs mt-2">{t('chat.list.emptySubtitle')}</p>
           </div>
         )}
 
@@ -630,7 +636,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
               className="inline-flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground hover:text-red-600 bg-muted hover:bg-red-50 rounded-full transition-colors cursor-pointer"
             >
               <Square className="w-3 h-3" />
-              中断
+              {t('chat.list.interrupt')}
             </button>
           </div>
         )}
@@ -644,7 +650,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
             <button
               onClick={scrollToTop}
               className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-card/95 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
-              title="回到顶部"
+              title={t('chat.list.scrollTop')}
             >
               <ChevronUp className="w-4 h-4" />
             </button>
@@ -653,7 +659,7 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
             <button
               onClick={scrollToBottom}
               className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-card/95 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
-              title="回到底部"
+              title={t('chat.list.scrollBottom')}
             >
               <ChevronDown className="w-4 h-4" />
             </button>

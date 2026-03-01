@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export interface Skill {
   id: string;
@@ -58,6 +60,17 @@ interface SkillsState {
   fetchSearchDetail: (url: string) => Promise<void>;
 }
 
+type SkillsStoreMessageKey =
+  | 'skills.store.loadFailed'
+  | 'skills.store.toggleFailed'
+  | 'skills.store.deleteFailed'
+  | 'skills.store.installFailed'
+  | 'skills.store.syncFailed';
+
+function getStoreMessage(key: SkillsStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
 export const useSkillsStore = create<SkillsState>((set, get) => ({
   skills: [],
   loading: false,
@@ -75,7 +88,10 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       const data = await api.get<{ skills: Skill[] }>('/api/skills');
       set({ skills: data.skills, loading: false, error: null });
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : String(err) });
+      set({
+        loading: false,
+        error: extractStoreErrorMessage(err) ?? getStoreMessage('skills.store.loadFailed'),
+      });
     }
   },
 
@@ -85,7 +101,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       set({ error: null });
       await get().loadSkills();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('skills.store.toggleFailed') });
     }
   },
 
@@ -95,7 +111,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       set({ error: null });
       await get().loadSkills();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('skills.store.deleteFailed') });
       throw err;
     }
   },
@@ -105,8 +121,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     try {
       await api.post('/api/skills/install', { package: pkg }, 60_000);
       await get().loadSkills();
-    } catch (err: any) {
-      set({ error: err?.message || (err instanceof Error ? err.message : '安装失败，请稍后重试') });
+    } catch (err) {
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('skills.store.installFailed') });
       throw err;
     } finally {
       set({ installing: false });
@@ -119,8 +135,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       const result = await api.post<SyncHostResult>('/api/skills/sync-host', {});
       await get().loadSkills();
       return result;
-    } catch (err: any) {
-      set({ error: err?.message || '同步失败，请稍后重试' });
+    } catch (err) {
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('skills.store.syncFailed') });
       throw err;
     } finally {
       set({ syncing: false });

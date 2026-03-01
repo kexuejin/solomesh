@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '../shared/Badge';
 import { FileUploadZone } from './FileUploadZone';
+import { useI18n } from '../../i18n';
 
 interface FilePanelProps {
   groupJid: string;
@@ -106,6 +107,7 @@ function ImagePreview({
   file: FileEntry;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -124,7 +126,7 @@ function ImagePreview({
       <button
         className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors p-2 cursor-pointer z-10"
         onClick={onClose}
-        aria-label="关闭预览"
+        aria-label={t('chat.filePanel.preview.close')}
       >
         <X className="w-8 h-8" />
       </button>
@@ -153,6 +155,7 @@ function TextEditor({
   file: FileEntry;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const { getFileContent, saveFileContent } = useFileStore();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -214,7 +217,7 @@ function TextEditor({
             <FileIcon name={file.name} />
             <span className="font-medium text-foreground text-sm truncate">{file.name}</span>
             {dirty && (
-              <span className="text-xs text-amber-500 flex-shrink-0">未保存</span>
+              <span className="text-xs text-amber-500 flex-shrink-0">{t('chat.filePanel.editor.unsaved')}</span>
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -225,12 +228,12 @@ function TextEditor({
             >
               {saving && <Loader2 className="size-4 animate-spin" />}
               <Save className="w-3.5 h-3.5" />
-              保存
+              {t('chat.filePanel.editor.save')}
             </Button>
             <button
               onClick={onClose}
               className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md hover:bg-muted cursor-pointer"
-              aria-label="关闭编辑器"
+              aria-label={t('chat.filePanel.editor.close')}
             >
               <X className="w-5 h-5" />
             </button>
@@ -241,7 +244,7 @@ function TextEditor({
         <div className="flex-1 p-3 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-muted-foreground">加载中...</p>
+              <p className="text-sm text-muted-foreground">{t('chat.filePanel.loading')}</p>
             </div>
           ) : (
             <Textarea
@@ -258,7 +261,7 @@ function TextEditor({
 
         {/* Footer hint */}
         <div className="px-4 py-2 border-t border-border/70 text-xs text-muted-foreground flex-shrink-0">
-          Ctrl/Cmd+S 保存 · Esc 关闭
+          {t('chat.filePanel.editor.footerHint')}
         </div>
       </div>
     </div>,
@@ -269,6 +272,7 @@ function TextEditor({
 // ─── Main FilePanel ─────────────────────────────────────────────
 
 export function FilePanel({ groupJid, onClose }: FilePanelProps) {
+  const { t } = useI18n();
   const { files, currentPath, loading, loadFiles, deleteFile, createDirectory, navigateTo } =
     useFileStore();
 
@@ -301,7 +305,7 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupJid]);
 
-  // Agent 运行期间定时刷新文件列表；结束时做最终刷新
+  // Poll file list while agent is running; refresh once when it finishes.
   useEffect(() => {
     if (isStreaming) {
       prevStreamingRef.current = true;
@@ -310,7 +314,7 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
       }, 5000);
       return () => clearInterval(timer);
     }
-    // streaming 刚结束 → 最终刷新
+    // Streaming just ended -> final refresh.
     if (prevStreamingRef.current) {
       prevStreamingRef.current = false;
       loadFiles(groupJid, currentDir);
@@ -345,13 +349,13 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
 
     const ext = getFileExt(item.name);
 
-    // 图片 → 预览
+    // Images -> preview modal.
     if (IMAGE_EXTENSIONS.has(ext)) {
       setPreviewFile(item);
       return;
     }
 
-    // 文本文件（非系统） → 编辑
+    // Non-system text files -> inline editor.
     if (TEXT_EXTENSIONS.has(ext) && !item.isSystem) {
       setEditFile(item);
       return;
@@ -411,13 +415,13 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
     <div className="flex h-full w-full flex-col bg-card">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
-        <h3 className="text-sm font-semibold text-foreground">工作区文件管理</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('chat.filePanel.title')}</h3>
         <div className="flex items-center gap-1">
           <button
             onClick={handleRefresh}
             className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md hover:bg-muted cursor-pointer"
-            title="刷新"
-            aria-label="刷新文件列表"
+            title={t('chat.filePanel.refresh')}
+            aria-label={t('chat.filePanel.refreshAria')}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -425,7 +429,7 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
             <button
               onClick={onClose}
               className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md hover:bg-muted cursor-pointer"
-              aria-label="关闭文件面板"
+              aria-label={t('chat.filePanel.closeAria')}
             >
               <X className="w-5 h-5" />
             </button>
@@ -440,7 +444,7 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
             onClick={() => handleNavigate(-1)}
             className="text-primary hover:underline whitespace-nowrap cursor-pointer"
           >
-            根目录
+            {t('chat.filePanel.root')}
           </button>
           {breadcrumbs.map((crumb, index) => (
             <div key={index} className="flex items-center gap-1">
@@ -460,11 +464,11 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {loading && fileList.length === 0 ? (
           <div className="flex items-center justify-center h-32">
-            <p className="text-sm text-muted-foreground">加载中...</p>
+            <p className="text-sm text-muted-foreground">{t('chat.filePanel.loading')}</p>
           </div>
         ) : sortedFiles.length === 0 ? (
           <div className="flex items-center justify-center h-32">
-            <p className="text-sm text-muted-foreground">暂无文件</p>
+            <p className="text-sm text-muted-foreground">{t('chat.filePanel.empty')}</p>
           </div>
         ) : (
           <div className="space-y-0.5">
@@ -502,7 +506,7 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
                         {item.name}
                       </span>
                       {item.isSystem && (
-                        <Badge variant="neutral">系统</Badge>
+                        <Badge variant="neutral">{t('chat.filePanel.systemBadge')}</Badge>
                       )}
                     </div>
                     {item.type === 'file' && (
@@ -521,8 +525,8 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
                             setEditFile(item);
                           }}
                           className="p-2.5 rounded hover:bg-brand-100 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                          title="编辑"
-                          aria-label="编辑文件"
+                          title={t('chat.filePanel.actions.edit')}
+                          aria-label={t('chat.filePanel.actions.editAria')}
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -534,21 +538,21 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
                             handleDownload(item);
                           }}
                           className="p-2.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                          title="下载"
-                          aria-label="下载文件"
+                          title={t('chat.filePanel.actions.download')}
+                          aria-label={t('chat.filePanel.actions.downloadAria')}
                         >
                           <Download className="w-3.5 h-3.5" />
                         </button>
                       )}
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteClick(item);
-                        }}
-                        className="p-2.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors cursor-pointer"
-                        title="删除"
-                        aria-label="删除文件"
-                      >
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(item);
+                          }}
+                          className="p-2.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors cursor-pointer"
+                          title={t('chat.filePanel.actions.delete')}
+                          aria-label={t('chat.filePanel.actions.deleteAria')}
+                        >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -562,8 +566,8 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
                           handleDownload(item);
                         }}
                         className="p-2.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                        title="下载"
-                        aria-label="下载文件"
+                        title={t('chat.filePanel.actions.download')}
+                        aria-label={t('chat.filePanel.actions.downloadAria')}
                       >
                         <Download className="w-3.5 h-3.5" />
                       </button>
@@ -580,7 +584,7 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
       <div className="space-y-2 border-t border-sidebar-border p-3">
         <Button variant="outline" size="sm" onClick={handleCreateDir} className="w-full">
           <FolderPlus className="w-4 h-4" />
-          新建文件夹
+          {t('chat.filePanel.newFolder')}
         </Button>
         <FileUploadZone groupJid={groupJid} />
       </div>
@@ -590,29 +594,31 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
         <DialogContent className="sm:max-w-md overflow-hidden p-0">
           <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600">
-              文件
+              {t('chat.filePanel.createDialog.badge')}
             </div>
           </div>
           <DialogHeader className="px-5 pt-4 text-left">
-            <DialogTitle>新建文件夹</DialogTitle>
+            <DialogTitle>{t('chat.filePanel.createDialog.title')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 px-5">
             <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
-              <label className="block text-sm font-medium text-foreground/80">文件夹名称</label>
+              <label className="block text-sm font-medium text-foreground/80">{t('chat.filePanel.createDialog.nameLabel')}</label>
               <Input
                 type="text"
                 value={newDirName}
                 onChange={(e) => setNewDirName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleCreateDirConfirm(); }}
-                placeholder="输入文件夹名称"
+                placeholder={t('chat.filePanel.createDialog.namePlaceholder')}
                 autoFocus
               />
             </div>
             <div className="flex justify-end gap-2 border-t border-border/70 pt-4">
-              <Button variant="ghost" onClick={() => setCreateDirModal(false)} disabled={createDirLoading}>取消</Button>
+              <Button variant="ghost" onClick={() => setCreateDirModal(false)} disabled={createDirLoading}>
+                {t('chat.filePanel.createDialog.cancel')}
+              </Button>
               <Button onClick={handleCreateDirConfirm} disabled={createDirLoading}>
                 {createDirLoading && <Loader2 className="size-4 animate-spin" />}
-                创建
+                {t('chat.filePanel.createDialog.create')}
               </Button>
             </div>
           </div>
@@ -624,14 +630,14 @@ export function FilePanel({ groupJid, onClose }: FilePanelProps) {
         open={deleteModal.open}
         onClose={() => setDeleteModal({ open: false, path: '', name: '', isDir: false })}
         onConfirm={handleDeleteConfirm}
-        title={deleteModal.isDir ? '删除文件夹' : '删除文件'}
+        title={deleteModal.isDir ? t('chat.filePanel.deleteDialog.folderTitle') : t('chat.filePanel.deleteDialog.fileTitle')}
         message={
           deleteModal.isDir
-            ? `确认删除文件夹「${deleteModal.name}」及其所有内容吗？此操作不可恢复。`
-            : `确认删除文件「${deleteModal.name}」吗？此操作不可恢复。`
+            ? t('chat.filePanel.deleteDialog.folderMessage', { name: deleteModal.name })
+            : t('chat.filePanel.deleteDialog.fileMessage', { name: deleteModal.name })
         }
-        confirmText="删除"
-        cancelText="取消"
+        confirmText={t('chat.filePanel.deleteDialog.confirm')}
+        cancelText={t('chat.filePanel.deleteDialog.cancel')}
         confirmVariant="danger"
         loading={deleteLoading}
       />

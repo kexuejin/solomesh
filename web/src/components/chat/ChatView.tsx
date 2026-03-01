@@ -18,6 +18,7 @@ import { TerminalPanel } from './TerminalPanel';
 import { GroupSkillsPanel } from './GroupSkillsPanel';
 import { GroupMembersPanel } from './GroupMembersPanel';
 import { AgentTabBar } from './AgentTabBar';
+import { useI18n } from '../../i18n';
 
 /** Inline elapsed-time counter for running tasks */
 function ElapsedTimer({ startTime }: { startTime: number }) {
@@ -79,6 +80,7 @@ interface UserImSessionsResponse {
 }
 
 export function ChatView({ groupJid, onBack }: ChatViewProps) {
+  const { t } = useI18n();
   const [mobilePanel, setMobilePanel] = useState<MobilePanel | null>(null);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('files');
   const [bindingsOpen, setBindingsOpen] = useState(false);
@@ -195,13 +197,13 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       const data = await api.get<UserImSessionsResponse>('/api/config/user-im/sessions');
       setWorkspaceSessions(data.sessions || []);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '加载会话绑定信息失败';
+      const message = err instanceof Error ? err.message : t('chat.view.errors.loadBindingFailed');
       setBindingError(message);
       setWorkspaceSessions([]);
     } finally {
       setBindingLoading(false);
     }
-  }, [isWorkspaceView]);
+  }, [isWorkspaceView, t]);
 
   useEffect(() => {
     setBindingNotice(null);
@@ -220,15 +222,15 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
         chatJid,
         targetFolder: group.folder,
       });
-      setBindingNotice('会话绑定已保存');
+      setBindingNotice(t('chat.view.notice.bindingSaved'));
       await Promise.all([loadWorkspaceSessionBindings(), loadGroups()]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '保存会话绑定失败';
+      const message = err instanceof Error ? err.message : t('chat.view.errors.saveBindingFailed');
       setBindingError(message);
     } finally {
       setSessionSavingByJid((prev) => ({ ...prev, [chatJid]: false }));
     }
-  }, [group?.folder, loadGroups, loadWorkspaceSessionBindings]);
+  }, [group?.folder, loadGroups, loadWorkspaceSessionBindings, t]);
 
   const resetSessionBinding = useCallback(async (chatJid: string) => {
     setSessionSavingByJid((prev) => ({ ...prev, [chatJid]: true }));
@@ -236,15 +238,15 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     setBindingError(null);
     try {
       await api.delete(`/api/config/user-im/bindings/${encodeURIComponent(chatJid)}`);
-      setBindingNotice('会话已恢复默认路由');
+      setBindingNotice(t('chat.view.notice.routeReset'));
       await Promise.all([loadWorkspaceSessionBindings(), loadGroups()]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '恢复默认路由失败';
+      const message = err instanceof Error ? err.message : t('chat.view.errors.resetBindingFailed');
       setBindingError(message);
     } finally {
       setSessionSavingByJid((prev) => ({ ...prev, [chatJid]: false }));
     }
-  }, [loadGroups, loadWorkspaceSessionBindings]);
+  }, [loadGroups, loadWorkspaceSessionBindings, t]);
 
   // Load messages on group select
   const hasMessages = !!groupMessages;
@@ -291,8 +293,8 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupJid]);
 
-  // WS 重连时恢复正在运行的 agent 状态（独立于 groupJid，避免切换会话时重复调用）
-  // wsManager.connect() 已提升到 AppLayout 级别
+  // Restore active agent state on WebSocket reconnect.
+  // wsManager.connect() is initialized at AppLayout level.
   const restoreActiveState = useChatStore(s => s.restoreActiveState);
   useEffect(() => {
     restoreActiveState();
@@ -353,22 +355,22 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     flushQueuedAgentMessages,
   ]);
 
-  // 监听 WebSocket 流式事件
+  // Subscribe to WebSocket streaming events.
   useEffect(() => {
     const unsub1 = wsManager.on('stream_event', (data: any) => {
       if (data.chatJid === groupJid) handleStreamEvent(groupJid, data.event, data.agentId);
     });
-    // agent_reply 作为 fallback：如果 new_message 已处理则为 no-op
+    // agent_reply as fallback: no-op if new_message already handled.
     const unsub2 = wsManager.on('agent_reply', (data: any) => {
       if (data.chatJid === groupJid) clearStreaming(groupJid);
     });
-    // 通过 new_message 立即添加消息到本地状态（消除轮询延迟导致的消息"丢失"）
+    // Push new_message into local state immediately to avoid poll lag.
     const unsub3 = wsManager.on('new_message', (data: any) => {
       if (data.chatJid === groupJid && data.message) {
         handleWsNewMessage(groupJid, data.message, data.agentId);
       }
     });
-    // 子 Agent 状态变更
+    // Sub-agent status updates.
     const unsub4 = wsManager.on('agent_status', (data: any) => {
       if (data.chatJid === groupJid) {
         handleAgentStatus(groupJid, data.agentId, data.status, data.name, data.prompt, data.resultSummary, data.kind);
@@ -496,7 +498,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     return (
       <div className="h-full flex items-center justify-center bg-background">
         <div className="text-center">
-          <p className="text-muted-foreground">群组不存在</p>
+          <p className="text-muted-foreground">{t('chat.view.groupNotFound')}</p>
         </div>
       </div>
     );
@@ -510,7 +512,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
   const workflowLabel = group.workflow_template_id
     ? [
       group.workflow_template_id,
-      workflowStageProgress ? `阶段 ${workflowStageProgress}` : null,
+      workflowStageProgress ? t('chat.view.workflow.stage', { value: workflowStageProgress }) : null,
       group.workflow_stage_name || null,
     ].filter(Boolean).join(' · ')
     : null;
@@ -534,20 +536,35 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     (group.is_shared || group.member_role === 'owner') && !group.is_home;
   const sidebarTabs = useMemo(() => {
     const items = [
-      { id: 'files' as SidebarTab, label: '文件', subtitle: '工作区文件与上传管理', icon: FolderOpen },
-      { id: 'env' as SidebarTab, label: '环境', subtitle: '运行时环境变量配置', icon: Wrench },
-      { id: 'skills' as SidebarTab, label: '技能', subtitle: '按工作区控制技能生效范围', icon: Sparkles },
+      {
+        id: 'files' as SidebarTab,
+        label: t('chat.view.sidebar.files'),
+        subtitle: t('chat.view.sidebar.filesSubtitle'),
+        icon: FolderOpen,
+      },
+      {
+        id: 'env' as SidebarTab,
+        label: t('chat.view.sidebar.env'),
+        subtitle: t('chat.view.sidebar.envSubtitle'),
+        icon: Wrench,
+      },
+      {
+        id: 'skills' as SidebarTab,
+        label: t('chat.view.sidebar.skills'),
+        subtitle: t('chat.view.sidebar.skillsSubtitle'),
+        icon: Sparkles,
+      },
     ];
     if (canManageMembers) {
       items.push({
         id: 'members' as SidebarTab,
-        label: '成员',
-        subtitle: '协作成员与权限查看',
+        label: t('chat.view.sidebar.members'),
+        subtitle: t('chat.view.sidebar.membersSubtitle'),
         icon: Users,
       });
     }
     return items;
-  }, [canManageMembers]);
+  }, [canManageMembers, t]);
   const activeSidebarMeta =
     sidebarTabs.find((item) => item.id === sidebarTab) ?? sidebarTabs[0];
 
@@ -566,7 +583,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     if (!isWorkspaceView) {
       return (
         <div className="h-full flex items-center justify-center px-4 text-sm text-muted-foreground">
-          当前会话不支持工作区绑定
+          {t('chat.view.bindings.notSupported')}
         </div>
       );
     }
@@ -574,7 +591,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     if (bindingLoading) {
       return (
         <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-          加载中...
+          {t('chat.view.loading')}
         </div>
       );
     }
@@ -582,11 +599,11 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     return (
       <div className="app-canvas h-full overflow-y-auto p-4 space-y-3">
         <div className="text-xs text-muted-foreground">
-          将飞书/Telegram 会话直接绑定到当前工作区（{group.folder}）。
+          {t('chat.view.bindings.description', { folder: group.folder })}
         </div>
         {workspaceSessions.length === 0 ? (
           <div className="rounded-lg bg-muted/15 p-3 text-xs text-muted-foreground">
-            暂无可绑定会话，先在飞书或 Telegram 发送一条消息。
+            {t('chat.view.bindings.empty')}
           </div>
         ) : (
           workspaceSessions.map((session) => {
@@ -604,19 +621,21 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] text-foreground">
-                    {session.channel === 'feishu' ? '飞书' : 'Telegram'}
+                    {session.channel === 'feishu' ? t('chat.view.bindings.feishu') : t('chat.view.bindings.telegram')}
                   </span>
                   <span className="text-sm font-medium text-foreground">{session.name}</span>
                   {explicitToCurrent && (
-                    <span className="text-[11px] text-emerald-700">已绑定到当前工作区</span>
+                    <span className="text-[11px] text-emerald-700">
+                      {t('chat.view.bindings.boundToCurrent')}
+                    </span>
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground break-all">{session.chatJid}</div>
                 <div className="text-xs text-muted-foreground">
-                  当前路由：
+                  {t('chat.view.bindings.currentRoute')}
                   {session.mappedWorkspaceName && session.mappedFolder
                     ? ` ${session.mappedWorkspaceName} (${session.mappedFolder})`
-                    : ' 未映射'}
+                    : ` ${t('chat.view.bindings.unmapped')}`}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -625,14 +644,14 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                     className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-60"
                   >
                     {isSaving && <Loader2 className="size-3.5 animate-spin" />}
-                    {explicitToCurrent ? '已绑定' : '绑定到当前工作区'}
+                    {explicitToCurrent ? t('chat.view.bindings.bound') : t('chat.view.bindings.bindToCurrent')}
                   </button>
                   <button
                     onClick={() => void resetSessionBinding(session.chatJid)}
                     disabled={isSaving || !session.binding}
                     className="inline-flex items-center rounded-md border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-60"
                   >
-                    恢复默认
+                    {t('chat.view.bindings.resetDefault')}
                   </button>
                 </div>
               </div>
@@ -653,7 +672,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
           <button
             onClick={onBack}
             className="lg:hidden -ml-2 cursor-pointer rounded-lg border border-transparent p-2 text-muted-foreground transition-colors hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
-            aria-label="返回"
+            aria-label={t('chat.view.actions.back')}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -662,12 +681,16 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
           <h2 className="truncate text-base font-bold tracking-tight text-foreground">{group.name}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
             <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 px-2 py-0.5 font-medium text-muted-foreground">
-              {isWaiting ? '正在思考...' : group.is_home ? '主工作区' : '工作区'}
+              {isWaiting
+                ? t('chat.view.status.thinking')
+                : group.is_home
+                  ? t('chat.view.status.mainWorkspace')
+                  : t('chat.view.status.workspace')}
             </span>
             {!isWaiting && group.is_shared && (
               <span className="inline-flex items-center gap-1 rounded-full border border-brand-200/70 bg-brand-50 px-2 py-0.5 font-medium text-brand-700">
                 <Users className="h-3 w-3" />
-                {group.member_count ?? 0} 人协作
+                {t('chat.view.status.memberCount', { count: group.member_count ?? 0 })}
               </span>
             )}
             {!isWaiting && group.execution_mode && (
@@ -676,7 +699,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                   ? 'border-amber-200 bg-amber-50 text-amber-700'
                   : 'border-sky-200 bg-sky-50 text-sky-700'
               }`}>
-                {group.execution_mode === 'host' ? '宿主机' : 'Docker'}
+                {group.execution_mode === 'host'
+                  ? t('chat.view.status.host')
+                  : t('chat.view.status.docker')}
               </span>
             )}
             {isOwnHome && connectedImChannels.length > 0 && (
@@ -697,15 +722,15 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
             onClick={() => setBindingsOpen(true)}
             className="hidden cursor-pointer items-center rounded-lg border border-border/80 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground lg:inline-flex"
           >
-            会话绑定
+            {t('chat.view.bindings.title')}
           </button>
         )}
         {/* Desktop: toggle side panel */}
         <button
           onClick={() => setPanelOpen((v) => !v)}
           className="hidden cursor-pointer rounded-lg border border-border/70 p-2 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground lg:flex"
-          title={panelOpen ? '收起面板' : '展开面板'}
-          aria-label={panelOpen ? '收起面板' : '展开面板'}
+          title={panelOpen ? t('chat.view.actions.collapsePanel') : t('chat.view.actions.expandPanel')}
+          aria-label={panelOpen ? t('chat.view.actions.collapsePanel') : t('chat.view.actions.expandPanel')}
         >
           {panelOpen ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
         </button>
@@ -714,8 +739,8 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
           <button
             onClick={() => setMobileActionsOpen(true)}
             className="cursor-pointer rounded-lg border border-border/70 p-2 text-muted-foreground transition-colors hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
-            title="更多操作"
-            aria-label="更多操作"
+            title={t('chat.view.actions.more')}
+            aria-label={t('chat.view.actions.more')}
           >
             <MoreHorizontal className="w-5 h-5" />
           </button>
@@ -729,7 +754,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
               workflowRunning ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-100 text-brand-700'
             }`}
           >
-            {workflowRunning ? 'Workflow' : (group.workflow_status || 'workflow')}
+            {workflowRunning ? t('chat.view.workflow.running') : (group.workflow_status || t('chat.view.workflow.fallback'))}
           </span>
           <span className="truncate">{workflowLabel}</span>
           {workflowProviderLabel && (
@@ -750,7 +775,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                 onClick={() => void sendWorkflowCommand('/wf-status')}
                 className="cursor-pointer rounded-md border border-brand-200/85 bg-card px-2 py-0.5 text-[11px] text-brand-700 transition-colors hover:bg-brand-50"
               >
-                状态
+                {t('chat.view.workflow.status')}
               </button>
               {workflowRunning && (
                 <button
@@ -758,19 +783,19 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                   onClick={() => void sendWorkflowCommand('/wf-next')}
                   className="cursor-pointer rounded-md border border-brand-200/85 bg-card px-2 py-0.5 text-[11px] text-brand-700 transition-colors hover:bg-brand-50"
                 >
-                  下一阶段
+                  {t('chat.view.workflow.next')}
                 </button>
               )}
               {workflowRunning && (
                 <button
                   type="button"
                   onClick={() => {
-                    if (!window.confirm('确定退出当前 workflow 吗？')) return;
+                    if (!window.confirm(t('chat.view.workflow.confirmExit'))) return;
                     void sendWorkflowCommand('/wf-exit');
                   }}
                   className="cursor-pointer rounded-md border border-rose-200/85 bg-card px-2 py-0.5 text-[11px] text-rose-600 transition-colors hover:bg-rose-50"
                 >
-                  退出
+                  {t('chat.view.workflow.exit')}
                 </button>
               )}
             </div>
@@ -787,12 +812,12 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       {isOwnHome && imStatus && connectedImChannels.length === 0 && !imBannerDismissed && (
         <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50/90 px-4 py-2 text-sm text-amber-800">
           <Link className="h-4 w-4 flex-shrink-0" />
-          <span className="min-w-0 flex-1">未配置 IM 渠道，外部消息无法与主工作区互通</span>
+          <span className="min-w-0 flex-1">{t('chat.view.imBanner.message')}</span>
           <button
             onClick={() => navigate('/setup/channels')}
             className="flex-shrink-0 cursor-pointer rounded-md border border-amber-700/20 bg-amber-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-700"
           >
-            去配置
+            {t('chat.view.imBanner.goSetup')}
           </button>
           <button
             onClick={() => {
@@ -800,7 +825,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
               localStorage.setItem('im-banner-dismissed', '1');
             }}
             className="flex-shrink-0 cursor-pointer rounded p-0.5 transition-colors hover:bg-amber-200/60"
-            aria-label="关闭"
+            aria-label={t('chat.view.actions.close')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -815,7 +840,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
         onDeleteAgent={(id) => deleteAgentAction(groupJid, id)}
         sdkTaskIds={sdkTaskIds}
         onCreateConversation={() => {
-          const name = prompt('对话名称：');
+          const name = prompt(t('chat.view.actions.newConversationPrompt'));
           if (name?.trim()) {
             createConversation(groupJid, name.trim()).then((agent) => {
               if (agent) setActiveAgentTab(groupJid, agent.id);
@@ -859,7 +884,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
             /* Task agent tab */
             <>
               {isSdkTask ? (
-                /* SDK Task: 流式展示或状态反馈 */
+                /* SDK task: stream content or status feedback. */
                 <div className="flex-1 overflow-y-auto p-4">
                   {(() => {
                     const streamState = agentStreaming[activeAgentTab];
@@ -877,7 +902,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                     if (taskStatus === 'completed') {
                       return (
                         <div className="text-center py-8 space-y-2">
-                          <div className="text-sm font-medium text-emerald-600">子 Agent 已完成</div>
+                          <div className="text-sm font-medium text-emerald-600">
+                            {t('chat.view.sdkTask.completed')}
+                          </div>
                           {task?.summary && (
                             <div className="mx-auto max-w-md text-xs text-muted-foreground">{task.summary}</div>
                           )}
@@ -888,7 +915,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                     if (taskStatus === 'error') {
                       return (
                         <div className="text-center py-8 space-y-2">
-                          <div className="text-sm font-medium text-red-600">子 Agent 执行出错</div>
+                          <div className="text-sm font-medium text-red-600">
+                            {t('chat.view.sdkTask.error')}
+                          </div>
                           {task?.summary && (
                             <div className="mx-auto max-w-md text-xs text-muted-foreground">{task.summary}</div>
                           )}
@@ -897,7 +926,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                     }
 
                     if (hasStreamContent) {
-                      // 有流式数据 → 显示 StreamingDisplay（前台任务场景）
+                      // Streamed content available: render StreamingDisplay.
                       return (
                         <StreamingDisplay
                           groupJid={groupJid}
@@ -907,10 +936,10 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                       );
                     }
 
-                    // running 状态：显示描述 + 实时计时 + 后台任务说明
+                    // Running state: description + elapsed timer + background hint.
                     return (
                       <div className="flex flex-col items-center justify-center py-12 px-4 space-y-4">
-                        {/* 动画 spinner */}
+                        {/* Animated spinner */}
                         <div className="relative">
                           <div className="h-12 w-12 rounded-full border-2 border-brand-100" />
                           <div className="absolute inset-0 h-12 w-12 animate-spin rounded-full border-2 border-transparent border-t-brand-500" />
@@ -918,7 +947,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
 
                         <div className="text-center space-y-2 max-w-md">
                           <div className="text-sm font-medium text-foreground">
-                            Teammate 正在后台执行中
+                            {t('chat.view.sdkTask.running')}
                           </div>
                           {task?.description && (
                             <div className="text-xs text-muted-foreground leading-relaxed">
@@ -927,15 +956,15 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                           )}
                         </div>
 
-                        {/* 实时计时器 */}
+                        {/* Elapsed timer */}
                         {task?.startedAt && (
                           <div className="text-xs text-muted-foreground tabular-nums">
-                            已运行 <ElapsedTimer startTime={task.startedAt} />
+                            {t('chat.view.sdkTask.elapsed')} <ElapsedTimer startTime={task.startedAt} />
                           </div>
                         )}
 
                         <div className="max-w-sm text-center text-[11px] leading-relaxed text-muted-foreground">
-                          后台任务不传播中间过程，完成后将显示结果摘要
+                          {t('chat.view.sdkTask.backgroundHint')}
                         </div>
                       </div>
                     );
@@ -962,15 +991,16 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                 const activeSdkTask = activeAgentTab ? sdkTasks[activeAgentTab] : null;
                 if (isSdkTask && activeSdkTask?.isTeammate && activeSdkTask?.status === 'running') {
                   return (
-                    /* Teammate 标签页：通过主对话中转发送消息给 Team Lead */
+                    /* Teammate tab forwards messages via main conversation. */
                     <div className="border-t border-border">
                       <div className="bg-amber-50/70 px-4 pb-0.5 pt-1.5 text-center text-[10px] text-amber-700">
-                        消息将发送到主对话，由 Team Lead 转发
+                        {t('chat.view.sdkTask.teammateForwardHint')}
                       </div>
                       <MessageInput
                         onSend={async (content, _attachments, operationPermissionMode) => {
                           const taskDesc = (activeSdkTask?.description || 'Teammate').replace(/"/g, '\\"');
-                          const wrappedContent = `[发送给 Teammate "${taskDesc}"]: ${content}`;
+                          // Keep this forwarding wrapper stable (non-localized) as an internal routing hint.
+                          const wrappedContent = `[Send to Teammate "${taskDesc}"]: ${content}`;
                           await sendMessage(
                             groupJid,
                             wrappedContent,
@@ -988,9 +1018,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                   <div className="border-t border-border px-4 py-2 text-center text-xs text-muted-foreground">
                     {isSdkTask
                       ? (activeSdkTask?.status === 'running'
-                        ? '子 Agent 独立运行中 — 仅主对话可发送消息'
-                        : '子 Agent 已结束 — 仅主对话可发送消息')
-                      : '子 Agent 独立运行中 — 仅主对话可发送消息'}
+                        ? t('chat.view.sdkTask.onlyMainWhenRunning')
+                        : t('chat.view.sdkTask.onlyMainWhenFinished'))
+                      : t('chat.view.sdkTask.onlyMainWhenRunning')}
                   </div>
                 );
               })()}
@@ -1040,7 +1070,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
           {/* Tab bar */}
           <div className="border-b border-sidebar-border px-3 py-3">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/75">
-              Files & Environment
+              {t('chat.view.sidebar.title')}
             </p>
             <div className="flex items-center gap-1 rounded-[10px] border border-sidebar-border bg-background p-1">
               {sidebarTabs.map((tab) => {
@@ -1129,7 +1159,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       <Sheet open={mobilePanel === 'files'} onOpenChange={(v) => !v && setMobilePanel(null)}>
         <SheetContent side="bottom" className="h-[82dvh] border-t border-border/80 bg-card/98 p-0">
           <SheetHeader className="border-b border-border/70 bg-muted/25 px-4 pb-2 pt-4">
-            <SheetTitle>工作区文件管理</SheetTitle>
+            <SheetTitle>{t('chat.view.mobile.filesTitle')}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 h-[calc(82dvh-56px)] overflow-hidden">
             <FilePanel
@@ -1144,7 +1174,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       <Sheet open={mobilePanel === 'env'} onOpenChange={(v) => !v && setMobilePanel(null)}>
         <SheetContent side="bottom" className="h-[82dvh] border-t border-border/80 bg-card/98 p-0">
           <SheetHeader className="border-b border-border/70 bg-muted/25 px-4 pb-2 pt-4">
-            <SheetTitle>工作区环境变量</SheetTitle>
+            <SheetTitle>{t('chat.view.mobile.envTitle')}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 h-[calc(82dvh-56px)] overflow-hidden">
             <ContainerEnvPanel
@@ -1159,7 +1189,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       <Sheet open={mobilePanel === 'skills'} onOpenChange={(v) => !v && setMobilePanel(null)}>
         <SheetContent side="bottom" className="h-[82dvh] border-t border-border/80 bg-card/98 p-0">
           <SheetHeader className="border-b border-border/70 bg-muted/25 px-4 pb-2 pt-4">
-            <SheetTitle>技能管理</SheetTitle>
+            <SheetTitle>{t('chat.view.mobile.skillsTitle')}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 h-[calc(82dvh-56px)] overflow-hidden">
             <GroupSkillsPanel
@@ -1173,7 +1203,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       <Sheet open={mobilePanel === 'members'} onOpenChange={(v) => !v && setMobilePanel(null)}>
         <SheetContent side="bottom" className="h-[82dvh] border-t border-border/80 bg-card/98 p-0">
           <SheetHeader className="border-b border-border/70 bg-muted/25 px-4 pb-2 pt-4">
-            <SheetTitle>成员管理</SheetTitle>
+            <SheetTitle>{t('chat.view.mobile.membersTitle')}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 h-[calc(82dvh-56px)] overflow-hidden">
             <GroupMembersPanel groupJid={groupJid} />
@@ -1185,7 +1215,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       <Sheet open={mobileTerminal} onOpenChange={(v) => !v && setMobileTerminal(false)}>
         <SheetContent side="bottom" className="h-[85dvh] border-t border-border/80 bg-card/98 p-0">
           <SheetHeader className="border-b border-border/70 bg-muted/25 px-4 pb-2 pt-4">
-            <SheetTitle>终端</SheetTitle>
+            <SheetTitle>{t('chat.view.mobile.terminalTitle')}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-hidden h-[calc(85dvh-56px)]">
             <TerminalPanel
@@ -1202,7 +1232,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       <Sheet open={mobileActionsOpen} onOpenChange={(v) => !v && setMobileActionsOpen(false)}>
         <SheetContent side="bottom" className="border-t border-border/80 bg-card/98 pb-[env(safe-area-inset-bottom)]">
           <SheetHeader className="border-b border-border/70 bg-muted/25 pb-2">
-            <SheetTitle>工作区操作</SheetTitle>
+            <SheetTitle>{t('chat.view.mobile.actionsTitle')}</SheetTitle>
           </SheetHeader>
           <div className="space-y-2.5 pt-3">
             <button
@@ -1211,9 +1241,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
             >
               <div className="flex items-center gap-2">
                 <FolderOpen className="h-4 w-4 text-brand-600" />
-                <span className="text-sm font-medium text-foreground">工作区文件</span>
+                <span className="text-sm font-medium text-foreground">{t('chat.view.mobile.files')}</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">查看与管理当前工作区文件</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('chat.view.mobile.filesSubtitle')}</p>
             </button>
             <button
               onClick={openMobileEnv}
@@ -1221,9 +1251,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
             >
               <div className="flex items-center gap-2">
                 <Wrench className="h-4 w-4 text-brand-600" />
-                <span className="text-sm font-medium text-foreground">环境变量</span>
+                <span className="text-sm font-medium text-foreground">{t('chat.view.mobile.env')}</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">调整运行环境与依赖配置</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('chat.view.mobile.envSubtitle')}</p>
             </button>
             <button
               onClick={() => { setMobileActionsOpen(false); setMobilePanel('skills'); }}
@@ -1231,9 +1261,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
             >
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-brand-600" />
-                <span className="text-sm font-medium text-foreground">技能</span>
+                <span className="text-sm font-medium text-foreground">{t('chat.view.mobile.skills')}</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">控制工作区可用技能集</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('chat.view.mobile.skillsSubtitle')}</p>
             </button>
             {isWorkspaceView && (
               <button
@@ -1242,9 +1272,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
               >
                 <div className="flex items-center gap-2">
                   <Link className="h-4 w-4 text-brand-600" />
-                  <span className="text-sm font-medium text-foreground">会话绑定</span>
+                  <span className="text-sm font-medium text-foreground">{t('chat.view.bindings.title')}</span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">将外部会话路由到当前工作区</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t('chat.view.mobile.bindingsSubtitle')}</p>
               </button>
             )}
             {canManageMembers && (
@@ -1254,9 +1284,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
               >
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-brand-600" />
-                  <span className="text-sm font-medium text-foreground">成员管理</span>
+                  <span className="text-sm font-medium text-foreground">{t('chat.view.mobile.members')}</span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">查看成员列表与协作角色</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t('chat.view.mobile.membersSubtitle')}</p>
               </button>
             )}
             {canUseTerminal && (
@@ -1269,9 +1299,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
               >
                 <div className="flex items-center gap-2">
                   <Terminal className="h-4 w-4 text-brand-600" />
-                  <span className="text-sm font-medium text-foreground">终端</span>
+                  <span className="text-sm font-medium text-foreground">{t('chat.view.mobile.terminal')}</span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">打开工作区终端会话</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t('chat.view.mobile.terminalSubtitle')}</p>
               </button>
             )}
           </div>
@@ -1281,7 +1311,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       <Sheet open={bindingsOpen} onOpenChange={setBindingsOpen}>
         <SheetContent side="right" className="w-full border-l border-border/80 bg-card/98 p-0 sm:max-w-md">
           <SheetHeader className="border-b border-border/70 bg-muted/25 px-4 pb-2 pt-4">
-            <SheetTitle>会话绑定</SheetTitle>
+            <SheetTitle>{t('chat.view.bindings.title')}</SheetTitle>
           </SheetHeader>
           <div className="h-[calc(100dvh-56px)] overflow-hidden">
             {renderWorkspaceBindingsPanel()}
@@ -1294,9 +1324,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
         open={showResetConfirm}
         onClose={() => setShowResetConfirm(false)}
         onConfirm={handleResetSession}
-        title="清除上下文"
-        message="将清除 Claude 会话上下文并停止运行中的工作区进程，下次发送消息时将开始全新会话。聊天记录不受影响。"
-        confirmText="清除"
+        title={t('chat.view.reset.title')}
+        message={t('chat.view.reset.message')}
+        confirmText={t('chat.view.reset.confirm')}
         confirmVariant="danger"
         loading={resetLoading}
       />

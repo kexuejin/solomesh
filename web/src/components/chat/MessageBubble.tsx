@@ -6,6 +6,7 @@ import { EmojiAvatar } from '../common/EmojiAvatar';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ImageLightbox } from './ImageLightbox';
 import { getMessageProviderLabel } from '../../lib/message-provider';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface MessageBubbleProps {
   message: Message;
@@ -24,6 +25,7 @@ interface MessageAttachment {
 /** Collapsible reasoning block for AI messages */
 function ReasoningBlock({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useI18n();
 
   return (
     <div className="mb-3 rounded-xl border border-amber-200/60 bg-amber-50/40 overflow-hidden">
@@ -34,7 +36,7 @@ function ReasoningBlock({ content }: { content: string }) {
         <svg className="w-4 h-4 text-amber-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
         </svg>
-        <span className="text-xs font-medium text-amber-700">Reasoning</span>
+        <span className="text-xs font-medium text-amber-700">{t('chat.messageBubble.reasoning')}</span>
         <span className="flex-1" />
         {expanded ? (
           <ChevronUp className="w-3.5 h-3.5 text-amber-400" />
@@ -54,12 +56,13 @@ function ReasoningBlock({ content }: { content: string }) {
 export const MessageBubble = memo(function MessageBubble({ message, showTime, thinkingContent, isShared }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(null);
+  const { locale, t } = useI18n();
   const currentUser = useAuthStore((s) => s.user);
   const appearance = useAuthStore((s) => s.appearance);
   const isUser = !message.is_from_me;
   const isOtherUser = isShared && isUser && message.sender !== currentUser?.id;
   const time = new Date(message.timestamp)
-    .toLocaleString('zh-CN', {
+    .toLocaleString(localeForDateTime(locale), {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -112,7 +115,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
         {showTime && (
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-muted-foreground">{time}</span>
-            <span className="text-xs font-medium text-red-600">系统消息</span>
+            <span className="text-xs font-medium text-red-600">{t('chat.messageBubble.systemMessage')}</span>
           </div>
         )}
         <div className="relative bg-red-50 rounded-xl border border-red-200 border-l-[3px] border-l-red-500 px-5 py-4">
@@ -121,7 +124,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
               !
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-red-900 mb-1">上下文溢出错误</h3>
+              <h3 className="text-sm font-semibold text-red-900 mb-1">{t('chat.messageBubble.contextOverflowTitle')}</h3>
               <p className="text-sm text-red-800 leading-relaxed">{errorMsg}</p>
             </div>
           </div>
@@ -133,7 +136,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
   if (isUser) {
     // Shared workspace — other user's message: left-aligned with avatar
     if (isOtherUser) {
-      const otherName = message.sender_name || '用户';
+      const otherName = message.sender_name || t('chat.messageBubble.otherUser');
       const initial = otherName[0]?.toUpperCase() || '?';
       return (
         <div className="group mb-4">
@@ -163,7 +166,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
                       <img
                         key={i}
                         src={imageUrls[i]}
-                        alt={img.name || `图片 ${i + 1}`}
+                        alt={img.name || t('chat.messageBubble.imageAlt', { index: i + 1 })}
                         className="max-h-48 max-w-48 cursor-pointer rounded-lg border border-border/70 object-cover shadow-[0_6px_14px_rgba(15,23,42,0.1)] transition hover:border-brand-300"
                         onClick={() => setExpandedImageIndex(i)}
                       />
@@ -176,8 +179,8 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
                 <button
                   onClick={handleCopy}
                   className="absolute -right-8 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity cursor-pointer"
-                  title="复制"
-                  aria-label="复制消息"
+                  title={t('chat.messageBubble.copy')}
+                  aria-label={t('chat.messageBubble.copyMessage')}
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
@@ -203,7 +206,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
         <div className="flex flex-col items-end max-w-[85%] lg:max-w-[75%] min-w-0">
           {showSenderLabel && (
             <span className="text-xs text-muted-foreground font-medium mb-1 mr-1">
-              {message.sender_name || currentUser?.display_name || currentUser?.username || '我'}
+              {message.sender_name || currentUser?.display_name || currentUser?.username || t('chat.messageBubble.me')}
             </span>
           )}
           <div className="relative">
@@ -214,7 +217,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
                   <img
                     key={i}
                     src={imageUrls[i]}
-                    alt={img.name || `图片 ${i + 1}`}
+                    alt={img.name || t('chat.messageBubble.imageAlt', { index: i + 1 })}
                     className="max-h-48 max-w-48 cursor-pointer rounded-lg border border-brand-200/80 object-cover shadow-[0_6px_14px_rgba(15,23,42,0.1)] transition hover:border-brand-300"
                     onClick={() => setExpandedImageIndex(i)}
                   />
@@ -227,8 +230,8 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
             <button
               onClick={handleCopy}
               className="absolute -left-8 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity cursor-pointer"
-              title="复制"
-              aria-label="复制消息"
+              title={t('chat.messageBubble.copy')}
+              aria-label={t('chat.messageBubble.copyMessage')}
             >
               {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
@@ -250,7 +253,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
   }
 
   // AI message: avatar + card layout — user-level AI appearance takes priority
-  const senderName = currentUser?.ai_name || appearance?.aiName || message.sender_name || 'AI';
+  const senderName = currentUser?.ai_name || appearance?.aiName || message.sender_name || t('chat.messageBubble.ai');
   const providerLabel = getMessageProviderLabel(message.provider);
   const aiEmoji = currentUser?.ai_avatar_emoji || appearance?.aiAvatarEmoji;
   const aiColor = currentUser?.ai_avatar_color || appearance?.aiAvatarColor;
@@ -292,8 +295,8 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
             <button
               onClick={handleCopy}
               className="absolute right-2 top-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-transparent text-muted-foreground/70 opacity-60 transition-opacity hover:border-border/70 hover:bg-muted hover:text-foreground lg:opacity-0 lg:group-hover:opacity-100"
-              title="复制"
-              aria-label="复制消息"
+              title={t('chat.messageBubble.copy')}
+              aria-label={t('chat.messageBubble.copyMessage')}
             >
               {copied ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
             </button>
@@ -308,7 +311,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showTime, th
                   <img
                     key={i}
                     src={imageUrls[i]}
-                    alt={img.name || `图片 ${i + 1}`}
+                    alt={img.name || t('chat.messageBubble.imageAlt', { index: i + 1 })}
                     className="max-w-48 max-h-48 rounded-lg object-cover cursor-pointer border border-border/70 hover:border-primary transition-colors"
                     onClick={() => setExpandedImageIndex(i)}
                   />

@@ -12,11 +12,13 @@ import { SettingsActionBar } from './SettingsActionBar';
 import type { SettingsNotification } from './types';
 import { getErrorMessage } from './types';
 import type { AppearanceConfig } from '../../stores/auth';
+import { useI18n } from '../../i18n';
 
 interface AppearanceSectionProps extends SettingsNotification {}
 
 export function AppearanceSection({ setNotice, setError }: AppearanceSectionProps) {
   const { hasPermission } = useAuthStore();
+  const { t } = useI18n();
 
   const [appName, setAppName] = useState('');
   const [aiName, setAiName] = useState('');
@@ -37,12 +39,12 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
         setAiAvatarEmoji(data.aiAvatarEmoji);
         setAiAvatarColor(data.aiAvatarColor);
       } catch (err) {
-        setError(getErrorMessage(err, '加载外观配置失败'));
+        setError(getErrorMessage(err, t('settings.appearance.errors.loadFailed')));
       } finally {
         setLoading(false);
       }
     })();
-  }, [setError]);
+  }, [setError, t]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -60,9 +62,9 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
       setAiAvatarEmoji(data.aiAvatarEmoji);
       setAiAvatarColor(data.aiAvatarColor);
       useAuthStore.setState({ appearance: data });
-      setNotice('外观配置已保存');
+      setNotice(t('settings.appearance.notice.saved'));
     } catch (err) {
-      setError(getErrorMessage(err, '保存外观设置失败'));
+      setError(getErrorMessage(err, t('settings.appearance.errors.saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -77,19 +79,19 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
   }
 
   if (!canManage) {
-    return <div className="text-sm text-muted-foreground">需要系统配置权限才能修改外观设置。</div>;
+    return <div className="text-sm text-muted-foreground">{t('settings.appearance.noPermission')}</div>;
   }
 
   return (
     <div className="space-y-4">
       <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/65 px-4 py-3 text-sm text-foreground/85">
-        以下为全局默认值，对所有用户生效。用户可在「个人资料」中覆盖自己的 AI 外观。
+        {t('settings.appearance.description')}
       </div>
 
       <section className="surface-card overflow-hidden">
         <div className="border-b border-border/70 bg-muted/35 px-4 py-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">实时预览</div>
-          <div className="mt-1 text-sm font-medium text-foreground">当前默认 AI 形象</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">{t('settings.appearance.previewBadge')}</div>
+          <div className="mt-1 text-sm font-medium text-foreground">{t('settings.appearance.previewTitle')}</div>
         </div>
         <div className="px-4 py-4">
           <div className="surface-card-soft flex items-center gap-3 border border-border/70 bg-muted/30 p-4">
@@ -100,8 +102,8 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
               size="lg"
             />
             <div>
-              <div className="text-sm font-semibold text-foreground">{aiName || 'SoloMesh'}</div>
-              <div className="text-xs text-muted-foreground">AI 助手 · 系统默认形象</div>
+              <div className="text-sm font-semibold text-foreground">{aiName || t('settings.appearance.defaultAiName')}</div>
+              <div className="text-xs text-muted-foreground">{t('settings.appearance.previewSubtitle')}</div>
             </div>
           </div>
         </div>
@@ -109,12 +111,12 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
 
       <section className="surface-card overflow-hidden">
         <div className="border-b border-border/70 bg-muted/35 px-4 py-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">基础命名</div>
-          <div className="mt-1 text-sm font-medium text-foreground">项目与助手默认名称</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">{t('settings.appearance.namingBadge')}</div>
+          <div className="mt-1 text-sm font-medium text-foreground">{t('settings.appearance.namingTitle')}</div>
         </div>
         <div className="grid gap-3 px-4 py-4 md:grid-cols-2">
           <div className="surface-card-soft rounded-xl space-y-2 border border-border/70 bg-muted/20 p-3">
-            <label className="text-xs font-medium text-foreground/80">项目名称</label>
+            <label className="text-xs font-medium text-foreground/80">{t('settings.appearance.appNameLabel')}</label>
             <Input
               type="text"
               value={appName}
@@ -123,10 +125,10 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
               placeholder="SoloMesh"
               className="h-10 rounded-xl border-border/75 bg-card/95"
             />
-            <p className="text-xs text-muted-foreground">显示在 Logo 旁边和欢迎页的项目名称</p>
+            <p className="text-xs text-muted-foreground">{t('settings.appearance.appNameHint')}</p>
           </div>
           <div className="surface-card-soft rounded-xl space-y-2 border border-border/70 bg-muted/20 p-3">
-            <label className="text-xs font-medium text-foreground/80">AI 默认名称</label>
+            <label className="text-xs font-medium text-foreground/80">{t('settings.appearance.aiNameLabel')}</label>
             <Input
               type="text"
               value={aiName}
@@ -136,7 +138,7 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
               className="h-10 rounded-xl border-border/75 bg-card/95"
             />
             <p className="text-xs text-muted-foreground">
-              所有用户看到的默认 AI 助手名称（用户可在个人资料中单独覆盖）
+              {t('settings.appearance.aiNameHint')}
             </p>
           </div>
         </div>
@@ -144,16 +146,16 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
 
       <section className="surface-card overflow-hidden">
         <div className="border-b border-border/70 bg-muted/35 px-4 py-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">头像设置</div>
-          <div className="mt-1 text-sm font-medium text-foreground">Emoji 与背景色</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">{t('settings.appearance.avatarBadge')}</div>
+          <div className="mt-1 text-sm font-medium text-foreground">{t('settings.appearance.avatarTitle')}</div>
         </div>
         <div className="space-y-4 px-4 py-4">
           <div className="surface-card-soft rounded-xl space-y-3 border border-border/70 bg-muted/20 p-3">
-            <h3 className="text-sm font-semibold text-foreground">AI 头像 Emoji</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('settings.appearance.avatarEmojiTitle')}</h3>
             <EmojiPicker value={aiAvatarEmoji} onChange={setAiAvatarEmoji} />
           </div>
           <div className="surface-card-soft rounded-xl space-y-3 border border-border/70 bg-muted/20 p-3">
-            <h3 className="text-sm font-semibold text-foreground">AI 头像背景色</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('settings.appearance.avatarColorTitle')}</h3>
             <ColorPicker value={aiAvatarColor} onChange={setAiAvatarColor} />
           </div>
         </div>
@@ -162,7 +164,7 @@ export function AppearanceSection({ setNotice, setError }: AppearanceSectionProp
       <SettingsActionBar>
         <Button onClick={handleSave} disabled={saving || !aiName.trim()} className="h-10 rounded-xl">
           {saving && <Loader2 className="size-4 animate-spin" />}
-          {saving ? '保存中...' : '保存外观设置'}
+          {saving ? t('settings.appearance.saving') : t('settings.appearance.save')}
         </Button>
       </SettingsActionBar>
     </div>

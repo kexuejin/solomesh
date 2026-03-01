@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export interface SystemStatus {
   activeContainers: number;
@@ -36,6 +38,14 @@ interface MonitorState {
   clearBuildResult: () => void;
 }
 
+type MonitorStoreMessageKey =
+  | 'monitor.store.loadStatusFailed'
+  | 'monitor.store.buildImageFailed';
+
+function getStoreMessage(key: MonitorStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
 export const useMonitorStore = create<MonitorState>((set) => ({
   status: null,
   loading: false,
@@ -67,7 +77,10 @@ export const useMonitorStore = create<MonitorState>((set) => ({
       }
       set(update);
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : String(err) });
+      set({
+        loading: false,
+        error: extractStoreErrorMessage(err) ?? getStoreMessage('monitor.store.loadStatusFailed'),
+      });
     }
   },
 
@@ -81,7 +94,7 @@ export const useMonitorStore = create<MonitorState>((set) => ({
         building: false,
         buildResult: {
           success: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: extractStoreErrorMessage(err) ?? getStoreMessage('monitor.store.buildImageFailed'),
         },
       });
     }

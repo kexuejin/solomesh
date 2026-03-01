@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useI18n } from '../../i18n';
 
 export interface SearchInputProps {
   value: string;
@@ -15,13 +16,15 @@ export interface SearchInputProps {
 export function SearchInput({
   value,
   onChange,
-  placeholder = '搜索...',
+  placeholder,
   debounce = 300,
   className,
   autoFocus,
 }: SearchInputProps) {
+  const { t } = useI18n();
   const [localValue, setLocalValue] = useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const effectivePlaceholder = placeholder ?? t('common.searchPlaceholder');
 
   useEffect(() => {
     setLocalValue(value);
@@ -47,7 +50,7 @@ export function SearchInput({
       <Input
         value={localValue}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={effectivePlaceholder}
         className="h-10 rounded-xl border-border/70 bg-card/95 pl-9 pr-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] focus-visible:ring-brand-300/70"
         autoFocus={autoFocus}
       />

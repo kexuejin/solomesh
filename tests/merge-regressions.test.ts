@@ -22,7 +22,7 @@ test('settings includes mcp-servers tab entry and page render', () => {
   assert.ok(settingsTypes.includes("| 'mcp-servers'"));
   assert.ok(settingsNav.includes("key: 'mcp-servers'"));
   assert.ok(settingsPage.includes("'mcp-servers'"));
-  assert.ok(settingsPage.includes("'mcp-servers': 'MCP 服务器'"));
+  assert.ok(settingsPage.includes("'mcp-servers': 'settings.tabs.mcpServers'"));
   assert.ok(settingsPage.includes("activeTab === 'mcp-servers' && <McpServersPage />"));
 });
 

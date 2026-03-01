@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 
 import { useAuthStore } from '../stores/auth';
+import { useI18n } from '../i18n';
 import { SettingsNav } from '../components/settings/SettingsNav';
 import { ChannelsSection } from '../components/settings/ChannelsSection';
 import { RuntimeSection } from '../components/settings/RuntimeSection';
@@ -27,6 +28,7 @@ const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers
 
 export function SettingsPage() {
   const { user: currentUser } = useAuthStore();
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,22 +63,23 @@ export function SettingsPage() {
     setSearchParams({ tab }, { replace: true });
   }, [setSearchParams]);
 
-  const sectionTitle: Record<SettingsTab, string> = {
-    channels: '渠道配置',
-    runtime: 'Agent 运行时',
-    registration: '注册管理',
-    appearance: '外观设置',
-    profile: '个人资料',
-    'my-channels': '消息通道',
-    security: '安全与设备',
-    groups: '会话管理',
-    memory: '记忆管理',
-    skills: '技能管理',
-    'mcp-servers': 'MCP 服务器',
-    workflows: 'Workflow 模板',
-    users: '用户管理',
-    about: '关于',
+  const sectionTitleKey: Record<SettingsTab, Parameters<typeof t>[0]> = {
+    channels: 'settings.tabs.channels',
+    runtime: 'settings.tabs.runtime',
+    registration: 'settings.tabs.registration',
+    appearance: 'settings.tabs.appearance',
+    profile: 'settings.tabs.profile',
+    'my-channels': 'settings.tabs.myChannels',
+    security: 'settings.tabs.security',
+    groups: 'settings.tabs.groups',
+    memory: 'settings.tabs.memory',
+    skills: 'settings.tabs.skills',
+    'mcp-servers': 'settings.tabs.mcpServers',
+    workflows: 'settings.tabs.workflows',
+    users: 'settings.tabs.users',
+    about: 'settings.tabs.about',
   };
+  const activeSectionTitle = t(sectionTitleKey[activeTab]);
   const workflowWideLayout = activeTab === 'workflows';
 
   useEffect(() => {
@@ -92,11 +95,11 @@ export function SettingsPage() {
         <button
           onClick={() => setNavOpen(true)}
           className="-ml-1.5 rounded-xl border border-transparent p-1.5 text-muted-foreground transition-colors hover:border-border/70 hover:bg-muted/60 hover:text-foreground"
-          aria-label="打开导航"
+          aria-label={t('nav.openNavigation')}
         >
           <Menu className="w-5 h-5" />
         </button>
-        <span className="ml-3 truncate text-sm font-semibold text-foreground">{sectionTitle[activeTab]}</span>
+        <span className="ml-3 truncate text-sm font-semibold text-foreground">{activeSectionTitle}</span>
       </div>
 
       <SettingsNav
@@ -125,12 +128,12 @@ export function SettingsPage() {
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/85">
                   Settings
                 </div>
-                <h1 className="mt-1 text-2xl font-bold text-foreground">{sectionTitle[activeTab]}</h1>
+                <h1 className="mt-1 text-2xl font-bold text-foreground">{activeSectionTitle}</h1>
               </div>
 
               {mustChangePassword && (
                 <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  检测到首次登录或管理员重置密码，请先完成"修改密码"，其余关键操作会被暂时限制。
+                  {t('settings.passwordResetNotice')}
                 </div>
               )}
 

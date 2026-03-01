@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { File, Folder, Loader2, Lock, Trash2 } from 'lucide-react';
 import { useSkillsStore, type SkillDetail as SkillDetailType } from '../../stores/skills';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { useI18n } from '../../i18n';
 
 interface SkillDetailProps {
   skillId: string | null;
@@ -9,6 +10,7 @@ interface SkillDetailProps {
 }
 
 export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
+  const { t } = useI18n();
   const [detail, setDetail] = useState<SkillDetailType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
         const data = await getSkillDetail(skillId);
         setDetail(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : '加载失败');
+        setError(err instanceof Error ? err.message : t('skills.detail.loadFailed'));
         setDetail(null);
       } finally {
         setLoading(false);
@@ -38,12 +40,12 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
     };
 
     loadDetail();
-  }, [skillId, getSkillDetail]);
+  }, [skillId, getSkillDetail, t]);
 
   if (!skillId) {
     return (
       <div className="surface-card-soft flex items-center justify-center rounded-xl border border-border/70 bg-muted/20 p-12">
-        <p className="text-muted-foreground/80 text-center">选择一个技能查看详情</p>
+        <p className="text-muted-foreground/80 text-center">{t('skills.detail.selectHint')}</p>
       </div>
     );
   }
@@ -59,7 +61,7 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
   if (error || !detail) {
     return (
       <div className="surface-card-soft flex items-center justify-center rounded-xl border border-red-200 bg-red-50/70 p-12">
-        <p className="text-red-600 text-center">{error || '加载失败'}</p>
+        <p className="text-red-600 text-center">{error || t('skills.detail.loadFailed')}</p>
       </div>
     );
   }
@@ -78,16 +80,16 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
                     : 'border-border/70 bg-muted/60 text-muted-foreground'
                 }`}
               >
-                {detail.source === 'user' ? '用户级' : '项目级'}
+                {detail.source === 'user' ? t('skills.common.sourceUser') : t('skills.common.sourceProject')}
               </span>
               {detail.syncedFromHost && (
                 <span className="rounded-lg border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                  已同步
+                  {t('skills.common.synced')}
                 </span>
               )}
               {detail.userInvocable && (
                 <span className="rounded-lg border border-blue-200/80 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                  可调用
+                  {t('skills.common.invocable')}
                 </span>
               )}
             </div>
@@ -115,7 +117,7 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
             <button
               disabled={deleting}
               onClick={async () => {
-                if (!confirm(`确认删除技能「${detail.name}」？`)) return;
+                if (!confirm(t('skills.detail.confirmDelete', { name: detail.name }))) return;
                 setDeleting(true);
                 try {
                   await deleteSkill(detail.id);
@@ -129,16 +131,16 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
               className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-red-200/80 px-3 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
             >
               <Trash2 size={16} />
-              {deleting ? '删除中...' : '删除'}
+              {deleting ? t('skills.detail.deleting') : t('skills.detail.delete')}
             </button>
           )}
         </div>
 
-        {/* 元信息区域 */}
+        {/* Metadata */}
         <div className="space-y-2 text-sm">
           {detail.allowedTools && detail.allowedTools.length > 0 && (
             <div>
-              <span className="text-muted-foreground">允许工具：</span>
+              <span className="text-muted-foreground">{t('skills.detail.allowedTools')}:</span>
               <div className="flex flex-wrap gap-1 mt-1">
                 {detail.allowedTools.map((tool: string) => (
                   <span
@@ -153,25 +155,25 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
           )}
           {detail.argumentHint && (
             <div>
-              <span className="text-muted-foreground">参数提示：</span>
+              <span className="text-muted-foreground">{t('skills.detail.argumentHint')}:</span>
               <span className="text-foreground/80 ml-2">{detail.argumentHint}</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* SKILL.md 内容 */}
+      {/* SKILL.md content */}
       <div className="border-b border-border/70 p-5 md:p-6">
-        <h3 className="text-sm font-semibold text-foreground/80 mb-3">技能说明</h3>
+        <h3 className="text-sm font-semibold text-foreground/80 mb-3">{t('skills.detail.skillDoc')}</h3>
         <div className="max-w-none">
           <MarkdownRenderer content={detail.content} variant="docs" />
         </div>
       </div>
 
-      {/* 文件列表 */}
+      {/* File list */}
       {detail.files && detail.files.length > 0 && (
         <div className="border-b border-border/70 p-5 md:p-6">
-          <h3 className="text-sm font-semibold text-foreground/80 mb-3">文件列表</h3>
+          <h3 className="text-sm font-semibold text-foreground/80 mb-3">{t('skills.detail.fileList')}</h3>
           <div className="space-y-1.5">
             {detail.files.map((file) => (
               <div
@@ -193,14 +195,14 @@ export function SkillDetail({ skillId, onDeleted }: SkillDetailProps) {
         </div>
       )}
 
-      {/* 底部操作区 */}
+      {/* Footer note */}
       <div className="bg-muted/25 p-5 md:p-6">
         <p className="text-sm text-muted-foreground/90">
           {detail.source === 'user'
             ? detail.syncedFromHost
-              ? '从宿主机同步，可删除；重新同步时会恢复'
-              : '用户级技能可删除，也可在对话中让 AI 安装或卸载技能'
-            : '项目级技能为只读，不可修改或删除'}
+              ? t('skills.detail.footerSynced')
+              : t('skills.detail.footerUser')
+            : t('skills.detail.footerProject')}
         </p>
       </div>
     </div>

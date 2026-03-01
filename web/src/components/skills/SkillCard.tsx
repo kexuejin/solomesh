@@ -1,5 +1,6 @@
 import { Lock } from 'lucide-react';
 import type { Skill } from '../../stores/skills';
+import { useI18n } from '../../i18n';
 
 interface SkillCardProps {
   skill: Skill;
@@ -7,12 +8,13 @@ interface SkillCardProps {
   onSelect: () => void;
 }
 
-const SOURCE_LABELS: Record<Skill['source'], string> = {
-  user: '用户级',
-  project: '项目级',
-};
-
 export function SkillCard({ skill, selected, onSelect }: SkillCardProps) {
+  const { t } = useI18n();
+  const sourceLabels: Record<Skill['source'], string> = {
+    user: t('skills.common.sourceUser'),
+    project: t('skills.common.sourceProject'),
+  };
+
   return (
     <button
       onClick={onSelect}
@@ -33,23 +35,23 @@ export function SkillCard({ skill, selected, onSelect }: SkillCardProps) {
                   : 'border-border/70 bg-muted/60 text-muted-foreground'
               }`}
             >
-              {SOURCE_LABELS[skill.source]}
+              {sourceLabels[skill.source]}
             </span>
             {skill.syncedFromHost && (
               <span className="rounded-lg border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                已同步
+                {t('skills.common.synced')}
               </span>
             )}
             {skill.userInvocable && (
               <span className="rounded-lg border border-blue-200/80 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                可调用
+                {t('skills.common.invocable')}
               </span>
             )}
           </div>
           <p className="text-sm text-muted-foreground line-clamp-2">{skill.description}</p>
         </div>
 
-        <div className="flex items-center gap-2" title="技能启用状态为只读">
+        <div className="flex items-center gap-2" title={t('skills.common.enabledReadonly')}>
           <Lock size={16} className="text-muted-foreground/80" />
           <div
             className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors ${

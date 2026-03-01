@@ -5,6 +5,7 @@ import { useGroupsStore } from '../../stores/groups';
 import { useChatStore } from '../../stores/chat';
 import { useAuthStore } from '../../stores/auth';
 import { api } from '../../api/client';
+import { useI18n } from '../../i18n';
 
 interface GroupMembersPanelProps {
   groupJid: string;
@@ -17,6 +18,7 @@ interface UserOption {
 }
 
 export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const group = useChatStore(s => s.groups[groupJid]);
   const currentUser = useAuthStore(s => s.user);
@@ -76,7 +78,7 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
       setSearchResults([]);
       setShowAddForm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '添加成员失败');
+      setError(err instanceof Error ? err.message : t('chat.members.errors.addFailed'));
     } finally {
       setAdding(false);
     }
@@ -88,7 +90,7 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
     try {
       await useGroupsStore.getState().removeMember(groupJid, userId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '移除成员失败');
+      setError(err instanceof Error ? err.message : t('chat.members.errors.removeFailed'));
     } finally {
       setRemoving(null);
     }
@@ -96,14 +98,14 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
 
   const handleLeave = async () => {
     if (!currentUser) return;
-    if (!confirm('确定要退出该工作区吗？退出后将无法访问此工作区的消息和文件。')) return;
+    if (!confirm(t('chat.members.confirmLeave'))) return;
     setRemoving(currentUser.id);
     setError(null);
     try {
       await useGroupsStore.getState().removeMember(groupJid, currentUser.id);
       navigate('/chat');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '退出失败');
+      setError(err instanceof Error ? err.message : t('chat.members.errors.leaveFailed'));
     } finally {
       setRemoving(null);
     }
@@ -112,7 +114,7 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
   if (membersLoading && membersList.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        加载中...
+        {t('chat.members.loading')}
       </div>
     );
   }
@@ -135,12 +137,12 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索用户名..."
+                placeholder={t('chat.members.searchPlaceholder')}
                 className="h-9 w-full rounded-[10px] border border-border/80 bg-card px-3 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                 autoFocus
               />
               {searching && (
-                <div className="text-xs text-muted-foreground px-1">搜索中...</div>
+                <div className="text-xs text-muted-foreground px-1">{t('chat.members.searching')}</div>
               )}
               {searchResults.length > 0 && (
                 <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border/70 bg-background p-1">
@@ -165,13 +167,13 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
                 </div>
               )}
               {searchQuery.trim() && !searching && searchResults.length === 0 && (
-                <div className="text-xs text-muted-foreground px-1">未找到可添加的用户</div>
+                <div className="text-xs text-muted-foreground px-1">{t('chat.members.noSearchResults')}</div>
               )}
               <button
                 onClick={() => { setShowAddForm(false); setSearchQuery(''); setSearchResults([]); }}
                 className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
               >
-                取消
+                {t('chat.members.cancel')}
               </button>
             </div>
           ) : (
@@ -180,7 +182,7 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-brand-600 hover:bg-brand-50 rounded-lg transition-colors cursor-pointer"
             >
               <UserPlus className="w-4 h-4" />
-              添加成员
+              {t('chat.members.addMember')}
             </button>
           )}
         </div>
@@ -190,7 +192,7 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
       <div className="flex-1 overflow-y-auto">
         {membersList.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-            暂无成员
+            {t('chat.members.empty')}
           </div>
         ) : (
           <div className="space-y-1 p-3">
@@ -213,7 +215,9 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
                         {member.display_name || member.username}
                       </span>
                       {isSelf && (
-                        <span className="text-[10px] text-muted-foreground">(我)</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {t('chat.members.me')}
+                        </span>
                       )}
                       {isMemberOwner && (
                         <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
@@ -231,7 +235,7 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
                           onClick={() => handleRemove(member.user_id)}
                           disabled={removing === member.user_id}
                           className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
-                          title="移除成员"
+                          title={t('chat.members.removeMember')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -243,7 +247,7 @@ export function GroupMembersPanel({ groupJid }: GroupMembersPanelProps) {
                           className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
                         >
                           <LogOut className="w-3.5 h-3.5" />
-                          退出
+                          {t('chat.members.leave')}
                         </button>
                       )}
                     </>

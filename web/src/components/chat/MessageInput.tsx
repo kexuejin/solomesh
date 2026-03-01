@@ -23,6 +23,7 @@ import {
   type WorkflowCommandSuggestion,
   type WorkflowTemplateSuggestionSource,
 } from '@/lib/workflow-directive';
+import { useI18n } from '../../i18n';
 
 interface PendingFile {
   /** Display name: relative path for folder uploads, file name otherwise */
@@ -36,7 +37,7 @@ interface PendingImage {
   preview: string; // object URL for preview
 }
 
-/** 单张图片大小上限 5MB */
+/** Max size per image is 5MB. */
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 type OperationPermissionMode = 'default' | 'bypass';
 
@@ -50,35 +51,6 @@ const DEFAULT_PERMISSION_MODE_BY_PROVIDER: Record<ProviderId, OperationPermissio
   claude: 'bypass',
   codex: 'default',
   gemini: 'default',
-};
-
-const PERMISSION_MODE_OPTIONS_BY_PROVIDER: Record<ProviderId, OperationPermissionModeOption[]> = {
-  claude: [
-    {
-      value: 'default',
-      label: '默认',
-      hint: '按工具权限策略执行（更安全）',
-    },
-    {
-      value: 'bypass',
-      label: '放行',
-      hint: '自动放行工具调用（效率更高）',
-    },
-  ],
-  codex: [
-    {
-      value: 'default',
-      label: '默认',
-      hint: 'Codex 当前仅支持默认权限模式',
-    },
-  ],
-  gemini: [
-    {
-      value: 'default',
-      label: '默认',
-      hint: 'Gemini 当前仅支持默认权限模式',
-    },
-  ],
 };
 
 interface MessageInputProps {
@@ -129,6 +101,7 @@ export function MessageInput({
   onResetSession,
   onToggleTerminal,
 }: MessageInputProps) {
+  const { t } = useI18n();
   const [content, setContent] = useState('');
   const [showActions, setShowActions] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -152,6 +125,34 @@ export function MessageInput({
   const [permissionModeByProvider, setPermissionModeByProvider] = useState<Record<ProviderId, OperationPermissionMode>>(
     { ...DEFAULT_PERMISSION_MODE_BY_PROVIDER },
   );
+  const permissionModeOptionsByProvider: Record<ProviderId, OperationPermissionModeOption[]> = {
+    claude: [
+      {
+        value: 'default',
+        label: t('chat.messageInput.permission.defaultLabel'),
+        hint: t('chat.messageInput.permission.hintClaudeDefault'),
+      },
+      {
+        value: 'bypass',
+        label: t('chat.messageInput.permission.bypassLabel'),
+        hint: t('chat.messageInput.permission.hintClaudeBypass'),
+      },
+    ],
+    codex: [
+      {
+        value: 'default',
+        label: t('chat.messageInput.permission.defaultLabel'),
+        hint: t('chat.messageInput.permission.hintCodexDefault'),
+      },
+    ],
+    gemini: [
+      {
+        value: 'default',
+        label: t('chat.messageInput.permission.defaultLabel'),
+        hint: t('chat.messageInput.permission.hintGeminiDefault'),
+      },
+    ],
+  };
 
   const getResolvedPermissionMode = (
     provider: ProviderId,
@@ -223,7 +224,7 @@ export function MessageInput({
     textarea.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
   }, [content]);
 
-  // IME composition state — prevent Enter from sending while composing (e.g. Chinese input)
+  // IME composition state — prevent Enter from sending while composing.
   const composingRef = useRef(false);
 
   const closeMention = () => {
@@ -337,6 +338,13 @@ export function MessageInput({
     }
   }, [disabled]);
 
+  const getCommandSuggestionDescription = (command: WorkflowCommandSuggestion): string => {
+    if (command.descriptionKey) {
+      return t(command.descriptionKey, command.descriptionParams);
+    }
+    return command.description || '';
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionOpen && mentionSuggestions.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -405,7 +413,8 @@ export function MessageInput({
 
     if (hasPending) {
       const list = pendingFiles.map((f) => `- ${f.label}`).join('\n');
-      const prefix = `[我上传了以下文件到工作区，请查看并使用]\n${list}`;
+      // Keep this prefix stable because it becomes part of model input.
+      const prefix = `[Uploaded files to workspace, please review and use]\n${list}`;
       message = message ? `${prefix}\n\n${message}` : prefix;
       setPendingFiles([]);
     }
@@ -516,7 +525,11 @@ export function MessageInput({
 
   const readFileAsBase64 = (file: File): Promise<string> => {
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      return Promise.reject(new Error(`图片 ${file.name} 超过 5MB 限制 (${(file.size / 1024 / 1024).toFixed(1)}MB)`));
+      return Promise.reject(new Error(t('chat.messageInput.imageTooLarge', {
+        name: file.name,
+        limitMB: Math.round(MAX_IMAGE_SIZE_BYTES / 1024 / 1024),
+        sizeMB: (file.size / 1024 / 1024).toFixed(1),
+      })));
     }
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -609,7 +622,7 @@ export function MessageInput({
   const canSend = hasContent || pendingFiles.length > 0 || pendingImages.length > 0;
   const directiveProvider = parseProviderDirectiveInput(content).provider;
   const activePermissionProvider: ProviderId = directiveProvider ?? currentProvider ?? 'claude';
-  const permissionModeOptions = PERMISSION_MODE_OPTIONS_BY_PROVIDER[activePermissionProvider];
+  const permissionModeOptions = permissionModeOptionsByProvider[activePermissionProvider];
   const selectedPermissionMode = getResolvedPermissionMode(
     activePermissionProvider,
     permissionModeByProvider[activePermissionProvider],
@@ -620,13 +633,16 @@ export function MessageInput({
   const workflowRunning =
     workflowContext?.status === 'running'
     && !!workflowContext.templateId;
-  const workflowStageName = workflowContext?.stageName || '当前阶段';
+  const workflowStageName = workflowContext?.stageName || t('chat.messageInput.workflowStageFallback');
   const workflowProviderHint = workflowContext?.stageProvider
-    ? ` · ${workflowContext.stageProvider}`
+    ? t('chat.messageInput.workflowProviderHint', { provider: workflowContext.stageProvider })
     : '';
   const inputPlaceholder = workflowRunning
-    ? `当前阶段：${workflowStageName}${workflowProviderHint}，直接输入本阶段内容...`
-    : '输入消息...';
+    ? t('chat.messageInput.inputPlaceholderWorkflow', {
+      stageName: workflowStageName,
+      providerHint: workflowProviderHint,
+    })
+    : t('chat.messageInput.inputPlaceholderDefault');
 
   const progressPercent =
     uploadProgress && uploadProgress.totalBytes > 0
@@ -643,14 +659,14 @@ export function MessageInput({
           <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xs font-medium text-amber-800">
-                排队消息 {queuedMessages.length} 条
+                {t('chat.messageInput.queued.title', { count: queuedMessages.length })}
               </span>
               {onClearQueuedMessages && (
                 <button
                   onClick={onClearQueuedMessages}
                   className="ml-auto text-[11px] text-amber-700 hover:text-amber-900 cursor-pointer"
                 >
-                  清空
+                  {t('chat.messageInput.common.clear')}
                 </button>
               )}
             </div>
@@ -665,18 +681,18 @@ export function MessageInput({
                     className="flex items-center gap-2 rounded-lg border border-amber-200/85 bg-amber-50/45 px-2 py-1"
                   >
                     <span className="text-[11px] text-amber-900 truncate">
-                      {preview || '(空消息)'}
+                      {preview || t('chat.messageInput.queued.emptyMessage')}
                     </span>
                     {attachmentCount > 0 && (
                       <span className="text-[10px] text-amber-700 flex-shrink-0">
-                        图片 {attachmentCount}
+                        {t('chat.messageInput.queued.imagesCount', { count: attachmentCount })}
                       </span>
                     )}
                     {onRemoveQueuedMessage && (
                       <button
                         onClick={() => onRemoveQueuedMessage(queued.id)}
                         className="ml-auto text-[11px] text-amber-700 hover:text-amber-900 cursor-pointer"
-                        aria-label="移除排队消息"
+                        aria-label={t('chat.messageInput.queued.removeAria')}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -693,10 +709,14 @@ export function MessageInput({
           <div className="mb-2 rounded-lg border border-border/70 bg-muted/10 px-4 py-2.5">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs text-muted-foreground truncate max-w-[65%]">
-                {uploadProgress.currentFile || '完成'}
+                {uploadProgress.currentFile || t('chat.messageInput.uploadProgress.done')}
               </span>
               <span className="text-xs text-muted-foreground">
-                {uploadProgress.completed}/{uploadProgress.total} · {progressPercent}%
+                {t('chat.messageInput.uploadProgress.summary', {
+                  completed: uploadProgress.completed,
+                  total: uploadProgress.total,
+                  percent: progressPercent,
+                })}
               </span>
             </div>
             <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
@@ -716,13 +736,13 @@ export function MessageInput({
               <div className="flex items-center gap-1 mb-1.5">
                 <ImageIcon className="w-3 h-3 text-muted-foreground" />
                 <span className="text-[11px] text-muted-foreground">
-                  已添加 {pendingImages.length} 张图片
+                  {t('chat.messageInput.pendingImages.addedCount', { count: pendingImages.length })}
                 </span>
                 <button
                   onClick={clearPendingImages}
                   className="ml-auto text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
                 >
-                  清空
+                  {t('chat.messageInput.common.clear')}
                 </button>
               </div>
               <div className="flex flex-wrap gap-2 pb-1.5">
@@ -736,7 +756,7 @@ export function MessageInput({
                     <button
                       onClick={() => removePendingImage(i)}
                       className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-foreground/80 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground cursor-pointer"
-                      aria-label="移除图片"
+                      aria-label={t('chat.messageInput.pendingImages.removeAria')}
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -752,13 +772,13 @@ export function MessageInput({
               <div className="flex items-center gap-1 mb-1">
                 <Paperclip className="w-3 h-3 text-muted-foreground" />
                 <span className="text-[11px] text-muted-foreground">
-                  已上传 {pendingFiles.length} 个文件，发送时将告知 AI
+                  {t('chat.messageInput.pendingFiles.addedCount', { count: pendingFiles.length })}
                 </span>
                 <button
                   onClick={clearPendingFiles}
                   className="ml-auto text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
                 >
-                  清空
+                  {t('chat.messageInput.common.clear')}
                 </button>
               </div>
               <div className="flex flex-wrap gap-1 pb-1">
@@ -771,7 +791,7 @@ export function MessageInput({
                     <button
                       onClick={() => removePendingFile(i)}
                       className="flex-shrink-0 hover:text-primary cursor-pointer p-1 min-w-[28px] min-h-[28px] flex items-center justify-center"
-                      aria-label="移除文件"
+                      aria-label={t('chat.messageInput.pendingFiles.removeAria')}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -789,7 +809,7 @@ export function MessageInput({
                 className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-100"
               >
                 <ImageIcon className="w-3.5 h-3.5" />
-                添加图片
+                {t('chat.messageInput.actions.addImage')}
               </button>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -797,7 +817,7 @@ export function MessageInput({
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
               >
                 <FileUp className="w-3.5 h-3.5" />
-                上传文件
+                {t('chat.messageInput.actions.uploadFile')}
               </button>
               <button
                 onClick={() => folderInputRef.current?.click()}
@@ -805,7 +825,7 @@ export function MessageInput({
                 className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground bg-muted hover:bg-muted rounded-lg transition-colors cursor-pointer disabled:opacity-40"
               >
                 <FolderUp className="w-3.5 h-3.5" />
-                上传文件夹
+                {t('chat.messageInput.actions.uploadFolder')}
               </button>
             </div>
           )}
@@ -814,8 +834,14 @@ export function MessageInput({
           <div className="px-4 pt-3 pb-1">
             {workflowRunning && (
               <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
-                当前 Workflow：{workflowContext?.templateId} · {workflowStageName}
-                {workflowProviderHint}。可直接输入业务内容，也可用 <code>/wf-next</code> 进入下一阶段。
+                {t('chat.messageInput.workflow.bannerPrefix', {
+                  templateId: workflowContext?.templateId || '',
+                  stageName: workflowStageName,
+                })}
+                {workflowProviderHint}
+                {t('chat.messageInput.workflow.bannerMiddle')}
+                <code>/wf-next</code>
+                {t('chat.messageInput.workflow.bannerSuffix')}
               </div>
             )}
             {mentionOpen && mentionSuggestions.length > 0 && (
@@ -836,7 +862,7 @@ export function MessageInput({
                   >
                     @{provider}
                     <span className="ml-2 text-[11px] text-muted-foreground">
-                      切换到 {getMessageProviderLabel(provider) ?? provider}
+                      {t('chat.messageInput.mention.switchTo', { provider: getMessageProviderLabel(provider) ?? provider })}
                     </span>
                   </button>
                 ))}
@@ -860,7 +886,7 @@ export function MessageInput({
                   >
                     {command.value}
                     <span className="ml-2 text-[11px] text-muted-foreground">
-                      {command.description}
+                      {getCommandSuggestionDescription(command)}
                     </span>
                   </button>
                 ))}
@@ -925,8 +951,8 @@ export function MessageInput({
                       ? 'bg-brand-50 text-primary'
                       : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                   } ${uploading ? 'opacity-40 pointer-events-none' : ''}`}
-                  title="添加文件"
-                  aria-label="添加文件"
+                  title={t('chat.messageInput.actions.attachFiles')}
+                  aria-label={t('chat.messageInput.actions.attachFiles')}
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
@@ -936,7 +962,7 @@ export function MessageInput({
                   type="button"
                   onClick={onResetSession}
                   className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-amber-50 hover:text-amber-600 cursor-pointer"
-                  title="清除上下文"
+                  title={t('chat.messageInput.actions.clearContext')}
                 >
                   <Brush className="w-4 h-4" />
                 </button>
@@ -946,8 +972,8 @@ export function MessageInput({
                   type="button"
                   onClick={onToggleTerminal}
                   className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-brand-50 hover:text-primary cursor-pointer"
-                  title="终端"
-                  aria-label="终端"
+                  title={t('chat.messageInput.actions.terminal')}
+                  aria-label={t('chat.messageInput.actions.terminal')}
                 >
                   <TerminalSquare className="w-4 h-4" />
                 </button>
@@ -974,7 +1000,7 @@ export function MessageInput({
           <div className="border-t border-border/70 px-3 pb-2.5 pt-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-medium text-muted-foreground">
-                操作权限
+                {t('chat.messageInput.permission.title')}
               </span>
               <div className="flex items-center gap-1 rounded-[10px] border border-border/70 bg-muted/20 p-1">
                 {permissionModeOptions.map((option) => {

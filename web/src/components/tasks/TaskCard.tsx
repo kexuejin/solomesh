@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, Pause, Play, Trash2 } from 'lucide-react';
 import { ScheduledTask } from '../../stores/tasks';
 import { TaskDetail } from './TaskDetail';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface TaskCardProps {
   task: ScheduledTask;
@@ -11,6 +12,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
+  const { t, locale } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
   const formatScheduleValue = () => {
@@ -20,17 +22,17 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
       const minute = 60 * 1000;
       const hour = 60 * minute;
       const day = 24 * hour;
-      if (ms % day === 0) return `每 ${ms / day} 天`;
-      if (ms % hour === 0) return `每 ${ms / hour} 小时`;
-      if (ms % minute === 0) return `每 ${ms / minute} 分钟`;
-      if (ms % 1000 === 0) return `每 ${ms / 1000} 秒`;
-      return `每 ${ms}ms`;
+      if (ms % day === 0) return t('tasks.card.everyDays', { count: ms / day });
+      if (ms % hour === 0) return t('tasks.card.everyHours', { count: ms / hour });
+      if (ms % minute === 0) return t('tasks.card.everyMinutes', { count: ms / minute });
+      if (ms % 1000 === 0) return t('tasks.card.everySeconds', { count: ms / 1000 });
+      return t('tasks.card.everyMs', { count: ms });
     }
 
     if (task.schedule_type === 'once') {
       const parsed = new Date(task.schedule_value);
       if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleString('zh-CN', {
+        return parsed.toLocaleString(localeForDateTime(locale), {
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
@@ -59,11 +61,11 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'active':
-        return '运行中';
+        return t('tasks.card.statusActive');
       case 'paused':
-        return '已暂停';
+        return t('tasks.card.statusPaused');
       case 'completed':
-        return '已完成';
+        return t('tasks.card.statusCompleted');
       default:
         return status;
     }
@@ -100,11 +102,11 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
             {/* Schedule Info */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm mb-2">
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">调度:</span>
+                <span className="text-muted-foreground">{t('tasks.card.schedule')}:</span>
                 <span className="text-foreground font-medium">
-                  {task.schedule_type === 'cron' && 'Cron'}
-                  {task.schedule_type === 'interval' && '间隔'}
-                  {task.schedule_type === 'once' && '单次'}
+                  {task.schedule_type === 'cron' && t('tasks.card.scheduleCron')}
+                  {task.schedule_type === 'interval' && t('tasks.card.scheduleInterval')}
+                  {task.schedule_type === 'once' && t('tasks.card.scheduleOnce')}
                 </span>
                 <code className="text-xs bg-muted px-2 py-0.5 rounded">
                   {formatScheduleValue()}
@@ -112,7 +114,7 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">群组:</span>
+                <span className="text-muted-foreground">{t('tasks.card.group')}:</span>
                 <span className="text-foreground font-medium">
                   {task.group_folder}
                 </span>
@@ -138,8 +140,8 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
               <button
                 onClick={handleTogglePause}
                 className="p-2 text-muted-foreground hover:text-primary hover:bg-brand-50 rounded-lg transition-colors cursor-pointer"
-                title={task.status === 'active' ? '暂停' : '恢复'}
-                aria-label={task.status === 'active' ? '暂停任务' : '恢复任务'}
+                title={task.status === 'active' ? t('tasks.card.actionPause') : t('tasks.card.actionResume')}
+                aria-label={task.status === 'active' ? t('tasks.card.actionPauseAria') : t('tasks.card.actionResumeAria')}
               >
                 {task.status === 'active' ? (
                   <Pause className="w-5 h-5" />
@@ -153,8 +155,8 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
             <button
               onClick={handleDelete}
               className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-              title="删除"
-              aria-label="删除任务"
+              title={t('tasks.card.actionDelete')}
+              aria-label={t('tasks.card.actionDeleteAria')}
             >
               <Trash2 className="w-5 h-5" />
             </button>

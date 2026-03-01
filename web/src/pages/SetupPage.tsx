@@ -5,6 +5,7 @@ import { ChevronRight, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../stores/auth';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useI18n } from '../i18n';
 
 // --- Helpers ---
 
@@ -20,6 +21,7 @@ function getErrorMessage(err: unknown, fallback: string): string {
 // --- Component ---
 
 export function SetupPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { initialized, authenticated, setupAdmin, checkStatus } = useAuthStore();
 
@@ -48,7 +50,7 @@ export function SetupPage() {
         <div className="mx-auto flex h-full w-full max-w-xl items-center justify-center">
           <div className="surface-card-soft flex items-center gap-2.5 border border-border/70 px-4 py-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            加载系统初始化状态...
+            {t('auth.setup.loadingInitStatus')}
           </div>
         </div>
       </div>
@@ -66,18 +68,20 @@ export function SetupPage() {
               className="h-full w-full rounded-2xl object-cover"
             />
           </div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">STEP 1 / 2</p>
-          <h1 className="mb-2 text-2xl font-bold text-foreground">创建管理员账号</h1>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            {t('auth.setup.step')}
+          </p>
+          <h1 className="mb-2 text-2xl font-bold text-foreground">{t('auth.setup.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            完成后将进入系统接入初始化，继续配置全局 Feishu 与 Runtime（Claude/Codex）默认凭据。
+            {t('auth.setup.subtitle')}
           </p>
         </div>
 
         <section className="surface-card overflow-hidden">
           <div className="flex items-center justify-between border-b border-border/70 bg-muted/35 px-5 py-4">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">管理员信息</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">首次安装仅需创建一次</p>
+              <h2 className="text-sm font-semibold text-foreground">{t('auth.setup.adminInfoTitle')}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('auth.setup.adminInfoSubtitle')}</p>
             </div>
           </div>
           <div className="px-5 py-4">
@@ -101,6 +105,7 @@ function CreateAdminStep({
   onDone: () => void;
   setupAdmin: (username: string, password: string) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -112,23 +117,23 @@ function CreateAdminStep({
 
   const handleSubmit = async () => {
     if (!username.trim()) {
-      setError('请填写用户名');
+      setError(t('auth.setup.fillUsername'));
       return;
     }
     if (!/^[a-zA-Z0-9_]{3,32}$/.test(username)) {
-      setError('用户名须为 3-32 位字母、数字或下划线');
+      setError(t('auth.setup.usernameInvalid'));
       return;
     }
     if (!password) {
-      setError('请填写密码');
+      setError(t('auth.setup.fillPassword'));
       return;
     }
     if (password.length < 8) {
-      setError('密码至少 8 位');
+      setError(t('auth.setup.passwordTooShort'));
       return;
     }
     if (password !== confirmPwd) {
-      setError('两次输入的密码不一致');
+      setError(t('auth.setup.passwordMismatch'));
       return;
     }
     setSaving(true);
@@ -142,11 +147,11 @@ function CreateAdminStep({
           ? Number((err as { status?: unknown }).status)
           : NaN;
       if (status === 403) {
-        setError('系统已被其他管理员初始化，即将跳转到登录页...');
+        setError(t('auth.setup.alreadyInitializedRedirect'));
         setTimeout(() => { navigate('/login', { replace: true }); }, 2000);
         return;
       }
-      setError(getErrorMessage(err, '创建管理员失败'));
+      setError(getErrorMessage(err, t('auth.setup.createAdminFailed')));
     } finally {
       setSaving(false);
     }
@@ -155,7 +160,7 @@ function CreateAdminStep({
   return (
     <div>
       <div className="surface-card-soft mb-4 rounded-xl border border-brand-200 bg-brand-50/65 px-3 py-2.5 text-sm text-foreground/85">
-        提交后自动进入下一步接入配置向导。
+        {t('auth.setup.nextTip')}
       </div>
 
       {error && (
@@ -166,26 +171,26 @@ function CreateAdminStep({
 
       <div className="space-y-3">
         <div className="rounded-lg bg-muted/10 p-3">
-          <label className="mb-1 block text-sm font-medium text-foreground/80">用户名</label>
+          <label className="mb-1 block text-sm font-medium text-foreground/80">{t('auth.setup.username')}</label>
           <Input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="3-32 位字母、数字或下划线"
+            placeholder={t('auth.setup.usernamePlaceholder')}
             className="h-10 rounded-xl border-border/75 bg-card/95"
             autoFocus
             disabled={saving}
           />
         </div>
         <div className="rounded-lg bg-muted/10 p-3">
-          <label className="mb-1 block text-sm font-medium text-foreground/80">密码</label>
+          <label className="mb-1 block text-sm font-medium text-foreground/80">{t('auth.setup.password')}</label>
           <div className="relative">
             <Input
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="h-10 rounded-xl border-border/75 bg-card/95 pr-10"
-              placeholder="至少 8 位"
+              placeholder={t('auth.setup.passwordPlaceholder')}
               disabled={saving}
             />
             <button
@@ -199,14 +204,14 @@ function CreateAdminStep({
           </div>
         </div>
         <div className="rounded-lg bg-muted/10 p-3">
-          <label className="mb-1 block text-sm font-medium text-foreground/80">确认密码</label>
+          <label className="mb-1 block text-sm font-medium text-foreground/80">{t('auth.setup.confirmPassword')}</label>
           <div className="relative">
             <Input
               type={showConfirm ? 'text' : 'password'}
               value={confirmPwd}
               onChange={(e) => setConfirmPwd(e.target.value)}
               className="h-10 rounded-xl border-border/75 bg-card/95 pr-10"
-              placeholder="再次输入密码"
+              placeholder={t('auth.setup.confirmPasswordPlaceholder')}
               disabled={saving}
             />
             <button
@@ -222,7 +227,7 @@ function CreateAdminStep({
         <div className="border-t border-border/70 pt-3">
           <Button onClick={handleSubmit} disabled={saving} className="h-10 w-full rounded-xl">
             {saving && <Loader2 className="size-4 animate-spin" />}
-            创建账号并下一步
+            {t('auth.setup.createAndNext')}
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>

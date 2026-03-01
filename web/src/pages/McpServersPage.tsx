@@ -10,8 +10,10 @@ import { useAuthStore } from '../stores/auth';
 import { McpServerCard } from '../components/mcp-servers/McpServerCard';
 import { McpServerDetail } from '../components/mcp-servers/McpServerDetail';
 import { AddMcpServerDialog } from '../components/mcp-servers/AddMcpServerDialog';
+import { useI18n } from '../i18n';
 
 export function McpServersPage() {
+  const { t } = useI18n();
   const {
     servers,
     loading,
@@ -57,7 +59,7 @@ export function McpServersPage() {
       const result = await syncHostServers();
       const { added, updated, deleted, skipped } = result;
       setSyncMessage(
-        `同步完成：新增 ${added}，更新 ${updated}，删除 ${deleted}，跳过 ${skipped}`,
+        t('mcp.page.syncDone', { added, updated, deleted, skipped }),
       );
       setTimeout(() => setSyncMessage(null), 5000);
     } catch {
@@ -75,23 +77,31 @@ export function McpServersPage() {
         {/* Header */}
         <div className="surface-card p-4 md:p-5">
           <PageHeader
-            title="MCP 服务器"
-            subtitle={`共 ${servers.length} 个${syncedServers.length > 0 ? `（含同步 ${syncedServers.length}）` : ''} · 启用 ${enabledCount}`}
+            title={t('mcp.page.title')}
+            subtitle={
+              syncedServers.length > 0
+                ? t('mcp.page.subtitleWithSynced', {
+                    total: servers.length,
+                    synced: syncedServers.length,
+                    enabled: enabledCount,
+                  })
+                : t('mcp.page.subtitle', { total: servers.length, enabled: enabledCount })
+            }
             actions={
               <div className="flex flex-wrap items-center gap-2 md:gap-3">
                 {isAdmin && (
                   <Button variant="outline" onClick={handleSync} disabled={syncing} className="h-10 rounded-xl">
                     <Download size={18} className={syncing ? 'animate-pulse' : ''} />
-                    {syncing ? '同步中...' : '同步宿主机'}
+                    {syncing ? t('mcp.page.syncing') : t('mcp.page.syncHost')}
                   </Button>
                 )}
                 <Button variant="outline" onClick={loadServers} disabled={loading} className="h-10 rounded-xl">
                   <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  刷新
+                  {t('mcp.page.refresh')}
                 </Button>
                 <Button onClick={() => setShowAddDialog(true)} className="h-10 rounded-xl">
                   <Plus size={18} />
-                  添加
+                  {t('mcp.page.add')}
                 </Button>
               </div>
             }
@@ -113,7 +123,7 @@ export function McpServersPage() {
               <SearchInput
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="搜索 ID、命令或 URL"
+                placeholder={t('mcp.page.searchPlaceholder')}
               />
             </div>
 
@@ -127,15 +137,15 @@ export function McpServersPage() {
               ) : filtered.length === 0 ? (
                 <EmptyState
                   icon={Server}
-                  title={searchQuery ? '没有找到匹配的 MCP 服务器' : '暂无 MCP 服务器'}
-                  description={searchQuery ? undefined : '点击"添加"按钮添加第一个 MCP 服务器'}
+                  title={searchQuery ? t('mcp.page.emptySearch') : t('mcp.page.empty')}
+                  description={searchQuery ? undefined : t('mcp.page.emptyDescription')}
                 />
               ) : (
                 <>
                   {manualServers.length > 0 && (
                     <div>
                       <h2 className="text-sm font-semibold text-foreground/80 mb-3 px-1">
-                        手动添加 ({manualServers.length})
+                        {t('mcp.page.manualGroup', { count: manualServers.length })}
                       </h2>
                       <div className="space-y-2">
                         {manualServers.map((server) => (
@@ -153,7 +163,7 @@ export function McpServersPage() {
                   {syncedServers.length > 0 && (
                     <div>
                       <h2 className="text-sm font-semibold text-foreground/80 mb-3 px-1">
-                        宿主机同步 ({syncedServers.length})
+                        {t('mcp.page.syncedGroup', { count: syncedServers.length })}
                       </h2>
                       <div className="space-y-2">
                         {syncedServers.map((server) => (

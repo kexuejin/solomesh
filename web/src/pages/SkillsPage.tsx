@@ -10,8 +10,10 @@ import { useAuthStore } from '../stores/auth';
 import { SkillCard } from '../components/skills/SkillCard';
 import { SkillDetail } from '../components/skills/SkillDetail';
 import { InstallSkillDialog } from '../components/skills/InstallSkillDialog';
+import { useI18n } from '../i18n';
 
 export function SkillsPage() {
+  const { t } = useI18n();
   const {
     skills,
     loading,
@@ -60,7 +62,13 @@ export function SkillsPage() {
       const result = await syncHostSkills();
       const { added, updated, deleted, skipped } = result.stats;
       setSyncMessage(
-        `同步完成：新增 ${added}，更新 ${updated}，删除 ${deleted}，跳过 ${skipped}（共 ${result.total} 个宿主机技能）`
+        t('skills.page.syncDone', {
+          added,
+          updated,
+          deleted,
+          skipped,
+          total: result.total,
+        })
       );
       setTimeout(() => setSyncMessage(null), 5000);
     } catch {
@@ -74,23 +82,36 @@ export function SkillsPage() {
         {/* Header */}
         <div className="surface-card p-4 md:p-5">
           <PageHeader
-            title="技能管理"
-            subtitle={`用户级 ${manualUserSkills.length + syncedUserSkills.length}${syncedUserSkills.length > 0 ? `（含同步 ${syncedUserSkills.length}）` : ''} · 项目级 ${projectSkills.length} · 启用 ${enabledCount}`}
+            title={t('skills.page.title')}
+            subtitle={
+              syncedUserSkills.length > 0
+                ? t('skills.page.subtitleWithSynced', {
+                    userCount: manualUserSkills.length + syncedUserSkills.length,
+                    syncedCount: syncedUserSkills.length,
+                    projectCount: projectSkills.length,
+                    enabledCount,
+                  })
+                : t('skills.page.subtitle', {
+                    userCount: manualUserSkills.length + syncedUserSkills.length,
+                    projectCount: projectSkills.length,
+                    enabledCount,
+                  })
+            }
             actions={
               <div className="flex flex-wrap items-center gap-2 md:gap-3">
                 {isAdmin && (
                   <Button variant="outline" onClick={handleSync} disabled={syncing} className="h-10 rounded-xl">
                     <Download size={18} className={syncing ? 'animate-pulse' : ''} />
-                    {syncing ? '同步中...' : '同步宿主机技能'}
+                    {syncing ? t('skills.page.syncing') : t('skills.page.syncHost')}
                   </Button>
                 )}
                 <Button variant="outline" onClick={loadSkills} disabled={loading} className="h-10 rounded-xl">
                   <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  刷新
+                  {t('skills.page.refresh')}
                 </Button>
                 <Button onClick={() => setShowInstallDialog(true)} className="h-10 rounded-xl">
                   <Plus size={18} />
-                  安装技能
+                  {t('skills.page.install')}
                 </Button>
               </div>
             }
@@ -106,13 +127,13 @@ export function SkillsPage() {
 
         {/* Content */}
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-4">
-          {/* 左侧列表 */}
+          {/* Left list */}
           <div className="rounded-xl border border-border/70 bg-muted/10 p-4 md:p-5">
             <div className="mb-4">
               <SearchInput
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="搜索技能名称或描述"
+                placeholder={t('skills.page.searchPlaceholder')}
               />
             </div>
 
@@ -126,14 +147,14 @@ export function SkillsPage() {
               ) : filtered.length === 0 ? (
                 <EmptyState
                   icon={Puzzle}
-                  title={searchQuery ? '没有找到匹配的技能' : '暂无技能'}
+                  title={searchQuery ? t('skills.page.emptySearch') : t('skills.page.empty')}
                 />
               ) : (
                 <>
                   {manualUserSkills.length > 0 && (
                     <div>
                       <h2 className="text-sm font-semibold text-foreground/80 mb-3 px-1">
-                        用户级技能 ({manualUserSkills.length})
+                        {t('skills.page.userSkills', { count: manualUserSkills.length })}
                       </h2>
                       <div className="space-y-2">
                         {manualUserSkills.map((skill) => (
@@ -151,7 +172,7 @@ export function SkillsPage() {
                   {syncedUserSkills.length > 0 && (
                     <div>
                       <h2 className="text-sm font-semibold text-foreground/80 mb-3 px-1">
-                        宿主机同步 ({syncedUserSkills.length})
+                        {t('skills.page.syncedSkills', { count: syncedUserSkills.length })}
                       </h2>
                       <div className="space-y-2">
                         {syncedUserSkills.map((skill) => (
@@ -169,7 +190,7 @@ export function SkillsPage() {
                   {projectSkills.length > 0 && (
                     <div>
                       <h2 className="text-sm font-semibold text-foreground/80 mb-3 px-1">
-                        项目级技能 ({projectSkills.length})
+                        {t('skills.page.projectSkills', { count: projectSkills.length })}
                       </h2>
                       <div className="space-y-2">
                         {projectSkills.map((skill) => (
@@ -188,13 +209,13 @@ export function SkillsPage() {
             </div>
           </div>
 
-          {/* 右侧详情（桌面端） */}
+          {/* Right detail panel (desktop) */}
           <div className="hidden lg:block min-w-0">
             <SkillDetail skillId={selectedId} onDeleted={() => setSelectedId(null)} />
           </div>
         </div>
 
-        {/* 移动端详情 */}
+        {/* Mobile detail panel */}
         {selectedId && (
           <div className="lg:hidden">
             <SkillDetail skillId={selectedId} onDeleted={() => setSelectedId(null)} />

@@ -8,13 +8,16 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/ui/button';
-import { AUTOMATION_TEMPLATES } from '@/components/tasks/automation-presets';
+import { getAutomationTemplates } from '@/components/tasks/automation-presets';
+import { useI18n } from '../i18n';
 
 export function TasksPage() {
+  const { t } = useI18n();
   const { tasks, loading, error, loadTasks, createTask, updateTaskStatus, deleteTask } = useTasksStore();
   const { groups, loadGroups } = useChatStore();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null);
+  const templates = getAutomationTemplates(t);
 
   useEffect(() => {
     loadTasks();
@@ -41,19 +44,19 @@ export function TasksPage() {
   };
 
   const handlePause = async (id: string) => {
-    if (confirm('确定要暂停此任务吗？')) {
+    if (confirm(t('tasks.page.confirmPause'))) {
       await updateTaskStatus(id, 'paused');
     }
   };
 
   const handleResume = async (id: string) => {
-    if (confirm('确定要恢复此任务吗？')) {
+    if (confirm(t('tasks.page.confirmResume'))) {
       await updateTaskStatus(id, 'active');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('确定要删除此任务吗？此操作不可撤销。')) {
+    if (confirm(t('tasks.page.confirmDelete'))) {
       await deleteTask(id);
     }
   };
@@ -78,37 +81,41 @@ export function TasksPage() {
       <div className="mx-auto max-w-6xl space-y-5">
         <div className="rounded-xl border border-border/80 bg-card px-5 py-4">
           <PageHeader
-            title="自动化"
-            subtitle={`共 ${tasks.length} 条自动化 · ${activeTasks.length} 运行中 · ${pausedTasks.length} 已暂停`}
+            title={t('tasks.page.title')}
+            subtitle={t('tasks.page.subtitle', {
+              total: tasks.length,
+              active: activeTasks.length,
+              paused: pausedTasks.length,
+            })}
             className="mb-4"
             actions={
               <div className="flex flex-wrap items-center gap-2 md:gap-3">
                 <Button variant="outline" onClick={loadTasks} disabled={loading}>
                   <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  刷新
+                  {t('tasks.page.refresh')}
                 </Button>
                 <Button onClick={() => openCreateForm()}>
                   <Plus size={18} />
-                  新建自动化
+                  {t('tasks.page.create')}
                 </Button>
               </div>
             }
           />
           <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
             <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2">
-              <div className="text-[11px] text-muted-foreground">总任务</div>
+              <div className="text-[11px] text-muted-foreground">{t('tasks.page.total')}</div>
               <div className="text-base font-semibold text-foreground">{tasks.length}</div>
             </div>
             <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-              <div className="text-[11px] text-green-700">运行中</div>
+              <div className="text-[11px] text-green-700">{t('tasks.page.active')}</div>
               <div className="text-base font-semibold text-green-700">{activeTasks.length}</div>
             </div>
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-              <div className="text-[11px] text-amber-700">已暂停</div>
+              <div className="text-[11px] text-amber-700">{t('tasks.page.paused')}</div>
               <div className="text-base font-semibold text-amber-700">{pausedTasks.length}</div>
             </div>
             <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2">
-              <div className="text-[11px] text-muted-foreground">其他状态</div>
+              <div className="text-[11px] text-muted-foreground">{t('tasks.page.other')}</div>
               <div className="text-base font-semibold text-foreground">{otherTasks.length}</div>
             </div>
           </div>
@@ -117,15 +124,15 @@ export function TasksPage() {
         <section className="surface-card-soft rounded-xl border border-border/70 bg-card/90 p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">Templates</div>
-              <div className="mt-1 text-sm font-medium text-foreground">推荐自动化模板</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">{t('tasks.page.templatesTag')}</div>
+              <div className="mt-1 text-sm font-medium text-foreground">{t('tasks.page.templatesTitle')}</div>
             </div>
             <Button variant="outline" size="sm" onClick={() => openCreateForm()}>
-              自定义新建
+              {t('tasks.page.customCreate')}
             </Button>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {AUTOMATION_TEMPLATES.map((template) => (
+            {templates.map((template) => (
               <button
                 key={template.id}
                 type="button"
@@ -150,6 +157,7 @@ export function TasksPage() {
             <button
               onClick={() => useTasksStore.setState({ error: null })}
               className="p-1 text-red-400 hover:text-red-600 rounded transition-colors"
+              aria-label={t('tasks.page.dismissError')}
             >
               <X size={16} />
             </button>
@@ -161,11 +169,11 @@ export function TasksPage() {
         ) : tasks.length === 0 ? (
           <EmptyState
             icon={Clock}
-            title="还没有创建任何自动化"
+            title={t('tasks.page.emptyTitle')}
             action={
               <Button onClick={() => openCreateForm()}>
                 <Plus size={18} />
-                新建第一个自动化
+                {t('tasks.page.emptyAction')}
               </Button>
             }
           />
@@ -173,7 +181,7 @@ export function TasksPage() {
           <div className="space-y-6">
             {activeTasks.length > 0 && (
               <section className="space-y-3">
-                <h2 className="px-1 text-sm font-semibold text-foreground/85">运行中</h2>
+                <h2 className="px-1 text-sm font-semibold text-foreground/85">{t('tasks.page.sectionActive')}</h2>
                 <div className="space-y-3">
                   {activeTasks.map((task) => (
                     <TaskCard
@@ -190,7 +198,7 @@ export function TasksPage() {
 
             {pausedTasks.length > 0 && (
               <section className="space-y-3">
-                <h2 className="px-1 text-sm font-semibold text-foreground/85">已暂停</h2>
+                <h2 className="px-1 text-sm font-semibold text-foreground/85">{t('tasks.page.sectionPaused')}</h2>
                 <div className="space-y-3">
                   {pausedTasks.map((task) => (
                     <TaskCard
@@ -207,7 +215,7 @@ export function TasksPage() {
 
             {otherTasks.length > 0 && (
               <section className="space-y-3">
-                <h2 className="px-1 text-sm font-semibold text-foreground/85">其他</h2>
+                <h2 className="px-1 text-sm font-semibold text-foreground/85">{t('tasks.page.sectionOther')}</h2>
                 <div className="space-y-3">
                   {otherTasks.map((task) => (
                     <TaskCard

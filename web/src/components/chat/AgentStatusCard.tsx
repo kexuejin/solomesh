@@ -1,4 +1,5 @@
 import type { AgentInfo } from '../../types';
+import { useI18n } from '../../i18n';
 
 interface AgentStatusCardProps {
   agent: AgentInfo;
@@ -11,14 +12,14 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   error: { bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' },
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  running: '执行中',
-  completed: '已完成',
-  error: '出错',
-};
-
 export function AgentStatusCard({ agent, onClick }: AgentStatusCardProps) {
+  const { t } = useI18n();
   const colors = STATUS_COLORS[agent.status] || STATUS_COLORS.running;
+  const statusLabel = agent.status === 'completed'
+    ? t('chat.agentStatusCard.status.completed')
+    : agent.status === 'error'
+      ? t('chat.agentStatusCard.status.error')
+      : t('chat.agentStatusCard.status.running');
 
   return (
     <div
@@ -28,10 +29,10 @@ export function AgentStatusCard({ agent, onClick }: AgentStatusCardProps) {
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${colors.dot}`} />
         <span className={`text-sm font-medium ${colors.text}`}>
-          子 Agent: {agent.name}
+          {t('chat.agentStatusCard.subAgent', { name: agent.name })}
         </span>
         <span className={`text-xs ${colors.text} opacity-70`}>
-          {STATUS_LABELS[agent.status]}
+          {statusLabel}
         </span>
       </div>
       <p className="mt-1 text-xs text-muted-foreground line-clamp-2">

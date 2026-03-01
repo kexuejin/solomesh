@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { localeForDateTime, useI18n } from '../i18n';
+import type { MessageKey } from '../i18n';
 
 interface MemorySource {
   path: string;
@@ -41,22 +43,26 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function scopeLabel(scope: MemorySource['scope']): string {
+function scopeLabel(
+  scope: MemorySource['scope'],
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+): string {
   switch (scope) {
     case 'user-global':
-      return '我的全局记忆';
+      return t('memory.scope.userGlobal');
     case 'main':
-      return '主会话';
+      return t('memory.scope.main');
     case 'flow':
-      return '会话流';
+      return t('memory.scope.flow');
     case 'session':
-      return '自动记忆';
+      return t('memory.scope.session');
     default:
-      return '其他';
+      return t('memory.scope.other');
   }
 }
 
 export function MemoryPage() {
+  const { t, locale } = useI18n();
   const [sources, setSources] = useState<MemorySource[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [content, setContent] = useState('');
@@ -112,11 +118,11 @@ export function MemoryPage() {
       setInitialContent(data.content);
       setFileMeta(data);
     } catch (err) {
-      setError(getErrorMessage(err, '加载记忆文件失败'));
+      setError(getErrorMessage(err, t('memory.errors.loadFileFailed')));
     } finally {
       setLoadingFile(false);
     }
-  }, []);
+  }, [t]);
 
   const loadSources = useCallback(async () => {
     setLoadingSources(true);
@@ -146,11 +152,11 @@ export function MemoryPage() {
         setFileMeta(null);
       }
     } catch (err) {
-      setError(getErrorMessage(err, '加载记忆源失败'));
+      setError(getErrorMessage(err, t('memory.errors.loadSourcesFailed')));
     } finally {
       setLoadingSources(false);
     }
-  }, [loadFile, selectedPath]);
+  }, [loadFile, selectedPath, t]);
 
   useEffect(() => {
     loadSources();
@@ -194,7 +200,7 @@ export function MemoryPage() {
       return;
     }
     if (path === selectedPath) return;
-    if (dirty && !confirm('当前有未保存修改，切换会丢失。是否继续？')) {
+    if (dirty && !confirm(t('memory.confirm.switchLoseChanges'))) {
       return;
     }
     await loadFile(path);
@@ -215,10 +221,10 @@ export function MemoryPage() {
       setContent(data.content);
       setInitialContent(data.content);
       setFileMeta(data);
-      setNotice('已保存');
+      setNotice(t('memory.notice.saved'));
       await loadSources();
     } catch (err) {
-      setError(getErrorMessage(err, '保存记忆文件失败'));
+      setError(getErrorMessage(err, t('memory.errors.saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -226,15 +232,15 @@ export function MemoryPage() {
 
   const handleReloadFile = async () => {
     if (!selectedPath) return;
-    if (dirty && !confirm('当前有未保存修改，重新加载会覆盖。是否继续？')) {
+    if (dirty && !confirm(t('memory.confirm.reloadOverwrite'))) {
       return;
     }
     await loadFile(selectedPath);
   };
 
   const updatedText = fileMeta?.updatedAt
-    ? new Date(fileMeta.updatedAt).toLocaleString('zh-CN')
-    : '未记录';
+    ? new Date(fileMeta.updatedAt).toLocaleString(localeForDateTime(locale))
+    : t('memory.notRecorded');
 
   return (
     <div className="min-h-full app-canvas p-4 lg:p-8">
@@ -245,15 +251,15 @@ export function MemoryPage() {
               <BookOpen className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">记忆管理</h1>
+              <h1 className="text-2xl font-bold text-foreground">{t('memory.title')}</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                管理个人全局记忆、主会话记忆、各会话流记忆，以及可读取的自动记忆文件。
+                {t('memory.subtitle')}
               </p>
             </div>
           </div>
 
           <div className="text-xs text-muted-foreground">
-            已加载记忆源: {sources.length}
+            {t('memory.loadedSources', { count: sources.length })}
           </div>
         </div>
 
@@ -265,15 +271,15 @@ export function MemoryPage() {
                 type="text"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="搜索记忆源（路径 + 全文）"
+                placeholder={t('memory.searchPlaceholder')}
                 className="h-10 rounded-xl border-border/75 bg-card/95"
               />
               <div className="mt-1 text-[11px] text-muted-foreground">
                 {keyword.trim()
                   ? searchingContent
-                    ? '正在做全文检索...'
-                    : `全文命中：${Object.keys(searchHits).length} 个文件`
-                  : '可按文件名、路径或内容关键词检索'}
+                    ? t('memory.searching')
+                    : t('memory.searchHits', { count: Object.keys(searchHits).length })
+                  : t('memory.searchHint')}
               </div>
             </div>
 
@@ -284,7 +290,7 @@ export function MemoryPage() {
                 return (
                   <div key={scope}>
                     <div className="text-xs font-semibold text-muted-foreground mb-2">
-                      {scopeLabel(scope)} ({items.length})
+                      {scopeLabel(scope, t)} ({items.length})
                     </div>
                     <div className="space-y-1">
                       {items.map((source) => {
@@ -307,11 +313,11 @@ export function MemoryPage() {
                               {source.path}
                             </div>
                             <div className="text-[11px] mt-1 text-muted-foreground">
-                              {source.writable ? '可编辑' : '只读'} · {source.exists ? `${source.size} B` : '文件不存在'}
+                              {source.writable ? t('memory.writable') : t('memory.readonly')} · {source.exists ? `${source.size} B` : t('memory.fileMissing')}
                             </div>
                             {hit && (
                               <div className="text-[11px] mt-1 text-primary truncate">
-                                命中 {hit.hits} 次 · {hit.snippet}
+                                {t('memory.hitLine', { hits: hit.hits, snippet: hit.snippet })}
                               </div>
                             )}
                           </button>
@@ -323,7 +329,7 @@ export function MemoryPage() {
               })}
 
               {!loadingSources && filteredSources.length === 0 && (
-                <div className="text-sm text-muted-foreground">没有匹配的记忆源</div>
+                <div className="text-sm text-muted-foreground">{t('memory.noMatchedSources')}</div>
               )}
             </div>
           </div>
@@ -339,13 +345,17 @@ export function MemoryPage() {
                     className="mb-3 inline-flex items-center gap-1 rounded-lg px-1 py-1 text-sm text-primary hover:bg-brand-50 hover:no-underline"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    返回列表
+                    {t('memory.backToList')}
                   </button>
                 )}
                 <div className="mb-3 rounded-lg border border-border/70 bg-muted/15 px-3 py-2.5">
                   <div className="text-sm font-semibold text-foreground break-all">{selectedPath}</div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    最近更新时间: {updatedText} · 字节数: {new TextEncoder().encode(content).length} · {fileMeta?.writable ? '可编辑' : '只读'}
+                    {t('memory.fileMetaLine', {
+                      updatedAt: updatedText,
+                      bytes: new TextEncoder().encode(content).length,
+                      writable: fileMeta?.writable ? t('memory.writable') : t('memory.readonly'),
+                    })}
                   </div>
                 </div>
 
@@ -353,7 +363,7 @@ export function MemoryPage() {
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   className="min-h-[calc(100dvh-380px)] lg:min-h-[460px] resize-y rounded-xl border-border/75 bg-card/95 p-4 font-mono text-sm leading-6 disabled:bg-muted/40"
-                  placeholder={loadingFile ? '正在加载...' : '此记忆源暂无内容'}
+                  placeholder={loadingFile ? t('memory.loadingContent') : t('memory.emptyContent')}
                   disabled={loadingFile || saving || !fileMeta?.writable}
                 />
 
@@ -365,7 +375,7 @@ export function MemoryPage() {
                   >
                     {saving && <Loader2 className="size-4 animate-spin" />}
                     <Save className="w-4 h-4" />
-                    保存
+                    {t('memory.save')}
                   </Button>
 
                   <Button
@@ -375,7 +385,7 @@ export function MemoryPage() {
                     className="h-10 rounded-xl"
                   >
                     <RefreshCw className="w-4 h-4" />
-                    重新加载当前
+                    {t('memory.reloadCurrent')}
                   </Button>
 
                   <Button
@@ -385,16 +395,16 @@ export function MemoryPage() {
                     className="h-10 rounded-xl"
                   >
                     <RefreshCw className="w-4 h-4" />
-                    刷新记忆源
+                    {t('memory.refreshSources')}
                   </Button>
 
-                  {dirty && <span className="text-sm text-amber-600">有未保存修改</span>}
+                  {dirty && <span className="text-sm text-amber-600">{t('memory.unsavedChanges')}</span>}
                   {notice && <span className="text-sm text-green-600">{notice}</span>}
                   {error && <span className="text-sm text-red-600">{error}</span>}
                 </div>
               </>
             ) : (
-              <div className="text-sm text-muted-foreground">暂无可用记忆源</div>
+              <div className="text-sm text-muted-foreground">{t('memory.noSources')}</div>
             )}
           </div>
           )}

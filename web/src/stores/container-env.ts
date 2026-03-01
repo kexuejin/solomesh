@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
 import type { AgentRuntimeId } from '../runtime-definitions';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export interface ContainerEnvPublicConfig {
   agentRuntime: AgentRuntimeId;
@@ -51,6 +53,14 @@ interface ContainerEnvState {
   }) => Promise<boolean>;
 }
 
+type ContainerEnvStoreMessageKey =
+  | 'chat.containerEnv.errors.loadConfigFailed'
+  | 'chat.containerEnv.errors.saveConfigFailed';
+
+function getStoreMessage(key: ContainerEnvStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
 export const useContainerEnvStore = create<ContainerEnvState>((set) => ({
   configs: {},
   loading: false,
@@ -68,7 +78,7 @@ export const useContainerEnvStore = create<ContainerEnvState>((set) => ({
         loading: false,
       }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load config';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.containerEnv.errors.loadConfigFailed');
       console.error('Failed to load container env config:', err);
       set({ loading: false, error: msg });
     }
@@ -87,7 +97,7 @@ export const useContainerEnvStore = create<ContainerEnvState>((set) => ({
       }));
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save config';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.containerEnv.errors.saveConfigFailed');
       console.error('Failed to save container env config:', err);
       set({ saving: false, error: msg });
       return false;

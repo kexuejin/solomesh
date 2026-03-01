@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export interface McpServer {
   id: string;
@@ -48,6 +50,18 @@ interface McpServersState {
   syncHostServers: () => Promise<SyncHostResult>;
 }
 
+type McpServersStoreMessageKey =
+  | 'mcp.store.loadFailed'
+  | 'mcp.store.addFailed'
+  | 'mcp.store.updateFailed'
+  | 'mcp.store.toggleFailed'
+  | 'mcp.store.deleteFailed'
+  | 'mcp.store.syncFailed';
+
+function getStoreMessage(key: McpServersStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
 export const useMcpServersStore = create<McpServersState>((set, get) => ({
   servers: [],
   loading: false,
@@ -60,7 +74,10 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
       const data = await api.get<{ servers: McpServer[] }>('/api/mcp-servers');
       set({ servers: data.servers, loading: false, error: null });
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : String(err) });
+      set({
+        loading: false,
+        error: extractStoreErrorMessage(err) ?? getStoreMessage('mcp.store.loadFailed'),
+      });
     }
   },
 
@@ -70,7 +87,7 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
       set({ error: null });
       await get().loadServers();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('mcp.store.addFailed') });
       throw err;
     }
   },
@@ -81,7 +98,7 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
       set({ error: null });
       await get().loadServers();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('mcp.store.updateFailed') });
       throw err;
     }
   },
@@ -92,7 +109,7 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
       set({ error: null });
       await get().loadServers();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('mcp.store.toggleFailed') });
     }
   },
 
@@ -102,7 +119,7 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
       set({ error: null });
       await get().loadServers();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('mcp.store.deleteFailed') });
       throw err;
     }
   },
@@ -113,8 +130,8 @@ export const useMcpServersStore = create<McpServersState>((set, get) => ({
       const result = await api.post<SyncHostResult>('/api/mcp-servers/sync-host', {});
       await get().loadServers();
       return result;
-    } catch (err: any) {
-      set({ error: err?.message || '同步失败，请稍后重试' });
+    } catch (err) {
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('mcp.store.syncFailed') });
       throw err;
     } finally {
       set({ syncing: false });

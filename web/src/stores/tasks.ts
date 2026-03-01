@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export interface ScheduledTask {
   id: string;
@@ -45,6 +47,17 @@ interface TasksState {
   loadLogs: (taskId: string) => Promise<void>;
 }
 
+type TasksStoreMessageKey =
+  | 'tasks.store.loadFailed'
+  | 'tasks.store.createFailed'
+  | 'tasks.store.updateStatusFailed'
+  | 'tasks.store.deleteFailed'
+  | 'tasks.store.loadLogsFailed';
+
+function getStoreMessage(key: TasksStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
 function normalizeOnceScheduleValue(value: string): string {
   const trimmed = value.trim();
   if (/^\d+$/.test(trimmed)) {
@@ -66,7 +79,10 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       const data = await api.get<{ tasks: ScheduledTask[] }>('/api/tasks');
       set({ tasks: data.tasks, loading: false, error: null });
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : String(err) });
+      set({
+        loading: false,
+        error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.loadFailed'),
+      });
     }
   },
 
@@ -95,7 +111,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       set({ error: null });
       await get().loadTasks();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.createFailed') });
     }
   },
 
@@ -105,7 +121,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       set({ error: null });
       await get().loadTasks();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.updateStatusFailed') });
     }
   },
 
@@ -115,7 +131,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       set({ error: null });
       await get().loadTasks();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.deleteFailed') });
     }
   },
 
@@ -127,7 +143,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         error: null,
       }));
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.loadLogsFailed') });
     }
   },
 }));

@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { DirectoryBrowser } from '../shared/DirectoryBrowser';
 import { useChatStore } from '../../stores/chat';
 import { useAuthStore } from '../../stores/auth';
+import { useI18n } from '../../i18n';
 
 interface CreateContainerDialogProps {
   open: boolean;
@@ -33,6 +34,7 @@ export function CreateContainerDialog({
   onClose,
   onCreated,
 }: CreateContainerDialogProps) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -85,10 +87,10 @@ export function CreateContainerDialog({
         onCreated(created.jid, created.folder);
         handleClose();
       } else {
-        setError('创建失败，请重试');
+        setError(t('chat.createContainerDialog.errorCreateRetry'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败');
+      setError(err instanceof Error ? err.message : t('chat.createContainerDialog.errorCreateFailed'));
     } finally {
       setLoading(false);
     }
@@ -99,22 +101,22 @@ export function CreateContainerDialog({
       <DialogContent className="sm:max-w-md overflow-hidden p-0">
         <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600">
-            工作区
+            {t('chat.createContainerDialog.badge')}
           </div>
         </div>
         <DialogHeader className="px-5 pt-4 text-left">
-          <DialogTitle>新建工作区</DialogTitle>
+          <DialogTitle>{t('chat.createContainerDialog.title')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 px-5">
           {/* Name input */}
           <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
-            <label className="block text-sm font-medium text-foreground/80">工作区名称</label>
+            <label className="block text-sm font-medium text-foreground/80">{t('chat.createContainerDialog.nameLabel')}</label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); }}
-              placeholder="输入工作区名称"
+              placeholder={t('chat.createContainerDialog.namePlaceholder')}
               autoFocus
             />
           </div>
@@ -127,13 +129,13 @@ export function CreateContainerDialog({
               className="w-full flex items-center gap-2 border-b border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 cursor-pointer"
             >
               {advancedOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              高级选项
+              {t('chat.createContainerDialog.advancedOptions')}
             </button>
             {advancedOpen && (
               <div className="space-y-3 px-3 pb-3 pt-3">
                 {/* Execution mode */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">执行模式</label>
+                  <label className="block text-sm font-medium mb-2">{t('chat.createContainerDialog.executionModeLabel')}</label>
                   <div className="space-y-2">
                     <label className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-2 cursor-pointer transition-colors hover:bg-muted/40">
                       <input
@@ -147,10 +149,10 @@ export function CreateContainerDialog({
                       <div>
                         <div className="flex items-center gap-1.5">
                           <Box className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">Docker 模式</span>
-                          <span className="text-xs text-primary font-medium">推荐</span>
+                          <span className="text-sm font-medium">{t('chat.createContainerDialog.modeContainerLabel')}</span>
+                          <span className="text-xs text-primary font-medium">{t('chat.createContainerDialog.recommended')}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">在隔离的 Docker 环境中执行</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{t('chat.createContainerDialog.modeContainerHint')}</p>
                       </div>
                     </label>
                     <label className={`flex items-start gap-3 rounded-lg border border-border/70 bg-card p-2 transition-colors ${canHostExec ? 'cursor-pointer hover:bg-muted/40' : 'opacity-50 cursor-not-allowed'}`}>
@@ -166,10 +168,12 @@ export function CreateContainerDialog({
                       <div>
                         <div className="flex items-center gap-1.5">
                           <Monitor className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">宿主机模式</span>
+                          <span className="text-sm font-medium">{t('chat.createContainerDialog.modeHostLabel')}</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {canHostExec ? '直接在服务器上执行' : '需要管理员权限'}
+                          {canHostExec
+                            ? t('chat.createContainerDialog.modeHostHintAdmin')
+                            : t('chat.createContainerDialog.modeHostHintNoAdmin')}
                         </p>
                       </div>
                     </label>
@@ -179,13 +183,13 @@ export function CreateContainerDialog({
                 {/* Container mode: workspace source */}
                 {executionMode === 'container' && (
                   <div className="pt-1">
-                    <label className="block text-sm font-medium mb-2">工作区来源</label>
+                    <label className="block text-sm font-medium mb-2">{t('chat.createContainerDialog.sourceLabel')}</label>
                     <div className="space-y-2">
                       <label className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-2 cursor-pointer transition-colors hover:bg-muted/40">
                         <input type="radio" name="init_mode" value="empty" checked={initMode === 'empty'} onChange={() => setInitMode('empty')} className="mt-0.5 accent-primary" />
                         <div>
-                          <span className="text-sm font-medium">空白工作区</span>
-                          <p className="text-xs text-muted-foreground mt-0.5">从空目录开始</p>
+                          <span className="text-sm font-medium">{t('chat.createContainerDialog.sourceEmptyLabel')}</span>
+                          <p className="text-xs text-muted-foreground mt-0.5">{t('chat.createContainerDialog.sourceEmptyHint')}</p>
                         </div>
                       </label>
                       {canHostExec && (
@@ -194,15 +198,19 @@ export function CreateContainerDialog({
                           <div className="flex-1">
                             <div className="flex items-center gap-1.5">
                               <FolderInput className="w-4 h-4 text-muted-foreground" />
-                              <span className="text-sm font-medium">复制本地目录</span>
+                              <span className="text-sm font-medium">{t('chat.createContainerDialog.sourceLocalLabel')}</span>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">将宿主机目录复制到工作区（隔离副本）</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{t('chat.createContainerDialog.sourceLocalHint')}</p>
                           </div>
                         </label>
                       )}
                       {initMode === 'local' && canHostExec && (
                         <div className="ml-6">
-                          <DirectoryBrowser value={initSourcePath} onChange={setInitSourcePath} placeholder="选择要复制的目录" />
+                          <DirectoryBrowser
+                            value={initSourcePath}
+                            onChange={setInitSourcePath}
+                            placeholder={t('chat.createContainerDialog.sourceLocalPlaceholder')}
+                          />
                         </div>
                       )}
                       <label className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-2 cursor-pointer transition-colors hover:bg-muted/40">
@@ -210,9 +218,9 @@ export function CreateContainerDialog({
                         <div className="flex-1">
                           <div className="flex items-center gap-1.5">
                             <GitBranch className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">克隆 Git 仓库</span>
+                            <span className="text-sm font-medium">{t('chat.createContainerDialog.sourceGitLabel')}</span>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">从 GitHub 等平台克隆仓库到工作区</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{t('chat.createContainerDialog.sourceGitHint')}</p>
                         </div>
                       </label>
                       {initMode === 'git' && (
@@ -220,7 +228,7 @@ export function CreateContainerDialog({
                           <Input
                             value={initGitUrl}
                             onChange={(e) => setInitGitUrl(e.target.value)}
-                            placeholder="https://github.com/user/repo"
+                            placeholder={t('chat.createContainerDialog.sourceGitPlaceholder')}
                           />
                         </div>
                       )}
@@ -232,12 +240,16 @@ export function CreateContainerDialog({
                 {executionMode === 'host' && (
                   <>
                     <div className="rounded-lg border border-border/70 bg-card p-2">
-                      <DirectoryBrowser value={customCwd} onChange={setCustomCwd} placeholder="默认: data/groups/{folder}/" />
+                      <DirectoryBrowser
+                        value={customCwd}
+                        onChange={setCustomCwd}
+                        placeholder={t('chat.createContainerDialog.hostCwdPlaceholder')}
+                      />
                     </div>
                     <div className="surface-card-soft flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 p-3">
                       <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                       <p className="text-xs text-amber-700">
-                        宿主机模式下 Agent 可访问完整文件系统和工具链，请谨慎使用。
+                        {t('chat.createContainerDialog.hostWarning')}
                       </p>
                     </div>
                   </>
@@ -257,11 +269,13 @@ export function CreateContainerDialog({
 
         <DialogFooter className="mt-4 gap-2 border-t border-border/70 bg-muted/20 px-5 py-4 sm:justify-end">
           <Button variant="outline" onClick={handleClose} disabled={loading}>
-            取消
+            {t('chat.createContainerDialog.cancel')}
           </Button>
           <Button onClick={handleConfirm} disabled={loading || !name.trim()}>
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {loading && (initMode === 'local' || initMode === 'git') ? '正在初始化工作区...' : '创建'}
+            {loading && (initMode === 'local' || initMode === 'git')
+              ? t('chat.createContainerDialog.creatingWithInit')
+              : t('chat.createContainerDialog.create')}
           </Button>
         </DialogFooter>
       </DialogContent>

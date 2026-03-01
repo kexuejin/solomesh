@@ -11,13 +11,15 @@ import {
 } from '@/components/ui/select';
 import type { Permission, UserPublic } from '../../stores/auth';
 import { useUsersStore, type PermissionTemplateKey } from '../../stores/users';
-import { getErrorMessage, PERMISSION_LABELS, type TabNotification } from './utils';
+import { getErrorMessage, getPermissionLabel, type TabNotification } from './utils';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface InviteCodesTabProps extends TabNotification {
   currentUser: UserPublic | null;
 }
 
 export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodesTabProps) {
+  const { t, locale } = useI18n();
   const {
     invites,
     loading,
@@ -85,17 +87,17 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
       };
       const code = await createInvite(payload);
       setGeneratedCode(code);
-      setNotice('邀请码已创建');
+      setNotice(t('users.invites.notice.created'));
       await fetchInvites();
     } catch (err) {
-      setError(getErrorMessage(err, '创建邀请码失败'));
+      setError(getErrorMessage(err, t('users.invites.errors.createFailed')));
     } finally {
       setCreating(false);
     }
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => setNotice('已复制到剪贴板'));
+    navigator.clipboard.writeText(text).then(() => setNotice(t('users.invites.notice.copied')));
   };
 
   return (
@@ -109,7 +111,7 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
           }}
         >
           <Key className="w-4 h-4" />
-          创建邀请码
+          {t('users.invites.create')}
         </Button>
         <Button
           variant="outline"
@@ -118,13 +120,13 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
           disabled={loading}
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          刷新
+          {t('users.invites.refresh')}
         </Button>
       </div>
 
       {showCreate && (
         <div className="space-y-4 rounded-xl border border-border/70 bg-card/95 p-5 md:p-6">
-          <h3 className="text-sm font-medium text-foreground">创建邀请码</h3>
+          <h3 className="text-sm font-medium text-foreground">{t('users.invites.createTitle')}</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Select
               value={inviteTemplate}
@@ -139,10 +141,10 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
               }}
             >
               <SelectTrigger className="h-10 rounded-xl border-border/75 bg-card/95 text-sm">
-                <SelectValue placeholder="不使用模板" />
+                <SelectValue placeholder={t('users.invites.noTemplate')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">不使用模板</SelectItem>
+                <SelectItem value="none">{t('users.invites.noTemplate')}</SelectItem>
                 {availableTemplates.map((item) => (
                   <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>
                 ))}
@@ -153,8 +155,8 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="member">member</SelectItem>
-                {isAdmin && <SelectItem value="admin">admin</SelectItem>}
+                <SelectItem value="member">{t('users.userList.filter.roleMember')}</SelectItem>
+                {isAdmin && <SelectItem value="admin">{t('users.userList.filter.roleAdmin')}</SelectItem>}
               </SelectContent>
             </Select>
             <Input
@@ -164,7 +166,7 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
               min={0}
               max={1000}
               className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
-              placeholder="最大使用次数"
+              placeholder={t('users.invites.maxUses')}
             />
             <Input
               type="number"
@@ -172,7 +174,7 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
               onChange={(e) => setInviteExpiresHours(parseInt(e.target.value, 10) || 0)}
               min={0}
               className="h-10 rounded-xl border-border/75 bg-card/95 text-sm md:col-span-3"
-              placeholder="过期小时（0=永不过期）"
+              placeholder={t('users.invites.expiresHours')}
             />
           </div>
 
@@ -194,7 +196,7 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
                       }
                     }}
                   />
-                  {PERMISSION_LABELS[perm] || perm}
+                  {getPermissionLabel(t, perm) || perm}
                 </label>
               ))}
             </div>
@@ -203,20 +205,20 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
           <div className="flex gap-2">
             <Button className="h-10 rounded-xl px-4" onClick={handleCreate} disabled={creating}>
               {creating && <Loader2 className="w-4 h-4 animate-spin" />}
-              生成
+              {t('users.invites.generate')}
             </Button>
             <Button
               variant="outline"
               className="h-10 rounded-xl border-border/75 px-4"
               onClick={() => setShowCreate(false)}
             >
-              取消
+              {t('users.invites.cancel')}
             </Button>
           </div>
 
           {generatedCode && (
             <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5">
-              <div className="mb-1 text-xs text-emerald-700">邀请码已生成（请立即复制）：</div>
+              <div className="mb-1 text-xs text-emerald-700">{t('users.invites.generatedHint')}</div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 select-all rounded-lg border border-emerald-200/85 bg-card px-2.5 py-1.5 font-mono text-sm text-foreground/90">
                   {generatedCode}
@@ -235,7 +237,7 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-card divide-y divide-border/70">
         {invites.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">暂无邀请码</div>
+          <div className="p-6 text-center text-sm text-muted-foreground">{t('users.invites.empty')}</div>
         ) : (
           invites.map((invite) => {
             const isExpired = invite.expires_at && new Date(invite.expires_at).getTime() < Date.now();
@@ -261,36 +263,44 @@ export function InviteCodesTab({ currentUser, setNotice, setError }: InviteCodes
                     )}
                     {isExpired && (
                       <span className="rounded-lg border border-red-200/80 bg-red-50 px-1.5 py-0.5 text-xs text-red-600">
-                        已过期
+                        {t('users.invites.expired')}
                       </span>
                     )}
                     {isUsedUp && (
                       <span className="rounded-lg border border-orange-200/80 bg-orange-50 px-1.5 py-0.5 text-xs text-orange-600">
-                        已用完
+                        {t('users.invites.usedUp')}
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    创建者: {invite.creator_username} · 使用: {invite.used_count}/{invite.max_uses || '∞'}
-                    {invite.expires_at && ` · 过期: ${new Date(invite.expires_at).toLocaleString('zh-CN')}`}
+                    {t('users.invites.creator', { value: invite.creator_username })} · {t('users.invites.usage', {
+                      used: invite.used_count,
+                      max: invite.max_uses || '∞',
+                    })}
+                    {invite.expires_at &&
+                      ` · ${t('users.invites.expiresAt', {
+                        value: new Date(invite.expires_at).toLocaleString(localeForDateTime(locale)),
+                      })}`}
                   </div>
                   {invite.permissions.length > 0 && (
-                    <div className="text-xs text-muted-foreground mt-1">权限: {invite.permissions.join(', ')}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{t('users.invites.permissions', {
+                      value: invite.permissions.join(', '),
+                    })}</div>
                   )}
                 </div>
                 <button
                   onClick={async () => {
-                    if (!confirm('确定要作废这个邀请码吗？')) return;
+                    if (!confirm(t('users.invites.confirmDelete'))) return;
                     try {
                       await deleteInvite(invite.code);
-                      setNotice('邀请码已删除');
+                      setNotice(t('users.invites.notice.deleted'));
                       await fetchInvites();
                     } catch (err) {
-                      setError(getErrorMessage(err, '删除失败'));
+                      setError(getErrorMessage(err, t('users.invites.errors.deleteFailed')));
                     }
                   }}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 cursor-pointer"
-                  title="删除邀请码"
+                  title={t('users.invites.delete')}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

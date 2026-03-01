@@ -1,6 +1,7 @@
 import { Download } from 'lucide-react';
 import type { McpServer } from '../../stores/mcp-servers';
 import { useMcpServersStore } from '../../stores/mcp-servers';
+import { useI18n } from '../../i18n';
 
 interface McpServerCardProps {
   server: McpServer;
@@ -9,6 +10,7 @@ interface McpServerCardProps {
 }
 
 export function McpServerCard({ server, selected, onSelect }: McpServerCardProps) {
+  const { t } = useI18n();
   const toggleServer = useMcpServersStore((s) => s.toggleServer);
 
   const isHttpType = server.type === 'http' || server.type === 'sse';
@@ -37,7 +39,7 @@ export function McpServerCard({ server, selected, onSelect }: McpServerCardProps
             {server.syncedFromHost && (
               <span className="inline-flex items-center gap-1 rounded-lg border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
                 <Download size={10} />
-                已同步
+                {t('mcp.common.synced')}
               </span>
             )}
           </div>

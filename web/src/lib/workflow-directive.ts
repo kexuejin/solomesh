@@ -1,3 +1,5 @@
+import type { MessageKey } from '../i18n';
+
 export type WorkflowCommandType =
   | 'start'
   | 'accept'
@@ -22,7 +24,9 @@ export interface WorkflowDirectiveInputResult {
 export interface WorkflowCommandSuggestion {
   value: string;
   label: string;
-  description: string;
+  description?: string;
+  descriptionKey?: MessageKey;
+  descriptionParams?: Record<string, string | number>;
 }
 
 export interface WorkflowTemplateSuggestionSource {
@@ -40,17 +44,17 @@ const WORKFLOW_TEMPLATE_SUGGESTIONS: WorkflowCommandSuggestion[] = [
   {
     value: '/wf analysis-heavy',
     label: 'analysis-heavy',
-    description: '分析优先：澄清 -> 深度分析 -> 规划 -> 实现 -> 审查 -> 决策',
+    descriptionKey: 'chat.workflowDirective.templates.analysisHeavy',
   },
   {
     value: '/wf feature-delivery',
     label: 'feature-delivery',
-    description: '功能交付：澄清 -> 计划 -> 实现 -> 验收',
+    descriptionKey: 'chat.workflowDirective.templates.featureDelivery',
   },
   {
     value: '/wf review-gate',
     label: 'review-gate',
-    description: '审查门：上下文整理 -> 深度审查 -> 最终决策',
+    descriptionKey: 'chat.workflowDirective.templates.reviewGate',
   },
 ];
 
@@ -58,27 +62,27 @@ const WORKFLOW_CONTROL_SUGGESTIONS: WorkflowCommandSuggestion[] = [
   {
     value: '/wf-status',
     label: 'wf-status',
-    description: '查看当前 workflow 状态',
+    descriptionKey: 'chat.workflowDirective.controls.status',
   },
   {
     value: '/wf-next',
     label: 'wf-next',
-    description: '手动进入下一阶段',
+    descriptionKey: 'chat.workflowDirective.controls.next',
   },
   {
     value: '/wf-exit',
     label: 'wf-exit',
-    description: '退出当前 workflow',
+    descriptionKey: 'chat.workflowDirective.controls.exit',
   },
   {
     value: '/wf-accept',
     label: 'wf-accept',
-    description: '确认系统推荐的模板',
+    descriptionKey: 'chat.workflowDirective.controls.accept',
   },
   {
     value: '/wf-cancel',
     label: 'wf-cancel',
-    description: '忽略系统推荐的模板',
+    descriptionKey: 'chat.workflowDirective.controls.cancel',
   },
 ];
 
@@ -95,14 +99,19 @@ function buildTemplateSuggestions(
     if (!id || merged.has(id)) continue;
     const name = typeof item.name === 'string' ? item.name.trim() : '';
     const description = typeof item.description === 'string' ? item.description.trim() : '';
-    const descText = description
-      || (name && name !== id ? `名称：${name}` : '')
-      || '自定义模板';
-    merged.set(id, {
+    const suggestion: WorkflowCommandSuggestion = {
       value: `/wf ${id}`,
       label: id,
-      description: descText,
-    });
+    };
+    if (description) {
+      suggestion.description = description;
+    } else if (name && name !== id) {
+      suggestion.descriptionKey = 'chat.workflowDirective.templateName';
+      suggestion.descriptionParams = { name };
+    } else {
+      suggestion.descriptionKey = 'chat.workflowDirective.customTemplate';
+    }
+    merged.set(id, suggestion);
   }
   for (const raw of templateIds ?? []) {
     const id = raw.trim().toLowerCase();
@@ -110,7 +119,7 @@ function buildTemplateSuggestions(
     merged.set(id, {
       value: `/wf ${id}`,
       label: id,
-      description: '自定义模板',
+      descriptionKey: 'chat.workflowDirective.customTemplate',
     });
   }
   return Array.from(merged.values());

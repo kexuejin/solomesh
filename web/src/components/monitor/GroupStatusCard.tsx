@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { useI18n } from '../../i18n';
 
 interface GroupStatusCardProps {
   group: {
@@ -12,6 +13,7 @@ interface GroupStatusCardProps {
 }
 
 export function GroupStatusCard({ group }: GroupStatusCardProps) {
+  const { t } = useI18n();
   return (
     <div className="bg-card rounded-xl border border-border p-4">
       <div className="flex items-center justify-between mb-2">
@@ -20,24 +22,29 @@ export function GroupStatusCard({ group }: GroupStatusCardProps) {
         </span>
         {group.active ? (
           <Badge variant="default" className="bg-green-100 text-green-700 hover:bg-green-200 shrink-0">
-            运行中
+            {t('monitor.status.running')}
           </Badge>
         ) : (
           <Badge variant="secondary" className="shrink-0">
-            空闲
+            {t('monitor.status.idle')}
           </Badge>
         )}
       </div>
 
       <div className="space-y-1.5 text-xs text-muted-foreground">
         <div className="flex items-center justify-between">
-          <span>队列</span>
+          <span>{t('monitor.groups.columns.queue')}</span>
           <span className="text-foreground/80">
-            {group.pendingTasks} 个任务 / {group.pendingMessages ? '有新消息' : '无新消息'}
+            {t('monitor.groups.queueSummary', {
+              tasks: group.pendingTasks,
+              messageStatus: group.pendingMessages
+                ? t('monitor.groups.hasNewMessages')
+                : t('monitor.groups.noNewMessages'),
+            })}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span>进程标识</span>
+          <span>{t('monitor.groups.columns.process')}</span>
           <span className="text-foreground/80 font-mono truncate ml-2 max-w-[60%] text-right">
             {group.displayName || group.containerName || '-'}
           </span>

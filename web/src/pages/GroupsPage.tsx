@@ -5,8 +5,10 @@ import { GroupCard } from '../components/groups/GroupCard';
 import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardGrid } from '@/components/common/Skeletons';
 import { EmptyState } from '@/components/common/EmptyState';
+import { useI18n } from '../i18n';
 
 export function GroupsPage() {
+  const { t } = useI18n();
   const { groups, loading, loadGroups } = useGroupsStore();
 
   useEffect(() => {
@@ -23,8 +25,8 @@ export function GroupsPage() {
       <div className="mx-auto max-w-7xl space-y-5">
         <div className="surface-card p-5">
           <PageHeader
-            title="群组管理"
-            subtitle={`${groupsArray.length} 个已注册群组`}
+            title={t('groups.page.title')}
+            subtitle={t('groups.page.subtitle', { count: groupsArray.length })}
           />
         </div>
 
@@ -35,8 +37,8 @@ export function GroupsPage() {
         {!loading && groupsArray.length === 0 && (
           <EmptyState
             icon={Users}
-            title="暂无群组"
-            description="当前没有已注册的群组"
+            title={t('groups.page.emptyTitle')}
+            description={t('groups.page.emptyDescription')}
           />
         )}
 

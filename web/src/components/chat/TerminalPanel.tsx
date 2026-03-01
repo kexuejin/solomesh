@@ -5,6 +5,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { EyeOff, Trash2 } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 import { wsManager } from '../../api/ws';
+import { useI18n } from '../../i18n';
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected';
 
@@ -21,6 +22,7 @@ export function TerminalPanel({
   onHide,
   onDelete,
 }: TerminalPanelProps) {
+  const { t } = useI18n();
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -31,6 +33,8 @@ export function TerminalPanel({
     connStateRef.current = state;
     setConnState(state);
   };
+  const legacyWorkspaceNotRunning = '\u5de5\u4f5c\u533a\u672a\u8fd0\u884c';
+  const legacyWorkspaceStarting = '\u5de5\u4f5c\u533a\u542f\u52a8\u4e2d';
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -112,7 +116,7 @@ export function TerminalPanel({
       }
     };
 
-    // 监听 WebSocket 消息
+    // Listen for WebSocket messages.
     const unsubOutput = wsManager.on('terminal_output', (data: any) => {
       if (data.chatJid === groupJid) {
         terminal.write(data.data);
@@ -128,22 +132,27 @@ export function TerminalPanel({
     const unsubStopped = wsManager.on('terminal_stopped', (data: any) => {
       if (data.chatJid === groupJid) {
         syncConnState('disconnected');
-        terminal.write(`\r\n\x1b[33m[${data.reason || '终端已断开'}]\x1b[0m\r\n`);
+        terminal.write(`\r\n\x1b[33m[${data.reason || t('chat.terminalPanel.messages.terminalDisconnected')}]\x1b[0m\r\n`);
       }
     });
 
     const unsubError = wsManager.on('terminal_error', (data: any) => {
       if (data.chatJid === groupJid) {
         syncConnState('disconnected');
-        // 针对工作区未运行的错误给出更友好的提示
-        if (data.error?.includes('工作区未运行')) {
-          terminal.write(`\r\n\x1b[33m[工作区启动中...]\x1b[0m\r\n`);
-          terminal.write(`\r\n已自动尝试启动工作区，请稍后点击"重新连接"。\r\n`);
-        } else if (data.error?.includes('工作区启动中')) {
-          terminal.write(`\r\n\x1b[33m[工作区启动中...]\x1b[0m\r\n`);
-          terminal.write(`\r\n工作区正在启动，请稍后点击"重新连接"。\r\n`);
+        // Show a more friendly hint for workspace start-up related errors.
+        const rawError = String(data.error || '');
+        const workspaceNotRunning = rawError.includes(legacyWorkspaceNotRunning)
+          || /workspace.+not running/i.test(rawError);
+        const workspaceStarting = rawError.includes(legacyWorkspaceStarting)
+          || /workspace.+starting/i.test(rawError);
+        if (workspaceNotRunning) {
+          terminal.write(`\r\n\x1b[33m[${t('chat.terminalPanel.messages.workspaceStarting')}]\x1b[0m\r\n`);
+          terminal.write(`\r\n${t('chat.terminalPanel.messages.workspaceAutoStartHint')}\r\n`);
+        } else if (workspaceStarting) {
+          terminal.write(`\r\n\x1b[33m[${t('chat.terminalPanel.messages.workspaceStarting')}]\x1b[0m\r\n`);
+          terminal.write(`\r\n${t('chat.terminalPanel.messages.workspaceStillStartingHint')}\r\n`);
         } else {
-          terminal.write(`\r\n\x1b[31m[错误: ${data.error}]\x1b[0m\r\n`);
+          terminal.write(`\r\n\x1b[31m[${t('chat.terminalPanel.messages.errorPrefix', { error: data.error })}]\x1b[0m\r\n`);
         }
       }
     });
@@ -157,17 +166,17 @@ export function TerminalPanel({
 
     const unsubWsDisconnected = wsManager.on('disconnected', () => {
       syncConnState('disconnected');
-      terminal.write('\r\n\x1b[33m[WebSocket 已断开，等待重连]\x1b[0m\r\n');
+      terminal.write(`\r\n\x1b[33m[${t('chat.terminalPanel.messages.wsDisconnected')}]\x1b[0m\r\n`);
     });
 
-    // 用户输入 → WebSocket（仅在已连接时发送）
+    // User input -> WebSocket (send only after connected).
     const onDataDisposable = terminal.onData((data) => {
       if (connStateRef.current === 'connected') {
         wsManager.send({ type: 'terminal_input', chatJid: groupJid, data });
       }
     });
 
-    // ResizeObserver 监听尺寸变化
+    // Resize observer tracks container size changes.
     const resizeObserver = new ResizeObserver(() => {
       if (!visibleRef.current) return;
       requestAnimationFrame(() => {
@@ -182,7 +191,7 @@ export function TerminalPanel({
     });
     resizeObserver.observe(termRef.current);
 
-    // 初次尝试连接；若 WS 未就绪，connected 事件会自动触发 terminal_start
+    // Initial connect attempt. If WS is not ready, connected event triggers terminal_start.
     requestStartTerminal();
 
     // Cleanup
@@ -215,9 +224,13 @@ export function TerminalPanel({
             'bg-[#4a5170]'
           }`} />
           <span className="text-[#8b94b8]">
-            {connState === 'connected' ? '已连接' :
-             connState === 'connecting' ? '连接中...' :
-             connState === 'disconnected' ? '已断开' : '空闲'}
+            {connState === 'connected'
+              ? t('chat.terminalPanel.status.connected')
+              : connState === 'connecting'
+                ? t('chat.terminalPanel.status.connecting')
+                : connState === 'disconnected'
+                  ? t('chat.terminalPanel.status.disconnected')
+                  : t('chat.terminalPanel.status.idle')}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -240,15 +253,15 @@ export function TerminalPanel({
               }}
               className="text-brand-400 hover:text-brand-300 transition-colors cursor-pointer"
             >
-              重新连接
+              {t('chat.terminalPanel.reconnect')}
             </button>
           )}
           {onHide && (
             <button
               onClick={onHide}
               className="p-1 rounded hover:bg-white/10 text-[#8b94b8] hover:text-[#d4dbf2] transition-colors cursor-pointer"
-              aria-label="隐藏终端"
-              title="隐藏终端"
+              aria-label={t('chat.terminalPanel.hide')}
+              title={t('chat.terminalPanel.hide')}
             >
               <EyeOff className="w-3.5 h-3.5" />
             </button>
@@ -257,8 +270,8 @@ export function TerminalPanel({
             <button
               onClick={onDelete}
               className="p-1 rounded hover:bg-red-900/30 text-[#8b94b8] hover:text-red-300 transition-colors cursor-pointer"
-              aria-label="删除终端"
-              title="删除终端"
+              aria-label={t('chat.terminalPanel.delete')}
+              title={t('chat.terminalPanel.delete')}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>

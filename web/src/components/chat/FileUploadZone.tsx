@@ -1,12 +1,14 @@
 import { useState, useRef, DragEvent } from 'react';
 import { Upload, FolderUp } from 'lucide-react';
 import { useFileStore } from '../../stores/files';
+import { useI18n } from '../../i18n';
 
 interface FileUploadZoneProps {
   groupJid: string;
 }
 
 export function FileUploadZone({ groupJid }: FileUploadZoneProps) {
+  const { t } = useI18n();
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -92,8 +94,8 @@ export function FileUploadZone({ groupJid }: FileUploadZoneProps) {
           /* Upload progress */
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span className="truncate max-w-[60%]">{uploadProgress.currentFile || '完成'}</span>
-              <span>{uploadProgress.completed}/{uploadProgress.total} 个文件</span>
+              <span className="truncate max-w-[60%]">{uploadProgress.currentFile || t('chat.fileUploadZone.done')}</span>
+              <span>{t('chat.fileUploadZone.fileCount', { completed: uploadProgress.completed, total: uploadProgress.total })}</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
@@ -107,7 +109,7 @@ export function FileUploadZone({ groupJid }: FileUploadZoneProps) {
           /* Idle state */
             <div className="flex flex-col items-center gap-2 py-1 text-center">
               <p className="text-xs text-muted-foreground">
-                {isDragging ? '释放以上传' : '拖拽文件到这里，或'}
+                {isDragging ? t('chat.fileUploadZone.dropToUpload') : t('chat.fileUploadZone.dragHint')}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -115,14 +117,14 @@ export function FileUploadZone({ groupJid }: FileUploadZoneProps) {
                   className="flex cursor-pointer items-center gap-1 rounded-md bg-brand-50 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-brand-100"
                 >
                 <Upload className="w-3.5 h-3.5" />
-                上传文件
+                {t('chat.fileUploadZone.uploadFile')}
               </button>
                 <button
                   onClick={() => folderInputRef.current?.click()}
                   className="flex cursor-pointer items-center gap-1 rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
                 >
                 <FolderUp className="w-3.5 h-3.5" />
-                上传文件夹
+                {t('chat.fileUploadZone.uploadFolder')}
               </button>
             </div>
           </div>

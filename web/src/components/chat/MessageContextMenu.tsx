@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, FileText } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 interface MessageContextMenuProps {
   content: string;
@@ -9,6 +10,7 @@ interface MessageContextMenuProps {
 }
 
 export function MessageContextMenu({ content, position, onClose }: MessageContextMenuProps) {
+  const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export function MessageContextMenu({ content, position, onClose }: MessageContex
           className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-muted/70 active:bg-muted"
         >
           <Copy className="w-4 h-4 text-muted-foreground" />
-          复制文本
+          {t('chat.contextMenu.copyText')}
         </button>
         <div className="mx-3 border-t border-border/70" />
         <button
@@ -77,7 +79,7 @@ export function MessageContextMenu({ content, position, onClose }: MessageContex
           className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-muted/70 active:bg-muted"
         >
           <FileText className="w-4 h-4 text-muted-foreground" />
-          复制 Markdown
+          {t('chat.contextMenu.copyMarkdown')}
         </button>
       </div>
     </div>,

@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import { useUsersStore } from '../../stores/users';
 import { getErrorMessage } from './utils';
 import { withBasePath } from '../../utils/url';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface AuditLogTabProps {
   setError: (value: string | null) => void;
 }
 
 export function AuditLogTab({ setError }: AuditLogTabProps) {
+  const { t, locale } = useI18n();
   const { auditLogs, loading, fetchAuditLogs } = useUsersStore();
   const [eventType, setEventType] = useState('all');
   const [username, setUsername] = useState('');
@@ -27,7 +29,7 @@ export function AuditLogTab({ setError }: AuditLogTabProps) {
         offset: 0,
       });
     } catch (err) {
-      setError(getErrorMessage(err, '加载审计日志失败'));
+      setError(getErrorMessage(err, t('users.audit.errors.loadFailed')));
     }
   };
 
@@ -52,21 +54,21 @@ export function AuditLogTab({ setError }: AuditLogTabProps) {
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="目标用户名"
+          placeholder={t('users.audit.targetUsername')}
           className="h-10 rounded-xl border-border/75 bg-card/95 text-sm sm:w-44"
         />
         <Input
           type="text"
           value={actorUsername}
           onChange={(e) => setActorUsername(e.target.value)}
-          placeholder="操作者用户名"
+          placeholder={t('users.audit.actorUsername')}
           className="h-10 rounded-xl border-border/75 bg-card/95 text-sm sm:w-44"
         />
         <Input
           type="text"
           value={eventType}
           onChange={(e) => setEventType(e.target.value)}
-          placeholder="事件类型（all）"
+          placeholder={t('users.audit.eventType')}
           className="h-10 rounded-xl border-border/75 bg-card/95 text-sm sm:w-44"
         />
         <Input
@@ -84,19 +86,19 @@ export function AuditLogTab({ setError }: AuditLogTabProps) {
           disabled={loading}
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          刷新
+          {t('users.audit.refresh')}
         </Button>
         <a
           href={exportUrl}
           className="inline-flex h-10 items-center rounded-xl border border-border/75 px-4 text-sm text-foreground/85 transition-colors hover:bg-muted/45"
         >
-          导出 CSV
+          {t('users.audit.exportCsv')}
         </a>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-card divide-y divide-border/70">
         {auditLogs.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">暂无记录</div>
+          <div className="p-6 text-center text-sm text-muted-foreground">{t('users.audit.empty')}</div>
         ) : (
           auditLogs.map((log) => (
             <div key={log.id} className="space-y-2 px-5 py-4">
@@ -104,7 +106,10 @@ export function AuditLogTab({ setError }: AuditLogTabProps) {
                 {log.event_type} · {log.username}
               </div>
               <div className="text-xs text-muted-foreground mt-1">
-                操作者: {log.actor_username || '-'} · IP: {log.ip_address || '-'} · 时间: {new Date(log.created_at).toLocaleString('zh-CN')}
+                {t('users.audit.actor', { value: log.actor_username || '-' })} · IP: {log.ip_address || '-'} ·{' '}
+                {t('users.audit.time', {
+                  value: new Date(log.created_at).toLocaleString(localeForDateTime(locale)),
+                })}
               </div>
               {log.details && (
                 <pre className="mt-2 overflow-x-auto rounded-xl border border-border/70 bg-muted/30 p-3 text-[11px] text-muted-foreground">

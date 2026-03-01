@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { type Permission, useAuthStore } from '../../stores/auth';
+import { useI18n } from '../../i18n';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -16,6 +17,7 @@ export function AuthGuard({
   requiredPermission,
   requiredAnyPermissions,
 }: AuthGuardProps) {
+  const { t } = useI18n();
   const { authenticated, checking, checkAuth, user, initialized, setupStatus, hasPermission } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -42,16 +44,16 @@ export function AuthGuard({
       return (
         <div className="min-h-screen bg-muted/40 flex items-center justify-center p-6">
           <div className="max-w-md text-center bg-card rounded-xl border border-border p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-2">页面初始化超时</h2>
+            <h2 className="text-lg font-semibold text-foreground mb-2">{t('authGuard.timeoutTitle')}</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              后端可能刚启动或浏览器缓存异常，请先刷新页面；若仍失败，重新登录。
+              {t('authGuard.timeoutDescription')}
             </p>
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={() => window.location.reload()}
                 className="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:bg-primary/90"
               >
-                刷新页面
+                {t('authGuard.refreshPage')}
               </button>
               <button
                 onClick={() => {
@@ -59,7 +61,7 @@ export function AuthGuard({
                 }}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-foreground/80 hover:bg-muted"
               >
-                去登录页
+                {t('authGuard.goLogin')}
               </button>
             </div>
           </div>
@@ -70,7 +72,7 @@ export function AuthGuard({
       <div className="min-h-screen bg-muted/40 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-16 h-16 text-primary animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">加载中...</p>
+          <p className="text-muted-foreground">{t('auth.loading')}</p>
         </div>
       </div>
     );

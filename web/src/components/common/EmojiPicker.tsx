@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '../../i18n';
 
 export interface EmojiPickerProps {
   value?: string;
   onChange: (emoji: string) => void;
 }
 
-const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
+const EMOJI_CATEGORIES = [
   {
-    label: '动物',
+    id: 'animals',
+    labelKey: 'shared.emojiPicker.categories.animals',
     emojis: [
       '🐱','🐶','🐭','🐹','🐰','🦊','🐻','🐼',
       '🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵',
@@ -28,7 +30,8 @@ const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
     ],
   },
   {
-    label: '表情',
+    id: 'faces',
+    labelKey: 'shared.emojiPicker.categories.faces',
     emojis: [
       '😀','😃','😄','😁','😆','😅','🤣','😂',
       '🙂','😉','😊','😇','🥰','😍','🤩','😘',
@@ -37,7 +40,8 @@ const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
     ],
   },
   {
-    label: '自然',
+    id: 'nature',
+    labelKey: 'shared.emojiPicker.categories.nature',
     emojis: [
       '🌸','🌺','🌻','🌹','🌷','🌼','💐','🪻',
       '🌿','🍀','🍁','🍂','🍃','🪴','🌵','🌲',
@@ -48,7 +52,8 @@ const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
     ],
   },
   {
-    label: '食物',
+    id: 'food',
+    labelKey: 'shared.emojiPicker.categories.food',
     emojis: [
       '🍎','🍊','🍋','🍇','🍓','🫐','🍑','🍒',
       '🥝','🍌','🥑','🍕','🍔','🌮','🍣','🍩',
@@ -56,7 +61,8 @@ const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
     ],
   },
   {
-    label: '物品',
+    id: 'objects',
+    labelKey: 'shared.emojiPicker.categories.objects',
     emojis: [
       '💎','🔮','🪄','🎯','🎨','🎭','🎪','🎬',
       '🎵','🎸','🎹','🥁','🎺','🎻','🎮','🕹️',
@@ -67,7 +73,8 @@ const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
     ],
   },
   {
-    label: '符号',
+    id: 'symbols',
+    labelKey: 'shared.emojiPicker.categories.symbols',
     emojis: [
       '❤️','🧡','💛','💚','💙','💜','🖤','🤍',
       '💔','❣️','💕','💞','💓','💗','💖','💘',
@@ -79,6 +86,7 @@ const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
 ];
 
 export function EmojiPicker({ value, onChange }: EmojiPickerProps) {
+  const { t } = useI18n();
   const [activeCategory, setActiveCategory] = useState(0);
   const [customInput, setCustomInput] = useState('');
 
@@ -96,7 +104,7 @@ export function EmojiPicker({ value, onChange }: EmojiPickerProps) {
       <div className="flex gap-1 overflow-x-auto pb-1">
         {EMOJI_CATEGORIES.map((cat, i) => (
           <button
-            key={cat.label}
+            key={cat.id}
             type="button"
             onClick={() => setActiveCategory(i)}
             className={cn(
@@ -106,7 +114,7 @@ export function EmojiPicker({ value, onChange }: EmojiPickerProps) {
                 : 'text-muted-foreground hover:bg-muted',
             )}
           >
-            {cat.label}
+            {t(cat.labelKey as any)}
           </button>
         ))}
       </div>
@@ -135,7 +143,7 @@ export function EmojiPicker({ value, onChange }: EmojiPickerProps) {
           value={customInput}
           onChange={(e) => setCustomInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCustomSubmit()}
-          placeholder="输入任意 emoji..."
+          placeholder={t('shared.emojiPicker.customPlaceholder')}
           className="flex-1 px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
           maxLength={8}
         />
@@ -145,14 +153,14 @@ export function EmojiPicker({ value, onChange }: EmojiPickerProps) {
           disabled={!customInput.trim()}
           className="px-3 py-1.5 text-xs font-medium bg-brand-50 text-primary rounded-md hover:bg-brand-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
-          确认
+          {t('shared.emojiPicker.confirm')}
         </button>
       </div>
 
       {/* Current selection indicator */}
       {value && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>当前选择：</span>
+          <span>{t('shared.emojiPicker.currentSelection')}</span>
           <span className="text-lg">{value}</span>
         </div>
       )}

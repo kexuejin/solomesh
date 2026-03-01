@@ -1,3 +1,5 @@
+import type { MessageKey } from '../../i18n';
+
 export type ScheduleType = 'cron' | 'interval' | 'once';
 export type ContextMode = 'group' | 'isolated';
 
@@ -31,6 +33,30 @@ export interface ParsedSchedule {
   label: string;
 }
 
+interface AutomationTemplateDefinition {
+  id: string;
+  nameKey: MessageKey;
+  summaryKey: MessageKey;
+  cadenceKey: MessageKey;
+  promptKey: MessageKey;
+  scheduleType: ScheduleType;
+  scheduleValue: string;
+  contextMode: ContextMode;
+}
+
+interface SchedulePresetDefinition {
+  id: string;
+  labelKey: MessageKey;
+  hintKey: MessageKey;
+  mode: SchedulePreset['mode'];
+  count?: number;
+  unitMs?: number;
+  cron?: string;
+  offsetMinutes?: number;
+  hour?: number;
+  minute?: number;
+}
+
 export const INTERVAL_UNITS = [
   { label: '秒', ms: 1000 },
   { label: '分钟', ms: 60 * 1000 },
@@ -38,85 +64,163 @@ export const INTERVAL_UNITS = [
   { label: '天', ms: 24 * 60 * 60 * 1000 },
 ] as const;
 
-export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
+const AUTOMATION_TEMPLATE_DEFS: AutomationTemplateDefinition[] = [
   {
     id: 'daily-brief',
-    name: '每日晨报',
-    summary: '汇总最近 24 小时关键进展和风险。',
-    cadence: '每天 09:00',
-    prompt:
-      '整理过去24小时工作区内的关键进展、阻塞项和待决策问题，输出简洁晨报并附带优先级建议。',
+    nameKey: 'tasks.templates.dailyBrief.name',
+    summaryKey: 'tasks.templates.dailyBrief.summary',
+    cadenceKey: 'tasks.templates.dailyBrief.cadence',
+    promptKey: 'tasks.templates.dailyBrief.prompt',
     scheduleType: 'cron',
     scheduleValue: '0 9 * * *',
     contextMode: 'group',
   },
   {
     id: 'weekday-standup',
-    name: '工作日站会摘要',
-    summary: '工作日定时生成可读的站会摘要。',
-    cadence: '工作日 18:00',
-    prompt:
-      '提取今天的任务推进情况，按“已完成 / 进行中 / 阻塞”输出站会摘要，并给出明日优先建议。',
+    nameKey: 'tasks.templates.weekdayStandup.name',
+    summaryKey: 'tasks.templates.weekdayStandup.summary',
+    cadenceKey: 'tasks.templates.weekdayStandup.cadence',
+    promptKey: 'tasks.templates.weekdayStandup.prompt',
     scheduleType: 'cron',
     scheduleValue: '0 18 * * 1-5',
     contextMode: 'group',
   },
   {
     id: 'release-watch',
-    name: '发布巡检',
-    summary: '定期巡检发布相关日志与告警。',
-    cadence: '每 30 分钟',
-    prompt:
-      '检查最近发布流水线、错误日志和告警状态，标记异常并给出处置建议。若无异常，回复“巡检正常”。',
+    nameKey: 'tasks.templates.releaseWatch.name',
+    summaryKey: 'tasks.templates.releaseWatch.summary',
+    cadenceKey: 'tasks.templates.releaseWatch.cadence',
+    promptKey: 'tasks.templates.releaseWatch.prompt',
     scheduleType: 'interval',
     scheduleValue: String(30 * 60 * 1000),
     contextMode: 'isolated',
   },
   {
     id: 'error-digest',
-    name: '错误聚合速报',
-    summary: '高频聚合错误与失败任务，快速定位风险。',
-    cadence: '每 10 分钟',
-    prompt:
-      '汇总近10分钟新增错误、失败任务和高频异常，按影响面排序输出并附恢复建议。',
+    nameKey: 'tasks.templates.errorDigest.name',
+    summaryKey: 'tasks.templates.errorDigest.summary',
+    cadenceKey: 'tasks.templates.errorDigest.cadence',
+    promptKey: 'tasks.templates.errorDigest.prompt',
     scheduleType: 'interval',
     scheduleValue: String(10 * 60 * 1000),
     contextMode: 'isolated',
   },
   {
     id: 'weekly-retro',
-    name: '周复盘草稿',
-    summary: '每周自动生成复盘草稿。',
-    cadence: '每周五 17:00',
-    prompt:
-      '基于本周会话和任务执行记录，生成周复盘草稿：目标完成度、风险、下周计划与改进建议。',
+    nameKey: 'tasks.templates.weeklyRetro.name',
+    summaryKey: 'tasks.templates.weeklyRetro.summary',
+    cadenceKey: 'tasks.templates.weeklyRetro.cadence',
+    promptKey: 'tasks.templates.weeklyRetro.prompt',
     scheduleType: 'cron',
     scheduleValue: '0 17 * * 5',
     contextMode: 'group',
   },
   {
     id: 'code-health',
-    name: '代码健康巡检',
-    summary: '关注代码变更、测试和构建状态。',
-    cadence: '工作日 10:00',
-    prompt:
-      '检查近期代码变更、测试结果与构建状态，输出潜在风险与建议动作，按优先级排序。',
+    nameKey: 'tasks.templates.codeHealth.name',
+    summaryKey: 'tasks.templates.codeHealth.summary',
+    cadenceKey: 'tasks.templates.codeHealth.cadence',
+    promptKey: 'tasks.templates.codeHealth.prompt',
     scheduleType: 'cron',
     scheduleValue: '0 10 * * 1-5',
     contextMode: 'isolated',
   },
 ];
 
-export const SCHEDULE_PRESETS: SchedulePreset[] = [
-  { id: 'q10m', label: '每 10 分钟', hint: '高频巡检', mode: 'interval', count: 10, unitMs: 60 * 1000 },
-  { id: 'q30m', label: '每 30 分钟', hint: '常规轮询', mode: 'interval', count: 30, unitMs: 60 * 1000 },
-  { id: 'q1h', label: '每 1 小时', hint: '小时级检查', mode: 'interval', count: 1, unitMs: 60 * 60 * 1000 },
-  { id: 'd0900', label: '每天 09:00', hint: '日报/晨报', mode: 'cron', cron: '0 9 * * *' },
-  { id: 'wkd0900', label: '工作日 09:00', hint: '工作日任务', mode: 'cron', cron: '0 9 * * 1-5' },
-  { id: 'once30m', label: '30 分钟后', hint: '一次性执行', mode: 'once-offset', offsetMinutes: 30 },
-  { id: 'once2h', label: '2 小时后', hint: '一次性执行', mode: 'once-offset', offsetMinutes: 120 },
-  { id: 'once-tomorrow-9', label: '明天 09:00', hint: '一次性执行', mode: 'once-tomorrow', hour: 9, minute: 0 },
+export function getAutomationTemplates(
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+): AutomationTemplate[] {
+  return AUTOMATION_TEMPLATE_DEFS.map((def) => ({
+    id: def.id,
+    name: t(def.nameKey),
+    summary: t(def.summaryKey),
+    cadence: t(def.cadenceKey),
+    prompt: t(def.promptKey),
+    scheduleType: def.scheduleType,
+    scheduleValue: def.scheduleValue,
+    contextMode: def.contextMode,
+  }));
+}
+
+const SCHEDULE_PRESET_DEFS: SchedulePresetDefinition[] = [
+  {
+    id: 'q10m',
+    labelKey: 'tasks.presets.q10m.label',
+    hintKey: 'tasks.presets.q10m.hint',
+    mode: 'interval',
+    count: 10,
+    unitMs: 60 * 1000,
+  },
+  {
+    id: 'q30m',
+    labelKey: 'tasks.presets.q30m.label',
+    hintKey: 'tasks.presets.q30m.hint',
+    mode: 'interval',
+    count: 30,
+    unitMs: 60 * 1000,
+  },
+  {
+    id: 'q1h',
+    labelKey: 'tasks.presets.q1h.label',
+    hintKey: 'tasks.presets.q1h.hint',
+    mode: 'interval',
+    count: 1,
+    unitMs: 60 * 60 * 1000,
+  },
+  {
+    id: 'd0900',
+    labelKey: 'tasks.presets.d0900.label',
+    hintKey: 'tasks.presets.d0900.hint',
+    mode: 'cron',
+    cron: '0 9 * * *',
+  },
+  {
+    id: 'wkd0900',
+    labelKey: 'tasks.presets.wkd0900.label',
+    hintKey: 'tasks.presets.wkd0900.hint',
+    mode: 'cron',
+    cron: '0 9 * * 1-5',
+  },
+  {
+    id: 'once30m',
+    labelKey: 'tasks.presets.once30m.label',
+    hintKey: 'tasks.presets.once30m.hint',
+    mode: 'once-offset',
+    offsetMinutes: 30,
+  },
+  {
+    id: 'once2h',
+    labelKey: 'tasks.presets.once2h.label',
+    hintKey: 'tasks.presets.once2h.hint',
+    mode: 'once-offset',
+    offsetMinutes: 120,
+  },
+  {
+    id: 'once-tomorrow-9',
+    labelKey: 'tasks.presets.onceTomorrow9.label',
+    hintKey: 'tasks.presets.onceTomorrow9.hint',
+    mode: 'once-tomorrow',
+    hour: 9,
+    minute: 0,
+  },
 ];
+
+export function getSchedulePresets(
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+): SchedulePreset[] {
+  return SCHEDULE_PRESET_DEFS.map((def) => ({
+    id: def.id,
+    label: t(def.labelKey),
+    hint: t(def.hintKey),
+    mode: def.mode,
+    ...(def.count !== undefined ? { count: def.count } : {}),
+    ...(def.unitMs !== undefined ? { unitMs: def.unitMs } : {}),
+    ...(def.cron !== undefined ? { cron: def.cron } : {}),
+    ...(def.offsetMinutes !== undefined ? { offsetMinutes: def.offsetMinutes } : {}),
+    ...(def.hour !== undefined ? { hour: def.hour } : {}),
+    ...(def.minute !== undefined ? { minute: def.minute } : {}),
+  }));
+}
 
 export function toLocalDateTimeInput(date: Date): string {
   const pad = (num: number) => String(num).padStart(2, '0');
@@ -167,7 +271,10 @@ function parseDateTimeString(input: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function parseHumanSchedule(input: string, now = new Date()): ParsedSchedule | null {
+export function parseHumanSchedule(
+  input: string,
+  now = new Date(),
+): ParsedSchedule | null {
   const raw = input.trim().replace(/\s+/g, '');
   if (!raw) return null;
 

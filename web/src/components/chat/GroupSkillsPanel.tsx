@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
 import { api } from '../../api/client';
 import { useChatStore } from '../../stores/chat';
+import { useI18n } from '../../i18n';
 
 interface Skill {
   id: string;
@@ -34,9 +35,10 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
+  const { locale, t } = useI18n();
   const group = useChatStore((s) => s.groups[groupJid]);
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null); // null = 全部选中
+  const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null); // null = all selected
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -45,7 +47,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
 
-  // 加载可用 skills
+  // Load available skills.
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -54,17 +56,17 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
         setAllSkills(data.skills);
       })
       .catch((err) => {
-        setError(getErrorMessage(err, '加载技能列表失败'));
+        setError(getErrorMessage(err, t('chat.skills.errors.loadFailed')));
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
-  // 从群组数据初始化选中状态
+  // Initialize selected IDs from group settings.
   useEffect(() => {
     if (!group) return;
     const ss = group.selected_skills;
     if (ss === null || ss === undefined) {
-      setSelectedIds(null); // 全部选中
+      setSelectedIds(null); // all selected
     } else {
       setSelectedIds(new Set(ss));
     }
@@ -88,9 +90,9 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
       })
       .sort((a, b) => {
         if (a.source !== b.source) return a.source === 'user' ? -1 : 1;
-        return a.name.localeCompare(b.name, 'zh-CN');
+        return a.name.localeCompare(b.name, locale === 'zh-CN' ? 'zh-CN' : 'en');
       });
-  }, [allSkills, query, sourceFilter]);
+  }, [allSkills, locale, query, sourceFilter]);
 
   const isSelected = useCallback((id: string) => {
     return allSelected || !!selectedIds?.has(id);
@@ -100,7 +102,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
     setDirty(true);
     setSaveSuccess(false);
     if (allSelected) {
-      // 从"全选"切换为显式选择：选中除当前项外的所有
+      // Switch from "all selected" to explicit selection.
       const newSet = new Set(allSkills.map((s) => s.id));
       newSet.delete(id);
       setSelectedIds(newSet);
@@ -113,7 +115,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
     } else {
       newSet.add(id);
     }
-    // 如果全部选中，切换回 null
+    // Use null to represent all selected.
     if (newSet.size === allSkills.length) {
       setSelectedIds(null);
     } else {
@@ -135,7 +137,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
     try {
       const payload = allSelected ? null : Array.from(selectedIds ?? []);
       await api.patch(`/api/groups/${encodeURIComponent(groupJid)}`, { selected_skills: payload });
-      // 更新本地 store
+      // Keep chat store selection in sync.
       useChatStore.setState((s) => {
         const g = s.groups[groupJid];
         if (!g) return s;
@@ -148,7 +150,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
-      setError(getErrorMessage(err, '保存技能配置失败'));
+      setError(getErrorMessage(err, t('chat.skills.errors.saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -167,11 +169,14 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
       <div className="space-y-3 border-b border-sidebar-border bg-card px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">工作区技能</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('chat.skills.title')}</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               {allSelected
-                ? `默认继承全部技能（${allSkills.length}）`
-                : `已显式选择 ${selectedCount}/${allSkills.length}`}
+                ? t('chat.skills.inheritAll', { count: allSkills.length })
+                : t('chat.skills.explicitSelection', {
+                  selected: selectedCount,
+                  total: allSkills.length,
+                })}
             </p>
           </div>
           <Button
@@ -184,7 +189,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
             {saving
               ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
               : <Save className="mr-1 h-3.5 w-3.5" />}
-            {saveSuccess ? '已保存' : '保存'}
+            {saveSuccess ? t('chat.skills.saved') : t('chat.skills.save')}
           </Button>
         </div>
 
@@ -198,7 +203,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
             )}
             onClick={() => setSourceFilter('all')}
           >
-            全部
+            {t('chat.skills.filters.all')}
           </button>
           <button
             className={cn(
@@ -209,7 +214,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
             )}
             onClick={() => setSourceFilter('user')}
           >
-            用户技能
+            {t('chat.skills.filters.user')}
           </button>
           <button
             className={cn(
@@ -220,7 +225,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
             )}
             onClick={() => setSourceFilter('project')}
           >
-            项目技能
+            {t('chat.skills.filters.project')}
           </button>
         </div>
 
@@ -229,19 +234,19 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索技能名称或描述..."
+            placeholder={t('chat.skills.searchPlaceholder')}
             className="h-9 rounded-[10px] border-border/80 bg-card pl-9"
           />
         </div>
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>可见技能 {visibleSkills.length}</span>
+          <span>{t('chat.skills.visibleCount', { count: visibleSkills.length })}</span>
           {!allSelected && (
             <button
               onClick={selectAll}
               className="rounded-md px-1.5 py-0.5 text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-700"
             >
-              恢复默认全选
+              {t('chat.skills.restoreDefault')}
             </button>
           )}
         </div>
@@ -258,12 +263,12 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
         {visibleSkills.length === 0 ? (
           <EmptyState
             icon={Sparkles}
-            title={query ? '没有匹配的技能' : '暂无可用技能'}
-            description={query ? '尝试更换关键词或切换来源筛选。' : '请先安装技能后再为工作区配置。'}
+            title={query ? t('chat.skills.emptySearchTitle') : t('chat.skills.emptyTitle')}
+            description={query ? t('chat.skills.emptySearchDescription') : t('chat.skills.emptyDescription')}
             className="py-14"
             action={query ? (
               <Button size="xs" variant="outline" onClick={() => setQuery('')}>
-                清空搜索
+                {t('chat.skills.clearSearch')}
               </Button>
             ) : undefined}
           />
@@ -272,8 +277,8 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
             {visibleSkills.map((skill) => {
               const checked = isSelected(skill.id);
               const sourceLabel = skill.source === 'project'
-                ? '项目'
-                : (skill.syncedFromHost ? '同步' : '用户');
+                ? t('chat.skills.source.project')
+                : (skill.syncedFromHost ? t('chat.skills.source.synced') : t('chat.skills.source.user'));
               return (
                 <label
                   key={skill.id}
@@ -320,7 +325,7 @@ export function GroupSkillsPanel({ groupJid }: GroupSkillsPanelProps) {
 
       <div className="border-t border-sidebar-border bg-background px-4 py-2.5">
         <p className="text-[11px] text-muted-foreground">
-          更改将在下次容器启动时生效
+          {t('chat.skills.footerHint')}
         </p>
       </div>
     </div>

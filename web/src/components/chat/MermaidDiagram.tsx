@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, Check, Maximize2, X } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 let mermaidPromise: Promise<typeof import('mermaid')> | null = null;
 let idCounter = 0;
@@ -43,6 +44,7 @@ interface MermaidDiagramProps {
 }
 
 export function MermaidDiagram({ code }: MermaidDiagramProps) {
+  const { t } = useI18n();
   const idRef = useRef(`mermaid-${++idCounter}`);
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
       <div className="my-4 rounded-lg bg-muted/40 border border-border p-8 flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center gap-2">
           <div className="h-24 w-48 bg-muted rounded" />
-          <span className="text-sm text-muted-foreground">Mermaid 图表渲染中...</span>
+          <span className="text-sm text-muted-foreground">{t('chat.mermaid.rendering')}</span>
         </div>
       </div>
     );
@@ -126,18 +128,18 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
             {copied ? (
               <>
                 <Check size={14} />
-                已复制
+                {t('chat.mermaid.copied')}
               </>
             ) : (
               <>
                 <Copy size={14} />
-                复制
+                {t('chat.mermaid.copy')}
               </>
             )}
           </button>
         </div>
         <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-t-lg px-3 py-1">
-          Mermaid 语法错误，已降级为代码展示
+          {t('chat.mermaid.syntaxErrorFallback')}
         </div>
         <pre className="!bg-[#f6f8fa] rounded-b-lg p-4 overflow-x-auto">
           <code className="language-mermaid">{code}</code>
@@ -153,7 +155,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           <button
             onClick={() => setExpanded(true)}
             className="p-2 rounded-lg bg-muted hover:bg-accent text-foreground/80 text-xs flex items-center gap-1 transition-colors"
-            title="放大查看"
+            title={t('chat.mermaid.zoomIn')}
           >
             <Maximize2 size={14} />
           </button>
@@ -164,12 +166,12 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
             {copied ? (
               <>
                 <Check size={14} />
-                已复制
+                {t('chat.mermaid.copied')}
               </>
             ) : (
               <>
                 <Copy size={14} />
-                源码
+                {t('chat.mermaid.source')}
               </>
             )}
           </button>
@@ -192,8 +194,8 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
             <button
               onClick={() => setExpanded(false)}
               className="absolute top-3 right-3 z-20 p-2 rounded-full bg-foreground/70 text-primary-foreground hover:bg-foreground transition-colors cursor-pointer"
-              aria-label="关闭图表预览"
-              title="关闭"
+              aria-label={t('chat.mermaid.closePreview')}
+              title={t('chat.mermaid.close')}
             >
               <X size={16} />
             </button>

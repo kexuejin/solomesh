@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 interface ImageLightboxProps {
   images: string[];
@@ -9,6 +10,7 @@ interface ImageLightboxProps {
 }
 
 export function ImageLightbox({ images, initialIndex, onClose }: ImageLightboxProps) {
+  const { t } = useI18n();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [scale, setScale] = useState(1);
   const [translateY, setTranslateY] = useState(0);
@@ -149,7 +151,7 @@ export function ImageLightbox({ images, initialIndex, onClose }: ImageLightboxPr
       <button
         onClick={handleClose}
         className="absolute right-4 top-4 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/12 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
-        aria-label="关闭图片预览"
+        aria-label={t('chat.imageLightbox.close')}
       >
         <X className="h-5 w-5" />
       </button>
@@ -169,7 +171,7 @@ export function ImageLightbox({ images, initialIndex, onClose }: ImageLightboxPr
               onClick={handlePrev}
               disabled={currentIndex === 0}
               className="absolute left-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition disabled:cursor-not-allowed disabled:opacity-35 sm:inline-flex"
-              aria-label="上一张"
+              aria-label={t('chat.imageLightbox.prev')}
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -178,7 +180,7 @@ export function ImageLightbox({ images, initialIndex, onClose }: ImageLightboxPr
               onClick={handleNext}
               disabled={currentIndex === images.length - 1}
               className="absolute right-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition disabled:cursor-not-allowed disabled:opacity-35 sm:inline-flex"
-              aria-label="下一张"
+              aria-label={t('chat.imageLightbox.next')}
             >
               <ChevronRight className="h-5 w-5" />
             </button>

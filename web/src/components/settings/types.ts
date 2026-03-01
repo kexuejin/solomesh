@@ -1,3 +1,5 @@
+import { extractErrorMessage } from '../../lib/error-message';
+
 export interface RuntimeConfigPublic {
   agentRuntime: 'claude' | 'codex' | 'gemini';
   anthropicBaseUrl: string;
@@ -160,24 +162,5 @@ export type SettingsTab =
   | 'about';
 
 export function getErrorMessage(err: unknown, fallback: string): string {
-  if (typeof err === 'object' && err !== null && 'message' in err) {
-    const msg = (err as { message?: unknown }).message;
-    if (typeof msg === 'string' && msg.trim()) return msg;
-  }
-  if (err instanceof Error && err.message) return err.message;
-  return fallback;
-}
-
-export function sourceLabel(source: FeishuConfigPublic['source']): string {
-  if (source === 'runtime') return '来自设置页';
-  if (source === 'env') return '来自环境变量';
-  return '未配置';
-}
-
-export function runtimeSecretSourceLabel(
-  source: RuntimeConfigPublic['codexApiKeySource'],
-): string {
-  if (source === 'runtime') return '来自设置页';
-  if (source === 'env') return '来自环境变量';
-  return '未配置';
+  return extractErrorMessage(err) ?? fallback;
 }

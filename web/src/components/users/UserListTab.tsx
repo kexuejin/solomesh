@@ -22,13 +22,15 @@ import {
 } from '@/components/ui/select';
 import type { Permission, UserPublic } from '../../stores/auth';
 import { useUsersStore, type UserQuery } from '../../stores/users';
-import { getErrorMessage, samePermissions, PERMISSION_LABELS, type TabNotification } from './utils';
+import { getErrorMessage, samePermissions, getPermissionLabel, type TabNotification } from './utils';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface UserListTabProps extends TabNotification {
   currentUser: UserPublic | null;
 }
 
 export function UserListTab({ currentUser, setNotice, setError }: UserListTabProps) {
+  const { t, locale } = useI18n();
   const {
     users,
     totalUsers,
@@ -101,19 +103,19 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
 
   const handleChangePassword = async (user: UserPublic) => {
     if (!changePasswordValue.trim()) {
-      setError('请输入新密码');
+      setError(t('users.userList.errors.newPasswordRequired'));
       return;
     }
     setChangingPasswordLoading(true);
     setError(null);
     try {
       await updateUser(user.id, { password: changePasswordValue });
-      setNotice(`已重置 ${user.display_name || user.username} 的密码`);
+      setNotice(t('users.userList.notice.passwordReset', { user: user.display_name || user.username }));
       setChangingPasswordId(null);
       setChangePasswordValue('');
       void fetchUsers(query);
     } catch (err) {
-      setError(getErrorMessage(err, '密码修改失败'));
+      setError(getErrorMessage(err, t('users.userList.errors.passwordUpdateFailed')));
     } finally {
       setChangingPasswordLoading(false);
     }
@@ -121,7 +123,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
 
   const startEdit = (user: UserPublic) => {
     if (!canOperateTargetUser(user)) {
-      setError('当前账户不能编辑管理员用户');
+      setError(t('users.userList.errors.cannotEditAdmin'));
       return;
     }
     setChangingPasswordId(null);
@@ -164,23 +166,23 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
         payload.disable_reason = nextDisableReason || null;
       }
       if (Object.keys(payload).length === 0) {
-        setNotice('没有需要保存的变更');
+        setNotice(t('users.userList.notice.noChanges'));
         setEditingId(null);
         return;
       }
 
       await updateUser(user.id, payload);
-      setNotice(`用户 ${user.username} 已更新`);
+      setNotice(t('users.userList.notice.userUpdated', { user: user.username }));
       setEditingId(null);
       await fetchUsers(query);
     } catch (err) {
-      setError(getErrorMessage(err, '更新用户失败'));
+      setError(getErrorMessage(err, t('users.userList.errors.updateUserFailed')));
     }
   };
 
   const handleCreate = async () => {
     if (!newUsername.trim() || !newPassword) {
-      setError('请填写用户名和密码');
+      setError(t('users.userList.errors.usernamePasswordRequired'));
       return;
     }
     setCreating(true);
@@ -207,10 +209,10 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
       setNewNotes('');
       setNewPermissions([]);
       setShowCreate(false);
-      setNotice('用户创建成功');
+      setNotice(t('users.userList.notice.userCreated'));
       await fetchUsers(query);
     } catch (err) {
-      setError(getErrorMessage(err, '创建用户失败'));
+      setError(getErrorMessage(err, t('users.userList.errors.createUserFailed')));
     } finally {
       setCreating(false);
     }
@@ -222,41 +224,41 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
         status,
         disable_reason: status === 'disabled' ? user.disable_reason || 'disabled_by_admin' : null,
       });
-      setNotice(`用户 ${user.username} 状态已更新`);
+      setNotice(t('users.userList.notice.userStatusUpdated', { user: user.username }));
       await fetchUsers(query);
     } catch (err) {
-      setError(getErrorMessage(err, '更新状态失败'));
+      setError(getErrorMessage(err, t('users.userList.errors.updateStatusFailed')));
     }
   };
 
   const handleDelete = async (user: UserPublic) => {
-    if (!confirm(`确定要删除用户 ${user.username} 吗？`)) return;
+    if (!confirm(t('users.userList.confirm.deleteUser', { user: user.username }))) return;
     try {
       await deleteUser(user.id);
-      setNotice(`用户 ${user.username} 已删除`);
+      setNotice(t('users.userList.notice.userDeleted', { user: user.username }));
       await fetchUsers(query);
     } catch (err) {
-      setError(getErrorMessage(err, '删除失败'));
+      setError(getErrorMessage(err, t('users.userList.errors.deleteFailed')));
     }
   };
 
   const handleRestore = async (user: UserPublic) => {
     try {
       await restoreUser(user.id);
-      setNotice(`用户 ${user.username} 已恢复为禁用状态`);
+      setNotice(t('users.userList.notice.userRestoredDisabled', { user: user.username }));
       await fetchUsers(query);
     } catch (err) {
-      setError(getErrorMessage(err, '恢复失败'));
+      setError(getErrorMessage(err, t('users.userList.errors.restoreFailed')));
     }
   };
 
   const handleRevokeAll = async (user: UserPublic) => {
-    if (!confirm(`确定要强制下线用户 ${user.username} 吗？`)) return;
+    if (!confirm(t('users.userList.confirm.revokeAll', { user: user.username }))) return;
     try {
       await revokeUserSessions(user.id);
-      setNotice(`已撤销 ${user.username} 的全部会话`);
+      setNotice(t('users.userList.notice.sessionsRevoked', { user: user.username }));
     } catch (err) {
-      setError(getErrorMessage(err, '操作失败'));
+      setError(getErrorMessage(err, t('users.userList.errors.actionFailed')));
     }
   };
 
@@ -267,29 +269,29 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
           type="text"
           value={query.q || ''}
           onChange={(e) => applyQuery({ q: e.target.value, page: 1 })}
-          placeholder="搜索用户名/显示名/备注"
+          placeholder={t('users.userList.searchPlaceholder')}
           className="h-10 w-full rounded-xl border-border/75 bg-card/95 sm:w-64"
         />
         <Select value={query.role || 'all'} onValueChange={(value) => applyQuery({ role: value as UserQuery['role'], page: 1 })}>
           <SelectTrigger className="h-10 w-auto rounded-xl border-border/75 bg-card/95 text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部角色</SelectItem>
-            <SelectItem value="admin">管理员</SelectItem>
-            <SelectItem value="member">成员</SelectItem>
+            <SelectItem value="all">{t('users.userList.filter.roleAll')}</SelectItem>
+            <SelectItem value="admin">{t('users.userList.filter.roleAdmin')}</SelectItem>
+            <SelectItem value="member">{t('users.userList.filter.roleMember')}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={query.status || 'all'} onValueChange={(value) => applyQuery({ status: value as UserQuery['status'], page: 1 })}>
           <SelectTrigger className="h-10 w-auto rounded-xl border-border/75 bg-card/95 text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部状态</SelectItem>
-            <SelectItem value="active">启用</SelectItem>
-            <SelectItem value="disabled">禁用</SelectItem>
-            <SelectItem value="deleted">已删除</SelectItem>
+            <SelectItem value="all">{t('users.userList.filter.statusAll')}</SelectItem>
+            <SelectItem value="active">{t('users.userList.filter.statusActive')}</SelectItem>
+            <SelectItem value="disabled">{t('users.userList.filter.statusDisabled')}</SelectItem>
+            <SelectItem value="deleted">{t('users.userList.filter.statusDeleted')}</SelectItem>
           </SelectContent>
         </Select>
         <Button className="h-10 rounded-xl px-4" onClick={() => setShowCreate((v) => !v)}>
           <UserPlus className="w-4 h-4" />
-          创建用户
+          {t('users.userList.createUser')}
         </Button>
         <Button
           variant="outline"
@@ -298,33 +300,33 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
           disabled={loading}
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          刷新
+          {t('users.userList.refresh')}
         </Button>
       </div>
 
       {showCreate && (
         <div className="space-y-4 rounded-xl border border-border/70 bg-card/95 p-5 md:p-6">
-          <h3 className="text-sm font-medium text-foreground">创建新用户</h3>
+          <h3 className="text-sm font-medium text-foreground">{t('users.userList.createTitle')}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input
               type="text"
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="用户名"
+              placeholder={t('users.userList.username')}
               className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
             />
             <Input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="密码（至少8位）"
+              placeholder={t('users.userList.passwordPlaceholder')}
               className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
             />
             <Input
               type="text"
               value={newDisplayName}
               onChange={(e) => setNewDisplayName(e.target.value)}
-              placeholder="显示名称（可选）"
+              placeholder={t('users.userList.displayNameOptional')}
               className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
             />
             <Select value={newRole} onValueChange={(value) => setNewRole(value as 'admin' | 'member')}>
@@ -332,8 +334,8 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="member">成员</SelectItem>
-                {isAdmin && <SelectItem value="admin">管理员</SelectItem>}
+                <SelectItem value="member">{t('users.userList.filter.roleMember')}</SelectItem>
+                {isAdmin && <SelectItem value="admin">{t('users.userList.filter.roleAdmin')}</SelectItem>}
               </SelectContent>
             </Select>
             <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
@@ -342,20 +344,20 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                 checked={newMustChange}
                 onChange={(e) => setNewMustChange(e.target.checked)}
               />
-              下次登录强制改密
+              {t('users.userList.mustChangePassword')}
             </label>
             <Input
               type="text"
               value={newNotes}
               onChange={(e) => setNewNotes(e.target.value)}
-              placeholder="备注（可选）"
+              placeholder={t('users.userList.notesOptional')}
               className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
             />
           </div>
 
           {templates.length > 0 && (
             <div>
-              <div className="text-xs text-muted-foreground mb-1">快捷权限模板</div>
+              <div className="text-xs text-muted-foreground mb-1">{t('users.userList.quickTemplates')}</div>
               <div className="flex flex-wrap gap-2">
                 {templates
                   .filter((item) => isAdmin || item.role !== 'admin')
@@ -378,7 +380,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
 
           {assignablePermissions.length > 0 && (
             <div className="rounded-xl border border-border/70 bg-muted/25 p-3">
-              <div className="text-xs text-muted-foreground mb-1">权限明细</div>
+              <div className="text-xs text-muted-foreground mb-1">{t('users.userList.permissionDetail')}</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {assignablePermissions.map((perm) => (
                   <label
@@ -390,7 +392,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                       checked={newPermissions.includes(perm)}
                       onChange={() => togglePermission(newPermissions, setNewPermissions, perm)}
                     />
-                    {PERMISSION_LABELS[perm] || perm}
+                    {getPermissionLabel(t, perm) || perm}
                   </label>
                 ))}
               </div>
@@ -400,14 +402,14 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
           <div className="flex gap-2">
             <Button className="h-10 rounded-xl px-4" onClick={handleCreate} disabled={creating}>
               {creating && <Loader2 className="w-4 h-4 animate-spin" />}
-              创建
+              {t('users.userList.create')}
             </Button>
             <Button
               variant="outline"
               className="h-10 rounded-xl border-border/75 px-4"
               onClick={() => setShowCreate(false)}
             >
-              取消
+              {t('users.userList.cancel')}
             </Button>
           </div>
         </div>
@@ -415,7 +417,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-card divide-y divide-border/70">
         {users.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">暂无用户</div>
+          <div className="p-6 text-center text-sm text-muted-foreground">{t('users.userList.empty')}</div>
         ) : (
           users.map((user) => (
             <div key={user.id} className="px-5 py-4 space-y-3">
@@ -442,15 +444,21 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                     )}
                     {user.must_change_password && (
                       <span className="rounded-lg border border-indigo-200/80 bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">
-                        需改密
+                        {t('users.userList.mustChangeTag')}
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    最近登录: {user.last_login_at ? new Date(user.last_login_at).toLocaleString('zh-CN') : '-'} · 最后活跃: {user.last_active_at ? new Date(user.last_active_at).toLocaleString('zh-CN') : '-'}
+                    {t('users.userList.lastLogin', {
+                      value: user.last_login_at ? new Date(user.last_login_at).toLocaleString(localeForDateTime(locale)) : '-',
+                    })}{' '}
+                    ·{' '}
+                    {t('users.userList.lastActive', {
+                      value: user.last_active_at ? new Date(user.last_active_at).toLocaleString(localeForDateTime(locale)) : '-',
+                    })}
                   </div>
-                  {user.notes && <div className="text-xs text-muted-foreground mt-1">备注: {user.notes}</div>}
-                  {user.disable_reason && <div className="text-xs text-amber-600 mt-1">禁用原因: {user.disable_reason}</div>}
+                  {user.notes && <div className="text-xs text-muted-foreground mt-1">{t('users.userList.notes', { value: user.notes })}</div>}
+                  {user.disable_reason && <div className="text-xs text-amber-600 mt-1">{t('users.userList.disableReason', { value: user.disable_reason })}</div>}
                 </div>
 
                 {canOperateTargetUser(user) && (
@@ -461,10 +469,10 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                           const opening = changingPasswordId !== user.id;
                           setChangingPasswordId(opening ? user.id : null);
                           setChangePasswordValue('');
-                          if (opening) setEditingId(null);
-                        }}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-indigo-200/85 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
-                        title="修改密码"
+                        if (opening) setEditingId(null);
+                      }}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-indigo-200/85 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
+                        title={t('users.userList.action.changePassword')}
                       >
                         <KeyRound className="w-4 h-4" />
                       </button>
@@ -474,7 +482,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                         <button
                           onClick={() => startEdit(user)}
                           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-border/70 hover:bg-muted/60 hover:text-foreground/80 cursor-pointer"
-                          title="编辑"
+                          title={t('users.userList.action.edit')}
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -482,7 +490,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                           <button
                             onClick={() => changeStatus(user, 'disabled')}
                             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-amber-200/85 hover:bg-amber-50 hover:text-amber-700 cursor-pointer"
-                            title="禁用"
+                            title={t('users.userList.action.disable')}
                           >
                             <ShieldOff className="w-4 h-4" />
                           </button>
@@ -490,7 +498,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                           <button
                             onClick={() => changeStatus(user, 'active')}
                             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-brand-200/80 hover:bg-brand-50/75 hover:text-primary cursor-pointer"
-                            title="启用"
+                            title={t('users.userList.action.enable')}
                           >
                             <ShieldCheck className="w-4 h-4" />
                           </button>
@@ -498,7 +506,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                           <button
                             onClick={() => handleRestore(user)}
                             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-brand-200/80 hover:bg-brand-50/75 hover:text-primary cursor-pointer"
-                            title="恢复"
+                            title={t('users.userList.action.restore')}
                           >
                             <Undo2 className="w-4 h-4" />
                           </button>
@@ -506,14 +514,14 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                         <button
                           onClick={() => handleRevokeAll(user)}
                           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-orange-200/85 hover:bg-orange-50 hover:text-orange-600 cursor-pointer"
-                          title="撤销全部会话"
+                          title={t('users.userList.action.revokeSessions')}
                         >
                           <LogOut className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(user)}
                           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-red-200/85 hover:bg-red-50 hover:text-red-600 cursor-pointer"
-                          title="删除"
+                          title={t('users.userList.action.delete')}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -530,7 +538,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                     type="password"
                     value={changePasswordValue}
                     onChange={(e) => setChangePasswordValue(e.target.value)}
-                    placeholder="输入新密码"
+                    placeholder={t('users.userList.newPassword')}
                     className="h-10 flex-1 rounded-xl border-indigo-200/80 bg-card/95 text-sm"
                     onKeyDown={(e) => e.key === 'Enter' && handleChangePassword(user)}
                   />
@@ -541,7 +549,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                     disabled={changingPasswordLoading}
                   >
                     {changingPasswordLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                    确认
+                    {t('users.userList.confirmButton')}
                   </Button>
                   <Button
                     size="sm"
@@ -549,7 +557,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                     className="h-9 rounded-xl border-indigo-200/80 px-3"
                     onClick={() => { setChangingPasswordId(null); setChangePasswordValue(''); }}
                   >
-                    取消
+                    {t('users.userList.cancel')}
                   </Button>
                 </div>
               )}
@@ -561,7 +569,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                       type="text"
                       value={editDisplayName}
                       onChange={(e) => setEditDisplayName(e.target.value)}
-                      placeholder="显示名称"
+                      placeholder={t('users.userList.displayName')}
                       className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
                     />
                     {isAdmin ? (
@@ -570,8 +578,8 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="member">member</SelectItem>
-                          <SelectItem value="admin">admin</SelectItem>
+                          <SelectItem value="member">{t('users.userList.filter.roleMember')}</SelectItem>
+                          <SelectItem value="admin">{t('users.userList.filter.roleAdmin')}</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
@@ -586,21 +594,21 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                       type="password"
                       value={editPassword}
                       onChange={(e) => setEditPassword(e.target.value)}
-                      placeholder="重置密码（可选）"
+                      placeholder={t('users.userList.resetPasswordOptional')}
                       className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
                     />
                     <Input
                       type="text"
                       value={editDisableReason}
                       onChange={(e) => setEditDisableReason(e.target.value)}
-                      placeholder="禁用原因（可选）"
+                      placeholder={t('users.userList.disableReasonOptional')}
                       className="h-10 rounded-xl border-border/75 bg-card/95 text-sm"
                     />
                     <Input
                       type="text"
                       value={editNotes}
                       onChange={(e) => setEditNotes(e.target.value)}
-                      placeholder="备注（可选）"
+                      placeholder={t('users.userList.notesOptional')}
                       className="h-10 rounded-xl border-border/75 bg-card/95 text-sm md:col-span-2"
                     />
                   </div>
@@ -616,19 +624,19 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
                             checked={editPermissions.includes(perm)}
                             onChange={() => togglePermission(editPermissions, setEditPermissions, perm)}
                           />
-                          {PERMISSION_LABELS[perm] || perm}
+                          {getPermissionLabel(t, perm) || perm}
                         </label>
                       ))}
                     </div>
                   )}
                   <div className="flex gap-2">
-                    <Button className="h-10 rounded-xl px-4" onClick={() => submitEdit(user)}>保存</Button>
+                    <Button className="h-10 rounded-xl px-4" onClick={() => submitEdit(user)}>{t('users.userList.save')}</Button>
                     <Button
                       variant="outline"
                       className="h-10 rounded-xl border-border/75 px-4"
                       onClick={() => setEditingId(null)}
                     >
-                      取消
+                      {t('users.userList.cancel')}
                     </Button>
                   </div>
                 </div>
@@ -639,7 +647,7 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <div>共 {totalUsers} 条</div>
+        <div>{t('users.userList.total', { count: totalUsers })}</div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -647,16 +655,16 @@ export function UserListTab({ currentUser, setNotice, setError }: UserListTabPro
             onClick={() => applyQuery({ page: Math.max(1, (query.page || 1) - 1) })}
             disabled={(query.page || 1) <= 1}
           >
-            上一页
+            {t('users.userList.prevPage')}
           </Button>
-          <span>第 {page} 页</span>
+          <span>{t('users.userList.page', { page })}</span>
           <Button
             variant="outline"
             className="h-9 rounded-xl border-border/75 px-3"
             onClick={() => applyQuery({ page: (query.page || 1) + 1 })}
             disabled={page * pageSize >= totalUsers}
           >
-            下一页
+            {t('users.userList.nextPage')}
           </Button>
         </div>
       </div>

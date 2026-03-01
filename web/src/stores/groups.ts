@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { api } from '../api/client';
 import type { GroupInfo, GroupMember } from '../types';
 import { useChatStore } from './chat';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export type { GroupInfo };
 
@@ -17,6 +19,14 @@ interface GroupsState {
   removeMember: (jid: string, userId: string) => Promise<void>;
 }
 
+type GroupsStoreMessageKey =
+  | 'groups.store.loadFailed'
+  | 'groups.store.loadMembersFailed';
+
+function getStoreMessage(key: GroupsStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
 export const useGroupsStore = create<GroupsState>((set, get) => ({
   groups: {},
   loading: false,
@@ -30,7 +40,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       const data = await api.get<{ groups: Record<string, GroupInfo> }>('/api/groups');
       set({ groups: data.groups, loading: false, error: null });
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : String(err) });
+      set({
+        loading: false,
+        error: extractStoreErrorMessage(err) ?? getStoreMessage('groups.store.loadFailed'),
+      });
     }
   },
 
@@ -43,7 +56,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         membersLoading: false,
       }));
     } catch (err) {
-      set({ membersLoading: false });
+      set({
+        membersLoading: false,
+        error: extractStoreErrorMessage(err) ?? getStoreMessage('groups.store.loadMembersFailed'),
+      });
       throw err;
     }
   },

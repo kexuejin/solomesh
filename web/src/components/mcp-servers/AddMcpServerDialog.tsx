@@ -3,6 +3,7 @@ import { Loader2, Plus, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useI18n } from '../../i18n';
 
 interface AddMcpServerDialogProps {
   open: boolean;
@@ -24,6 +25,7 @@ const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 type ServerType = 'stdio' | 'http' | 'sse';
 
 export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogProps) {
+  const { t } = useI18n();
   const [id, setId] = useState('');
   const [serverType, setServerType] = useState<ServerType>('stdio');
   const [command, setCommand] = useState('');
@@ -57,13 +59,13 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
   const isHttpType = serverType === 'http' || serverType === 'sse';
 
   const validate = (): string | null => {
-    if (!id.trim()) return 'ID 不能为空';
-    if (!ID_PATTERN.test(id.trim())) return 'ID 只能包含字母、数字、短横线和下划线，且不能以符号开头';
-    if (id.trim().toLowerCase() === 'solomesh') return 'ID 不能为 solomesh（系统保留）';
+    if (!id.trim()) return t('mcp.add.errors.idRequired');
+    if (!ID_PATTERN.test(id.trim())) return t('mcp.add.errors.idInvalid');
+    if (id.trim().toLowerCase() === 'solomesh') return t('mcp.add.errors.idReserved');
     if (isHttpType) {
-      if (!url.trim()) return 'URL 不能为空';
+      if (!url.trim()) return t('mcp.add.errors.urlRequired');
     } else {
-      if (!command.trim()) return '命令不能为空';
+      if (!command.trim()) return t('mcp.add.errors.commandRequired');
     }
     return null;
   };
@@ -110,7 +112,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
       reset();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '添加失败');
+      setError(err instanceof Error ? err.message : t('mcp.add.errors.addFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -125,31 +127,31 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
           </div>
         </div>
         <DialogHeader className="px-5 pt-4 text-left">
-          <DialogTitle>添加 MCP 服务器</DialogTitle>
+          <DialogTitle>{t('mcp.add.title')}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5">
           {/* ID */}
           <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
             <label htmlFor="mcp-id" className="block text-sm font-medium text-foreground/80">
-              服务器 ID <span className="text-red-500">*</span>
+              {t('mcp.add.serverId')} <span className="text-red-500">*</span>
             </label>
             <Input
               id="mcp-id"
               value={id}
               onChange={(e) => setId(e.target.value)}
-              placeholder="my-mcp-server"
+              placeholder={t('mcp.add.serverIdPlaceholder')}
               disabled={submitting}
               className="h-10 rounded-xl border-border/75 bg-card/95"
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              唯一标识符，只能包含字母、数字、短横线和下划线
+              {t('mcp.add.serverIdHint')}
             </p>
           </div>
 
           {/* Type selector */}
           <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
-            <label className="block text-sm font-medium text-foreground/80">类型</label>
+            <label className="block text-sm font-medium text-foreground/80">{t('mcp.add.type')}</label>
             <div className="inline-flex rounded-xl border border-border/70 bg-muted/60 p-1">
               {(['stdio', 'http', 'sse'] as const).map((t) => (
                 <button
@@ -174,13 +176,13 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
               {/* URL */}
               <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
                 <label htmlFor="mcp-url" className="block text-sm font-medium text-foreground/80">
-                  URL <span className="text-red-500">*</span>
+                  {t('mcp.add.url')} <span className="text-red-500">*</span>
                 </label>
                 <Input
                   id="mcp-url"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://mcp.example.com"
+                  placeholder={t('mcp.add.urlPlaceholder')}
                   disabled={submitting}
                   className="h-10 rounded-xl border-border/75 bg-card/95 font-mono"
                 />
@@ -188,7 +190,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
 
               {/* Headers */}
               <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
-                <label className="block text-sm font-medium text-foreground/80">Headers</label>
+                <label className="block text-sm font-medium text-foreground/80">{t('mcp.add.headers')}</label>
                 <div className="space-y-2">
                   {headers.map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
@@ -199,7 +201,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                           next[i] = { ...next[i], key: e.target.value };
                           setHeaders(next);
                         }}
-                        placeholder="Authorization"
+                        placeholder={t('mcp.add.headerKeyPlaceholder')}
                         disabled={submitting}
                         className="h-10 w-2/5 rounded-xl border-border/75 bg-card/95 font-mono text-sm"
                       />
@@ -210,7 +212,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                           next[i] = { ...next[i], value: e.target.value };
                           setHeaders(next);
                         }}
-                        placeholder="Bearer token..."
+                        placeholder={t('mcp.add.headerValuePlaceholder')}
                         disabled={submitting}
                         className="h-10 flex-1 rounded-xl border-border/75 bg-card/95 font-mono text-sm"
                       />
@@ -233,7 +235,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                     className="rounded-lg"
                   >
                     <Plus size={14} />
-                    添加 Header
+                    {t('mcp.add.addHeader')}
                   </Button>
                 </div>
               </div>
@@ -243,13 +245,13 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
               {/* Command */}
               <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
                 <label htmlFor="mcp-command" className="block text-sm font-medium text-foreground/80">
-                  命令 <span className="text-red-500">*</span>
+                  {t('mcp.add.command')} <span className="text-red-500">*</span>
                 </label>
                 <Input
                   id="mcp-command"
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
-                  placeholder="npx, uvx, node..."
+                  placeholder={t('mcp.add.commandPlaceholder')}
                   disabled={submitting}
                   className="h-10 rounded-xl border-border/75 bg-card/95 font-mono"
                 />
@@ -257,7 +259,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
 
               {/* Args */}
               <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
-                <label className="block text-sm font-medium text-foreground/80">参数</label>
+                <label className="block text-sm font-medium text-foreground/80">{t('mcp.add.args')}</label>
                 <div className="space-y-2">
                   {args.map((arg, i) => (
                     <div key={i} className="flex items-center gap-2">
@@ -268,7 +270,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                           next[i] = e.target.value;
                           setArgs(next);
                         }}
-                        placeholder={`参数 ${i + 1}`}
+                        placeholder={t('mcp.add.argPlaceholder', { index: i + 1 })}
                         disabled={submitting}
                         className="h-10 flex-1 rounded-xl border-border/75 bg-card/95 font-mono text-sm"
                       />
@@ -291,14 +293,14 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                     className="rounded-lg"
                   >
                     <Plus size={14} />
-                    添加参数
+                    {t('mcp.add.addArg')}
                   </Button>
                 </div>
               </div>
 
               {/* Env */}
               <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
-                <label className="block text-sm font-medium text-foreground/80">环境变量</label>
+                <label className="block text-sm font-medium text-foreground/80">{t('mcp.add.env')}</label>
                 <div className="space-y-2">
                   {env.map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
@@ -309,7 +311,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                           next[i] = { ...next[i], key: e.target.value };
                           setEnv(next);
                         }}
-                        placeholder="KEY"
+                        placeholder={t('mcp.add.envKeyPlaceholder')}
                         disabled={submitting}
                         className="h-10 w-2/5 rounded-xl border-border/75 bg-card/95 font-mono text-sm"
                       />
@@ -320,7 +322,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                           next[i] = { ...next[i], value: e.target.value };
                           setEnv(next);
                         }}
-                        placeholder="value"
+                        placeholder={t('mcp.add.envValuePlaceholder')}
                         disabled={submitting}
                         className="h-10 flex-1 rounded-xl border-border/75 bg-card/95 font-mono text-sm"
                       />
@@ -343,7 +345,7 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
                     className="rounded-lg"
                   >
                     <Plus size={14} />
-                    添加环境变量
+                    {t('mcp.add.addEnv')}
                   </Button>
                 </div>
               </div>
@@ -353,13 +355,13 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
           {/* Description */}
           <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
             <label htmlFor="mcp-desc" className="block text-sm font-medium text-foreground/80">
-              描述
+              {t('mcp.add.description')}
             </label>
             <Input
               id="mcp-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="可选的描述信息"
+              placeholder={t('mcp.add.descriptionPlaceholder')}
               disabled={submitting}
               className="h-10 rounded-xl border-border/75 bg-card/95"
             />
@@ -375,11 +377,11 @@ export function AddMcpServerDialog({ open, onClose, onAdd }: AddMcpServerDialogP
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 border-t border-border/70 pt-4">
             <Button type="button" variant="ghost" onClick={handleClose} disabled={submitting} className="h-10 rounded-xl">
-              取消
+              {t('mcp.add.cancel')}
             </Button>
             <Button type="submit" disabled={submitting || !id.trim() || (isHttpType ? !url.trim() : !command.trim())} className="h-10 rounded-xl">
               {submitting && <Loader2 className="size-4 animate-spin" />}
-              添加
+              {t('mcp.add.add')}
             </Button>
           </div>
         </form>

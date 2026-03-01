@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '../../stores/auth';
+import { useI18n } from '../../i18n';
 
 export interface ChatGroupItemProps {
   jid: string;
@@ -47,8 +48,9 @@ export function ChatGroupItem({
   onClearHistory,
   onDelete,
 }: ChatGroupItemProps) {
+  const { t } = useI18n();
   const currentUser = useAuthStore((s) => s.user);
-  const defaultHomeName = '我的工作区';
+  const defaultHomeName = t('chat.groupItem.defaultHomeName');
   // Use actual name if it's been renamed, otherwise fall back to default
   const isDefaultName = !name || name === 'Main' || name === `${currentUser?.username} Home`;
   const displayName = isHome && isDefaultName ? defaultHomeName : name;
@@ -98,17 +100,17 @@ export function ChatGroupItem({
           <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-5">
             {executionMode === 'host' ? (
               <span className="inline-flex items-center rounded-full border border-amber-200/80 bg-amber-50/85 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                宿主机
+                {t('chat.view.status.host')}
               </span>
             ) : executionMode === 'container' ? (
               <span className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-50/85 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
-                Docker
+                {t('chat.view.status.docker')}
               </span>
             ) : null}
             {isImSession && isBoundSession ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-50/85 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
                 <Link2 className="h-2.5 w-2.5" />
-                已绑定
+                {t('chat.groupItem.bound')}
               </span>
             ) : null}
           </div>
@@ -136,13 +138,13 @@ export function ChatGroupItem({
             {editable && onRename && (
               <DropdownMenuItem onClick={() => onRename(jid, name)}>
                 <Pencil className="w-4 h-4" />
-                重命名
+                {t('chat.groupItem.actions.rename')}
               </DropdownMenuItem>
             )}
             {editable && executionMode === 'host' && onEditDirectory && (
               <DropdownMenuItem onClick={() => onEditDirectory(jid, displayName, customCwd)}>
                 <Folder className="w-4 h-4" />
-                修改目录
+                {t('chat.groupItem.actions.editDirectory')}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -150,7 +152,7 @@ export function ChatGroupItem({
               className="text-amber-700 focus:text-amber-700"
             >
               <RotateCcw className="w-4 h-4" />
-              重建工作区
+              {t('chat.groupItem.actions.rebuildWorkspace')}
             </DropdownMenuItem>
             {!isHome && deletable && onDelete && (
               <DropdownMenuItem
@@ -158,7 +160,7 @@ export function ChatGroupItem({
                 onClick={() => onDelete(jid, name)}
               >
                 <Trash2 className="w-4 h-4" />
-                删除
+                {t('chat.groupItem.actions.delete')}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

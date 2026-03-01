@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { api, apiFetch } from '../api/client';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export interface FileEntry {
   name: string;
@@ -36,6 +38,18 @@ interface FileState {
   saveFileContent: (jid: string, filePath: string, content: string) => Promise<boolean>;
 }
 
+type FileStoreMessageKey =
+  | 'chat.filePanel.errors.loadFilesFailed'
+  | 'chat.filePanel.errors.uploadFilesFailed'
+  | 'chat.filePanel.errors.deleteFileFailed'
+  | 'chat.filePanel.errors.createDirectoryFailed'
+  | 'chat.filePanel.errors.readFileFailed'
+  | 'chat.filePanel.errors.saveFileFailed';
+
+function getStoreMessage(key: FileStoreMessageKey): string {
+  return translateLocaleMessage(key);
+}
+
 export function toBase64Url(str: string): string {
   const bytes = new TextEncoder().encode(str);
   const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
@@ -70,7 +84,7 @@ export const useFileStore = create<FileState>((set, get) => ({
         loading: false,
       }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load files';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.filePanel.errors.loadFilesFailed');
       console.error('Failed to load files:', err);
       set({ loading: false, error: msg });
     }
@@ -131,7 +145,7 @@ export const useFileStore = create<FileState>((set, get) => ({
       await get().loadFiles(jid, targetBase);
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to upload files';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.filePanel.errors.uploadFilesFailed');
       console.error('Failed to upload files:', err);
       set({ error: msg });
       return false;
@@ -149,7 +163,7 @@ export const useFileStore = create<FileState>((set, get) => ({
       await get().loadFiles(jid, currentPath);
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to delete file';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.filePanel.errors.deleteFileFailed');
       console.error('Failed to delete file:', err);
       set({ error: msg });
       return false;
@@ -165,7 +179,7 @@ export const useFileStore = create<FileState>((set, get) => ({
 
       await get().loadFiles(jid, parentPath);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create directory';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.filePanel.errors.createDirectoryFailed');
       console.error('Failed to create directory:', err);
       set({ error: msg });
     }
@@ -187,7 +201,7 @@ export const useFileStore = create<FileState>((set, get) => ({
       );
       return data.content;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to read file';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.filePanel.errors.readFileFailed');
       console.error('Failed to read file content:', err);
       set({ error: msg });
       return null;
@@ -200,7 +214,7 @@ export const useFileStore = create<FileState>((set, get) => ({
       await api.put(`/api/groups/${encodeURIComponent(jid)}/files/content/${encoded}`, { content });
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save file';
+      const msg = extractStoreErrorMessage(err) ?? getStoreMessage('chat.filePanel.errors.saveFileFailed');
       console.error('Failed to save file content:', err);
       set({ error: msg });
       return false;

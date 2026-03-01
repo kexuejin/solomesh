@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { McpServer } from '../../stores/mcp-servers';
 import { useMcpServersStore } from '../../stores/mcp-servers';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface McpServerDetailProps {
   server: McpServer | null;
@@ -11,6 +12,7 @@ interface McpServerDetailProps {
 }
 
 export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
+  const { t, locale } = useI18n();
   const updateServer = useMcpServersStore((s) => s.updateServer);
   const deleteServer = useMcpServersStore((s) => s.deleteServer);
 
@@ -30,7 +32,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
   if (!server) {
     return (
       <div className="surface-card-soft flex items-center justify-center rounded-xl border border-border/70 bg-muted/20 p-12">
-        <p className="text-muted-foreground/80 text-center">选择一个 MCP 服务器查看详情</p>
+        <p className="text-muted-foreground/80 text-center">{t('mcp.detail.selectHint')}</p>
       </div>
     );
   }
@@ -95,7 +97,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`确认删除 MCP 服务器「${server.id}」？`)) return;
+    if (!confirm(t('mcp.detail.confirmDelete', { id: server.id }))) return;
     setDeleting(true);
     try {
       await deleteServer(server.id);
@@ -125,7 +127,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
               {server.syncedFromHost && (
                 <span className="inline-flex items-center gap-1 rounded-lg border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
                   <Download size={10} />
-                  已同步
+                  {t('mcp.common.synced')}
                 </span>
               )}
               <span
@@ -135,7 +137,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                     : 'border-border/70 bg-muted/60 text-muted-foreground'
                 }`}
               >
-                {server.enabled ? '已启用' : '已禁用'}
+                {server.enabled ? t('mcp.common.enabled') : t('mcp.common.disabled')}
               </span>
             </div>
             {server.description && (
@@ -148,12 +150,12 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
               <Button
                 onClick={startEdit}
                 variant="outline"
-                className="h-9 rounded-xl border-border/75 px-3 text-sm text-foreground/80 hover:bg-muted/45"
-              >
-                <Pencil size={16} />
-                编辑
-              </Button>
-            )}
+              className="h-9 rounded-xl border-border/75 px-3 text-sm text-foreground/80 hover:bg-muted/45"
+            >
+              <Pencil size={16} />
+              {t('mcp.detail.edit')}
+            </Button>
+          )}
             <Button
               disabled={deleting}
               onClick={handleDelete}
@@ -161,7 +163,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
               className="h-9 rounded-xl border-red-200/80 px-3 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
             >
               <Trash2 size={16} />
-              {deleting ? '删除中...' : '删除'}
+              {deleting ? t('mcp.detail.deleting') : t('mcp.detail.delete')}
             </Button>
           </div>
         </div>
@@ -174,18 +176,18 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
             <>
               {/* URL */}
               <div>
-                <label className="block text-sm font-medium text-foreground/80 mb-1">URL</label>
+                <label className="block text-sm font-medium text-foreground/80 mb-1">{t('mcp.detail.url')}</label>
                 <Input
                   value={editUrl}
                   onChange={(e) => setEditUrl(e.target.value)}
-                  placeholder="https://..."
+                  placeholder={t('mcp.detail.urlPlaceholder')}
                   className="h-10 rounded-xl border-border/75 bg-card/95 font-mono"
                 />
               </div>
 
               {/* Headers */}
               <div>
-                <label className="block text-sm font-medium text-foreground/80 mb-1">Headers</label>
+                <label className="block text-sm font-medium text-foreground/80 mb-1">{t('mcp.detail.headers')}</label>
                 <div className="space-y-2">
                   {editHeaders.map((row, i) => (
                     <div key={i} className="flex items-center gap-2 rounded-lg bg-muted/20 px-2.5 py-2">
@@ -196,7 +198,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                           next[i] = { ...next[i], key: e.target.value };
                           setEditHeaders(next);
                         }}
-                        placeholder="Header-Name"
+                        placeholder={t('mcp.detail.headerKeyPlaceholder')}
                         className="h-9 w-1/3 rounded-lg border-border/75 bg-card/95 font-mono text-sm"
                       />
                       <Input
@@ -206,7 +208,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                           next[i] = { ...next[i], value: e.target.value };
                           setEditHeaders(next);
                         }}
-                        placeholder="value"
+                        placeholder={t('mcp.detail.headerValuePlaceholder')}
                         className="h-9 flex-1 rounded-lg border-border/75 bg-card/95 font-mono text-sm"
                       />
                       <button
@@ -225,7 +227,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                     className="h-9 rounded-xl border-border/75 px-3"
                     onClick={() => setEditHeaders([...editHeaders, { key: '', value: '' }])}
                   >
-                    添加 Header
+                    {t('mcp.detail.addHeader')}
                   </Button>
                 </div>
               </div>
@@ -234,18 +236,18 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
             <>
               {/* Command */}
               <div>
-                <label className="block text-sm font-medium text-foreground/80 mb-1">命令</label>
+                <label className="block text-sm font-medium text-foreground/80 mb-1">{t('mcp.detail.command')}</label>
                 <Input
                   value={editCommand}
                   onChange={(e) => setEditCommand(e.target.value)}
-                  placeholder="npx, uvx, node..."
+                  placeholder={t('mcp.detail.commandPlaceholder')}
                   className="h-10 rounded-xl border-border/75 bg-card/95"
                 />
               </div>
 
               {/* Args */}
               <div>
-                <label className="block text-sm font-medium text-foreground/80 mb-1">参数</label>
+                <label className="block text-sm font-medium text-foreground/80 mb-1">{t('mcp.detail.args')}</label>
                 <div className="space-y-2">
                   {editArgs.map((arg, i) => (
                     <div key={i} className="flex items-center gap-2 rounded-lg bg-muted/20 px-2.5 py-2">
@@ -274,14 +276,14 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                     className="h-9 rounded-xl border-border/75 px-3"
                     onClick={() => setEditArgs([...editArgs, ''])}
                   >
-                    添加参数
+                    {t('mcp.detail.addArg')}
                   </Button>
                 </div>
               </div>
 
               {/* Env */}
               <div>
-                <label className="block text-sm font-medium text-foreground/80 mb-1">环境变量</label>
+                <label className="block text-sm font-medium text-foreground/80 mb-1">{t('mcp.detail.env')}</label>
                 <div className="space-y-2">
                   {editEnv.map((row, i) => (
                     <div key={i} className="flex items-center gap-2 rounded-lg bg-muted/20 px-2.5 py-2">
@@ -292,7 +294,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                           next[i] = { ...next[i], key: e.target.value };
                           setEditEnv(next);
                         }}
-                        placeholder="KEY"
+                        placeholder={t('mcp.detail.envKeyPlaceholder')}
                         className="h-9 w-1/3 rounded-lg border-border/75 bg-card/95 font-mono text-sm"
                       />
                       <Input
@@ -302,7 +304,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                           next[i] = { ...next[i], value: e.target.value };
                           setEditEnv(next);
                         }}
-                        placeholder="value"
+                        placeholder={t('mcp.detail.envValuePlaceholder')}
                         className="h-9 flex-1 rounded-lg border-border/75 bg-card/95 font-mono text-sm"
                       />
                       <button
@@ -321,7 +323,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                     className="h-9 rounded-xl border-border/75 px-3"
                     onClick={() => setEditEnv([...editEnv, { key: '', value: '' }])}
                   >
-                    添加环境变量
+                    {t('mcp.detail.addEnv')}
                   </Button>
                 </div>
               </div>
@@ -330,11 +332,11 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-foreground/80 mb-1">描述</label>
+            <label className="block text-sm font-medium text-foreground/80 mb-1">{t('mcp.detail.description')}</label>
             <Input
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              placeholder="可选的描述信息"
+              placeholder={t('mcp.detail.descriptionPlaceholder')}
               className="h-10 rounded-xl border-border/75 bg-card/95"
             />
           </div>
@@ -347,7 +349,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
               disabled={saving || (isHttpType ? !editUrl.trim() : !editCommand.trim())}
             >
               <Save size={16} />
-              {saving ? '保存中...' : '保存'}
+              {saving ? t('mcp.detail.saving') : t('mcp.detail.save')}
             </Button>
             <Button
               variant="outline"
@@ -355,7 +357,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
               onClick={cancelEdit}
               disabled={saving}
             >
-              取消
+              {t('mcp.detail.cancel')}
             </Button>
           </div>
         </div>
@@ -367,7 +369,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
               <>
                 {/* Type */}
                 <div>
-                  <span className="text-sm text-muted-foreground">类型</span>
+                  <span className="text-sm text-muted-foreground">{t('mcp.detail.type')}</span>
                   <p className="mt-1 rounded-xl border border-brand-200/80 bg-brand-50/70 px-3 py-2 font-mono text-sm text-foreground">
                     {server.type?.toUpperCase()}
                   </p>
@@ -375,7 +377,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
 
                 {/* URL */}
                 <div>
-                  <span className="text-sm text-muted-foreground">URL</span>
+                  <span className="text-sm text-muted-foreground">{t('mcp.detail.url')}</span>
                   <p className="mt-1 break-all rounded-xl border border-border/70 bg-muted/30 px-3 py-2 font-mono text-sm text-foreground">
                     {server.url}
                   </p>
@@ -384,7 +386,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                 {/* Headers */}
                 {headerEntries.length > 0 && (
                   <div>
-                    <span className="text-sm text-muted-foreground">Headers</span>
+                    <span className="text-sm text-muted-foreground">{t('mcp.detail.headers')}</span>
                     <div className="space-y-1.5 mt-1">
                       {headerEntries.map(([key, value]) => (
                         <div
@@ -413,7 +415,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
               <>
                 {/* Command */}
                 <div>
-                  <span className="text-sm text-muted-foreground">命令</span>
+                  <span className="text-sm text-muted-foreground">{t('mcp.detail.command')}</span>
                   <p className="mt-1 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 font-mono text-sm text-foreground">
                     {server.command}
                   </p>
@@ -422,7 +424,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                 {/* Args */}
                 {server.args && server.args.length > 0 && (
                   <div>
-                    <span className="text-sm text-muted-foreground">参数</span>
+                    <span className="text-sm text-muted-foreground">{t('mcp.detail.args')}</span>
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       {server.args.map((arg, i) => (
                         <span
@@ -439,7 +441,7 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
                 {/* Env */}
                 {envEntries.length > 0 && (
                   <div>
-                    <span className="text-sm text-muted-foreground">环境变量</span>
+                    <span className="text-sm text-muted-foreground">{t('mcp.detail.env')}</span>
                     <div className="space-y-1.5 mt-1">
                       {envEntries.map(([key, value]) => (
                         <div
@@ -468,7 +470,9 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
 
             {/* Added at */}
             <div className="text-xs text-muted-foreground/80">
-              添加时间：{new Date(server.addedAt).toLocaleString()}
+              {t('mcp.detail.addedAt', {
+                time: new Date(server.addedAt).toLocaleString(localeForDateTime(locale)),
+              })}
             </div>
           </div>
 
@@ -476,8 +480,8 @@ export function McpServerDetail({ server, onDeleted }: McpServerDetailProps) {
           <div className="bg-muted/25 p-5 md:p-6">
             <p className="text-sm text-muted-foreground/90">
               {server.syncedFromHost
-                ? '从宿主机同步的 MCP 服务器，可编辑、启停和删除。重新同步时会恢复'
-                : 'MCP 服务器配置会在容器启动时注入，修改后新启动的容器将使用新配置'}
+                ? t('mcp.detail.footerSynced')
+                : t('mcp.detail.footerManual')}
             </p>
           </div>
         </>

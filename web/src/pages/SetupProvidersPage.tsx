@@ -25,6 +25,7 @@ import {
 } from '../components/settings/provider-secrets-payloads';
 import { useAuthStore } from '../stores/auth';
 import { looksLikeHttpUrl } from '../lib/runtime-input-validation';
+import { useI18n, type MessageKey } from '../i18n';
 
 type ClaudeAccessMode = 'official' | 'third_party';
 type GeminiAccessMode = 'api_key' | 'oauth';
@@ -34,6 +35,8 @@ interface EnvRow {
   key: string;
   value: string;
 }
+
+type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
 const RESERVED_ENV_KEYS = new Set([
   'AGENT_RUNTIME',
@@ -59,23 +62,26 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function buildCustomEnv(rows: EnvRow[]): { customEnv: Record<string, string>; error: string | null } {
+function buildCustomEnv(
+  rows: EnvRow[],
+  t: Translate,
+): { customEnv: Record<string, string>; error: string | null } {
   const customEnv: Record<string, string> = {};
   for (const [idx, row] of rows.entries()) {
     const key = row.key.trim();
     const value = row.value.trim();
     if (!key && !value) continue;
     if (!key || !value) {
-      return { customEnv: {}, error: `第 ${idx + 1} 行环境变量的 Key 和 Value 都要填写` };
+      return { customEnv: {}, error: t('setupProviders.errors.envKeyValueRequired', { index: idx + 1 }) };
     }
     if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) {
-      return { customEnv: {}, error: `环境变量 Key "${key}" 格式无效（仅允许大写字母/数字/下划线，且不能数字开头）` };
+      return { customEnv: {}, error: t('setupProviders.errors.envKeyInvalid', { key }) };
     }
     if (RESERVED_ENV_KEYS.has(key)) {
-      return { customEnv: {}, error: `${key} 属于系统保留字段，请在必填区域填写` };
+      return { customEnv: {}, error: t('setupProviders.errors.envKeyReserved', { key }) };
     }
     if (customEnv[key] !== undefined) {
-      return { customEnv: {}, error: `环境变量 Key "${key}" 重复` };
+      return { customEnv: {}, error: t('setupProviders.errors.envKeyDuplicate', { key }) };
     }
     customEnv[key] = value;
   }
@@ -83,6 +89,7 @@ function buildCustomEnv(rows: EnvRow[]): { customEnv: Record<string, string>; er
 }
 
 export function SetupProvidersPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { user, setupStatus, checkAuth, initialized } = useAuthStore();
 
@@ -232,7 +239,7 @@ export function SetupProvidersPage() {
       setOauthCode('');
       window.open(data.authorizeUrl, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      setError(getErrorMessage(err, 'OAuth 授权启动失败'));
+      setError(getErrorMessage(err, t('setupProviders.errors.oauthStartFailed')));
     } finally {
       setOauthLoading(false);
     }
@@ -240,7 +247,7 @@ export function SetupProvidersPage() {
 
   const handleOAuthCallback = async () => {
     if (!oauthState || !oauthCode.trim()) {
-      setError('请粘贴授权码');
+      setError(t('setupProviders.errors.oauthCodeRequired'));
       return;
     }
     setOauthExchanging(true);
@@ -253,9 +260,9 @@ export function SetupProvidersPage() {
       setOauthState(null);
       setOauthCode('');
       setOauthDone(true);
-      setNotice('Claude OAuth 登录成功，token 已保存。');
+      setNotice(t('setupProviders.notice.oauthSuccess'));
     } catch (err) {
-      setError(getErrorMessage(err, 'OAuth 授权码换取失败'));
+      setError(getErrorMessage(err, t('setupProviders.errors.oauthCallbackFailed')));
     } finally {
       setOauthExchanging(false);
     }
@@ -266,7 +273,7 @@ export function SetupProvidersPage() {
     setNotice(null);
 
     if (feishuAppSecret.trim() && !feishuAppId.trim()) {
-      setError('填写飞书 Secret 时，App ID 也必须填写');
+      setError(t('setupProviders.errors.feishuSecretNeedsAppId'));
       return;
     }
 
@@ -305,44 +312,50 @@ export function SetupProvidersPage() {
       const claudeSupportsOfficial = !!claudeRuntime?.capabilities.supportsOfficialAuth;
       if (claudeAccessMode === 'third_party' && claudeSupportsThirdParty) {
         if (!baseUrl.trim()) {
-          setError('第三方渠道必须填写 ANTHROPIC_BASE_URL');
+          setError(t('setupProviders.errors.claudeBaseUrlRequired'));
           return;
         }
         if (!authToken.trim()) {
-          setError('第三方渠道必须填写 ANTHROPIC_AUTH_TOKEN');
+          setError(t('setupProviders.errors.claudeAuthTokenRequired'));
           return;
         }
-        const envResult = buildCustomEnv(customEnvRows);
+        const envResult = buildCustomEnv(customEnvRows, t);
         if (envResult.error) {
           setError(envResult.error);
           return;
         }
         customEnv = envResult.customEnv;
       } else if (claudeSupportsOfficial && !officialToken.trim() && !oauthDone) {
-        setError('Claude 官方渠道请通过一键登录或手动填写 setup-token / .credentials.json');
+        setError(t('setupProviders.errors.claudeOfficialRequired'));
         return;
       }
     }
 
     if (wantsCodex && !codexApiKey.trim()) {
-      setError(`${codexRuntime?.label ?? 'Codex'} 必须填写 CODEX_API_KEY`);
+      setError(
+        t('setupProviders.errors.codexApiKeyRequired', { label: codexRuntime?.label ?? 'Codex' }),
+      );
       return;
     }
     if (wantsCodex && looksLikeHttpUrl(codexApiKey.trim())) {
-      setError('CODEX_API_KEY 不能填写 URL，请填写真实 API Key');
+      setError(t('setupProviders.errors.codexApiKeyInvalid'));
       return;
     }
     if (wantsGemini && geminiAccessMode === 'api_key' && !geminiApiKey.trim()) {
-      setError(`${geminiRuntime?.label ?? 'Gemini CLI'} 必须填写 GEMINI_API_KEY`);
+      setError(
+        t('setupProviders.errors.geminiApiKeyRequired', {
+          label: geminiRuntime?.label ?? 'Gemini CLI',
+        }),
+      );
       return;
     }
     if (wantsGemini && geminiAccessMode === 'api_key' && looksLikeHttpUrl(geminiApiKey.trim())) {
-      setError('GEMINI_API_KEY 不能填写 URL，请填写真实 API Key');
+      setError(t('setupProviders.errors.geminiApiKeyInvalid'));
       return;
     }
 
     if (!wantsClaude && !wantsCodex && !wantsGemini) {
-      setError('请至少配置一个 Runtime 的凭据后再继续');
+      setError(t('setupProviders.errors.runtimeRequired'));
       return;
     }
 
@@ -455,15 +468,15 @@ export function SetupProvidersPage() {
       await api.put(getRuntimeConfigEndpoint(), { agentRuntime: engineMode });
 
       await checkAuth();
-      // 确认 setupStatus 已更新后再跳转，避免 AuthGuard 检测到 needsSetup 仍为 true 导致重定向循环
+      // Ensure setup status is refreshed before redirecting.
       const { setupStatus: latestStatus } = useAuthStore.getState();
       if (latestStatus?.needsSetup) {
-        setError('配置已保存但验证未通过，请检查填写的配置是否正确');
+        setError(t('setupProviders.errors.validationFailed'));
         return;
       }
       navigate('/settings?tab=runtime', { replace: true });
     } catch (err) {
-      setError(getErrorMessage(err, '保存初始化配置失败'));
+      setError(getErrorMessage(err, t('setupProviders.errors.saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -473,13 +486,15 @@ export function SetupProvidersPage() {
     <div className="h-screen app-canvas overflow-y-auto px-4 py-6 sm:py-10">
       <div className="mx-auto w-full max-w-4xl space-y-5">
         <div className="text-center">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">STEP 2 / 2</p>
-          <h1 className="text-2xl font-bold text-foreground mb-2">系统接入初始化</h1>
-          <p className="text-sm text-muted-foreground">此页面保存的是系统全局默认配置。完成后才进入正式后台。</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            {t('setupProviders.page.step')}
+          </p>
+          <h1 className="text-2xl font-bold text-foreground mb-2">{t('setupProviders.page.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('setupProviders.page.subtitle')}</p>
         </div>
 
         <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/65 px-4 py-3 text-sm text-foreground/85">
-          建议先完成 Runtime 凭据，再补充飞书。后续在设置页仍可随时修改所有项。
+          {t('setupProviders.page.hint')}
         </div>
 
         {error && (
@@ -498,8 +513,8 @@ export function SetupProvidersPage() {
             <div className="flex items-center gap-2">
               <span className={`inline-block h-2 w-2 rounded-full ${feishuDraftReady ? 'bg-emerald-500' : 'bg-muted-foreground/35'}`} />
               <div>
-                <h2 className="text-sm font-semibold text-foreground">飞书配置（可选）</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">系统全局默认飞书凭证</p>
+                <h2 className="text-sm font-semibold text-foreground">{t('setupProviders.feishu.title')}</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t('setupProviders.feishu.subtitle')}</p>
               </div>
             </div>
             <span className={`hidden sm:inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -507,31 +522,35 @@ export function SetupProvidersPage() {
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 : 'border-border/70 bg-card/75 text-muted-foreground'
             }`}>
-              {feishuDraftReady ? '已填写' : '待填写'}
+              {feishuDraftReady ? t('setupProviders.common.ready') : t('setupProviders.common.pending')}
             </span>
           </div>
 
           <div className="space-y-4 px-5 py-4">
-            <p className="text-xs text-muted-foreground">首装不预填任何默认值，全部由你手动输入。</p>
+            <p className="text-xs text-muted-foreground">{t('setupProviders.feishu.manualOnly')}</p>
             <div className="grid md:grid-cols-2 gap-3">
               <div className="rounded-lg bg-muted/10 p-3">
-                <label className="block text-sm font-medium text-foreground/80 mb-1">App ID</label>
+                <label className="block text-sm font-medium text-foreground/80 mb-1">
+                  {t('setupProviders.feishu.appIdLabel')}
+                </label>
                 <Input
                   type="text"
                   value={feishuAppId}
                   onChange={(e) => setFeishuAppId(e.target.value)}
-                  placeholder="输入飞书 App ID"
+                  placeholder={t('setupProviders.feishu.appIdPlaceholder')}
                   className="h-10 rounded-xl border-border/75 bg-card/95"
                   disabled={saving}
                 />
               </div>
               <div className="rounded-lg bg-muted/10 p-3">
-                <label className="block text-sm font-medium text-foreground/80 mb-1">App Secret</label>
+                <label className="block text-sm font-medium text-foreground/80 mb-1">
+                  {t('setupProviders.feishu.appSecretLabel')}
+                </label>
                 <Input
                   type="password"
                   value={feishuAppSecret}
                   onChange={(e) => setFeishuAppSecret(e.target.value)}
-                  placeholder="输入飞书 App Secret"
+                  placeholder={t('setupProviders.feishu.appSecretPlaceholder')}
                   className="h-10 rounded-xl border-border/75 bg-card/95"
                   disabled={saving}
                 />
@@ -545,8 +564,8 @@ export function SetupProvidersPage() {
             <div className="flex items-center gap-2">
               <span className={`inline-block h-2 w-2 rounded-full ${runtimeDraftReady ? 'bg-emerald-500' : 'bg-muted-foreground/35'}`} />
               <div>
-                <h2 className="text-sm font-semibold text-foreground">Agent Runtime 配置</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">系统全局默认 Runtime 凭据</p>
+                <h2 className="text-sm font-semibold text-foreground">{t('setupProviders.runtime.title')}</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t('setupProviders.runtime.subtitle')}</p>
               </div>
             </div>
             <span className={`hidden sm:inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -554,16 +573,16 @@ export function SetupProvidersPage() {
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 : 'border-border/70 bg-card/75 text-muted-foreground'
             }`}>
-              {runtimeDraftReady ? '已填写' : '待填写'}
+              {runtimeDraftReady ? t('setupProviders.common.ready') : t('setupProviders.common.pending')}
             </span>
           </div>
 
           <div className="space-y-4 px-5 py-4">
             <div className="text-xs text-muted-foreground">
-              这里配置的是全局默认 Runtime。初始化完成后仍可在设置页调整，单个工作区也可单独覆盖。
+              {t('setupProviders.runtime.description')}
             </div>
 
-            <div className="text-xs font-medium text-foreground/80">选择全局默认 Runtime</div>
+            <div className="text-xs font-medium text-foreground/80">{t('setupProviders.runtime.defaultRuntime')}</div>
 
             <div className="inline-flex rounded-xl border border-border/70 bg-muted/60 p-1">
               {runtimeOptions.map((runtime) => (
@@ -584,18 +603,18 @@ export function SetupProvidersPage() {
             </div>
 
             <div className="text-xs text-muted-foreground">
-              可先切换到 Claude/Codex/Gemini 分别填写凭据，本页保存时会将已填写项一起提交，不会互相清空。
+              {t('setupProviders.runtime.multiRuntimeHint')}
             </div>
 
             {supportsOfficialAuth || supportsThirdPartyGateway ? (
               <div className="rounded-xl space-y-4 border border-border/70 bg-muted/10 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">Claude 凭据</h3>
+                    <h3 className="text-sm font-semibold text-foreground">{t('setupProviders.runtime.claude.title')}</h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {effectiveClaudeAccessMode === 'official' || !supportsThirdPartyGateway
-                        ? '使用 Claude 官方登录或 setup-token 作为系统默认凭据。'
-                        : '使用第三方网关地址与 Token 作为系统默认 Claude 凭据。'}
+                        ? t('setupProviders.runtime.claude.officialDescription')
+                        : t('setupProviders.runtime.claude.thirdPartyDescription')}
                     </p>
                   </div>
                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -608,8 +627,12 @@ export function SetupProvidersPage() {
                         : 'border-border/70 bg-card/75 text-muted-foreground'
                   }`}>
                     {(effectiveClaudeAccessMode === 'official' || !supportsThirdPartyGateway)
-                      ? claudeOfficialDraftReady ? '已填写' : '待填写'
-                      : claudeThirdPartyDraftReady ? '已填写' : '待填写'}
+                      ? claudeOfficialDraftReady
+                        ? t('setupProviders.common.ready')
+                        : t('setupProviders.common.pending')
+                      : claudeThirdPartyDraftReady
+                        ? t('setupProviders.common.ready')
+                        : t('setupProviders.common.pending')}
                   </span>
                 </div>
 
@@ -625,7 +648,7 @@ export function SetupProvidersPage() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Claude 官方
+                      {t('setupProviders.runtime.claude.tabOfficial')}
                     </button>
                     <button
                       type="button"
@@ -637,7 +660,7 @@ export function SetupProvidersPage() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      第三方网关
+                      {t('setupProviders.runtime.claude.tabThirdParty')}
                     </button>
                   </div>
                 )}
@@ -647,14 +670,16 @@ export function SetupProvidersPage() {
                     {/* OAuth one-click login */}
                     {supportsOAuthLogin && (
                       <div className="surface-card-soft rounded-xl space-y-3 border border-brand-200 bg-brand-50/70 p-4">
-                        <div className="text-sm font-medium text-foreground/90">一键登录 Claude（推荐）</div>
+                        <div className="text-sm font-medium text-foreground/90">
+                          {t('setupProviders.runtime.claude.oauth.title')}
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                          点击按钮后会打开 claude.ai 授权页面，完成授权后将页面上显示的授权码粘贴回来。
+                          {t('setupProviders.runtime.claude.oauth.description')}
                         </div>
 
                         {oauthDone ? (
                           <div className="surface-card-soft rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                            OAuth 登录成功，点击下方按钮完成配置。
+                            {t('setupProviders.runtime.claude.oauth.success')}
                           </div>
                         ) : !oauthState ? (
                           <Button
@@ -663,12 +688,12 @@ export function SetupProvidersPage() {
                             className="h-10 rounded-xl"
                           >
                             {oauthLoading ? <Loader2 className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
-                            一键登录 Claude
+                            {t('setupProviders.runtime.claude.oauth.start')}
                           </Button>
                         ) : (
                           <div className="space-y-2">
                             <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                              授权窗口已打开，请在 claude.ai 完成授权后，将页面上显示的授权码粘贴到下方。
+                              {t('setupProviders.runtime.claude.oauth.windowOpened')}
                             </div>
                             <div className="flex gap-2">
                               <Input
@@ -676,7 +701,7 @@ export function SetupProvidersPage() {
                                 value={oauthCode}
                                 onChange={(e) => setOauthCode(e.target.value)}
                                 disabled={oauthExchanging || saving}
-                                placeholder="粘贴授权码"
+                                placeholder={t('setupProviders.runtime.claude.oauth.codePlaceholder')}
                                 className="h-10 flex-1 rounded-xl border-border/75 bg-card/95"
                               />
                               <Button
@@ -685,7 +710,7 @@ export function SetupProvidersPage() {
                                 className="h-10 rounded-xl"
                               >
                                 {oauthExchanging && <Loader2 className="size-4 animate-spin" />}
-                                确认
+                                {t('setupProviders.common.confirm')}
                               </Button>
                               <Button
                                 variant="outline"
@@ -693,7 +718,7 @@ export function SetupProvidersPage() {
                                 className="h-10 rounded-xl"
                                 onClick={() => { setOauthState(null); setOauthCode(''); }}
                               >
-                                取消
+                                {t('setupProviders.common.cancel')}
                               </Button>
                             </div>
                           </div>
@@ -703,38 +728,38 @@ export function SetupProvidersPage() {
 
                     <div className="relative flex items-center gap-3 text-xs text-muted-foreground/80">
                       <div className="flex-1 border-t border-border" />
-                      或手动粘贴 setup-token
+                      {t('setupProviders.runtime.claude.orSetupToken')}
                       <div className="flex-1 border-t border-border" />
                     </div>
 
                     <div className="rounded-lg bg-muted/15 p-3 text-sm text-foreground/80">
-                      <div className="font-medium mb-2">获取凭据</div>
+                      <div className="font-medium mb-2">{t('setupProviders.runtime.claude.getCredentials')}</div>
                       <ol className="list-decimal ml-5 space-y-1 text-xs">
-                        <li>在目标机器安装 Claude Code CLI（若未安装）。</li>
-                        <li>在终端执行 <code>claude login</code> 完成账号登录。</li>
+                        <li>{t('setupProviders.runtime.claude.guideInstall')}</li>
+                        <li>{t('setupProviders.runtime.claude.guideLogin')}</li>
                         <li>
-                          方式 A：执行 <code>cat ~/.claude/.credentials.json</code>，复制完整 JSON 内容到下方（推荐，支持自动续期）。
+                          {t('setupProviders.runtime.claude.guideCredentialsJson')}
                         </li>
                         <li>
-                          方式 B：执行 <code>claude setup-token</code>，复制输出 token 到下方。
+                          {t('setupProviders.runtime.claude.guideSetupToken')}
                         </li>
                       </ol>
                     </div>
 
                     <div className="rounded-lg bg-muted/10 p-3">
                       <label className="block text-sm font-medium text-foreground/80 mb-1">
-                        setup-token 或 .credentials.json
+                        {t('setupProviders.runtime.claude.tokenLabel')}
                       </label>
                       <Input
                         type="password"
                         value={officialToken}
                         onChange={(e) => setOfficialToken(e.target.value)}
-                        placeholder="粘贴 setup-token 或 cat ~/.claude/.credentials.json 输出"
+                        placeholder={t('setupProviders.runtime.claude.tokenPlaceholder')}
                         className="h-10 rounded-xl border-border/75 bg-card/95"
                         disabled={saving}
                       />
                       <p className="text-xs text-muted-foreground/80 mt-1">
-                        支持粘贴 <code className="bg-muted px-1 rounded">cat ~/.claude/.credentials.json</code> 的 JSON 内容（含自动续期）
+                        {t('setupProviders.runtime.claude.tokenHint')}
                       </p>
                     </div>
                   </div>
@@ -742,29 +767,33 @@ export function SetupProvidersPage() {
                   <div className="space-y-4">
                     <div className="surface-card-soft flex items-center gap-2 border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs text-muted-foreground">
                       <Server className="w-4 h-4 text-primary" />
-                      第三方渠道会写入系统全局默认环境变量。必填项为 ANTHROPIC_BASE_URL 和 ANTHROPIC_AUTH_TOKEN。
+                      {t('setupProviders.runtime.claude.thirdPartyHint')}
                     </div>
 
                     <div className="grid grid-cols-1 gap-3">
                       <div className="rounded-lg bg-muted/10 p-3">
-                        <label className="block text-sm font-medium text-foreground/80 mb-1">ANTHROPIC_BASE_URL（必填）</label>
+                        <label className="block text-sm font-medium text-foreground/80 mb-1">
+                          {t('setupProviders.runtime.claude.baseUrlLabel')}
+                        </label>
                         <Input
                           type="text"
                           value={baseUrl}
                           onChange={(e) => setBaseUrl(e.target.value)}
-                          placeholder="https://your-relay.example.com/v1"
+                          placeholder={t('setupProviders.runtime.claude.baseUrlPlaceholder')}
                           className="h-10 rounded-xl border-border/75 bg-card/95"
                           disabled={saving}
                         />
                       </div>
 
                       <div className="rounded-lg bg-muted/10 p-3">
-                        <label className="block text-sm font-medium text-foreground/80 mb-1">ANTHROPIC_AUTH_TOKEN（必填）</label>
+                        <label className="block text-sm font-medium text-foreground/80 mb-1">
+                          {t('setupProviders.runtime.claude.authTokenLabel')}
+                        </label>
                         <Input
                           type="password"
                           value={authToken}
                           onChange={(e) => setAuthToken(e.target.value)}
-                          placeholder="输入第三方网关 Token"
+                          placeholder={t('setupProviders.runtime.claude.authTokenPlaceholder')}
                           className="h-10 rounded-xl border-border/75 bg-card/95"
                           disabled={saving}
                         />
@@ -773,7 +802,9 @@ export function SetupProvidersPage() {
 
                     <div className="rounded-lg space-y-3 bg-muted/15 p-3">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs text-muted-foreground">其他自定义环境变量（可选）</label>
+                        <label className="text-xs text-muted-foreground">
+                          {t('setupProviders.runtime.claude.customEnvLabel')}
+                        </label>
                         <button
                           type="button"
                           onClick={addCustomEnvRow}
@@ -781,12 +812,12 @@ export function SetupProvidersPage() {
                           className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          添加
+                          {t('setupProviders.common.add')}
                         </button>
                       </div>
 
                       {customEnvRows.length === 0 ? (
-                        <p className="text-xs text-muted-foreground/80">暂无</p>
+                        <p className="text-xs text-muted-foreground/80">{t('setupProviders.common.empty')}</p>
                       ) : (
                         <div className="space-y-2">
                           {customEnvRows.map((row, idx) => (
@@ -795,7 +826,7 @@ export function SetupProvidersPage() {
                                 type="text"
                                 value={row.key}
                                 onChange={(e) => updateCustomEnvRow(idx, 'key', e.target.value)}
-                                placeholder="KEY"
+                                placeholder={t('setupProviders.runtime.claude.customEnvKeyPlaceholder')}
                                 className="h-9 w-full rounded-lg border-border/75 bg-card/95 px-2.5 py-1.5 text-xs font-mono sm:w-[38%]"
                                 disabled={saving}
                               />
@@ -803,7 +834,7 @@ export function SetupProvidersPage() {
                                 type="text"
                                 value={row.value}
                                 onChange={(e) => updateCustomEnvRow(idx, 'value', e.target.value)}
-                                placeholder="value"
+                                placeholder={t('setupProviders.runtime.claude.customEnvValuePlaceholder')}
                                 className="h-9 flex-1 rounded-lg border-border/75 bg-card/95 px-2.5 py-1.5 text-xs font-mono"
                                 disabled={saving}
                               />
@@ -812,7 +843,7 @@ export function SetupProvidersPage() {
                                 onClick={() => removeCustomEnvRow(idx)}
                                 disabled={saving}
                                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                                aria-label="删除环境变量"
+                                aria-label={t('setupProviders.runtime.claude.removeEnvAria')}
                               >
                                 <X className="w-4 h-4" />
                               </button>
@@ -828,11 +859,17 @@ export function SetupProvidersPage() {
               <div className="rounded-xl space-y-4 border border-border/70 bg-muted/10 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">{currentRuntime.label} 凭据</h3>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {t('setupProviders.runtime.generic.title', { label: currentRuntime.label })}
+                    </h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {engineMode === 'gemini'
-                        ? `${currentRuntime.label} 使用 Gemini CLI。可切换 Google 官方 或 API Key 模式。`
-                        : `${currentRuntime.label} 使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可完成初始化。`}
+                        ? t('setupProviders.runtime.generic.geminiDescription', {
+                          label: currentRuntime.label,
+                        })
+                        : t('setupProviders.runtime.generic.codexDescription', {
+                          label: currentRuntime.label,
+                        })}
                     </p>
                   </div>
                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -840,7 +877,9 @@ export function SetupProvidersPage() {
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                       : 'border-border/70 bg-card/75 text-muted-foreground'
                   }`}>
-                    {(engineMode === 'gemini' ? geminiDraftReady : codexDraftReady) ? '已填写' : '待填写'}
+                    {(engineMode === 'gemini' ? geminiDraftReady : codexDraftReady)
+                      ? t('setupProviders.common.ready')
+                      : t('setupProviders.common.pending')}
                   </span>
                 </div>
 
@@ -848,9 +887,9 @@ export function SetupProvidersPage() {
                   <Server className="w-4 h-4 text-primary" />
                   {engineMode === 'gemini'
                     ? (geminiAccessMode === 'oauth'
-                      ? 'Google 官方模式不需要 GEMINI_API_KEY，需在执行环境完成 gemini login。'
-                      : '可选项包含 GOOGLE_GEMINI_BASE_URL 与 GEMINI_MODEL；留空时会使用默认值。')
-                    : '可选项包含 OPENAI_BASE_URL 与 CODEX_MODEL；留空时会使用默认值。'}
+                      ? t('setupProviders.runtime.generic.geminiOauthHint')
+                      : t('setupProviders.runtime.generic.geminiApiHint'))
+                    : t('setupProviders.runtime.generic.codexHint')}
                 </div>
 
                 {engineMode === 'gemini' && (
@@ -865,7 +904,7 @@ export function SetupProvidersPage() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Google 官方
+                      {t('setupProviders.runtime.gemini.tabOfficial')}
                     </button>
                     <button
                       type="button"
@@ -877,23 +916,25 @@ export function SetupProvidersPage() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      API Key
+                      {t('setupProviders.runtime.gemini.tabApiKey')}
                     </button>
                   </div>
                 )}
 
                 {engineMode === 'gemini' && geminiAccessMode === 'oauth' && (
                   <div className="surface-card-soft rounded-xl space-y-3 border border-brand-200 bg-brand-50/70 p-4">
-                    <div className="text-sm font-medium text-foreground/90">Google 官方（推荐）</div>
+                    <div className="text-sm font-medium text-foreground/90">
+                      {t('setupProviders.runtime.gemini.officialTitle')}
+                    </div>
                     <div className="text-xs text-muted-foreground">
-                      使用 <code className="rounded bg-muted px-1">gemini login</code> 后，初始化流程只需保存模式与模型即可。
+                      {t('setupProviders.runtime.gemini.officialDescription')}
                     </div>
                     <div className="rounded-lg bg-muted/15 p-3 text-sm text-foreground/80">
-                      <div className="font-medium mb-2">快速检查</div>
+                      <div className="font-medium mb-2">{t('setupProviders.runtime.gemini.quickCheckTitle')}</div>
                       <ol className="list-decimal ml-5 space-y-1 text-xs">
-                        <li>在目标机器执行 <code>gemini login</code> 并完成授权。</li>
-                        <li>保持当前模式为 Google 官方，点击页面底部保存。</li>
-                        <li>系统会自动尝试默认登录目录，无需手动配置路径。</li>
+                        <li>{t('setupProviders.runtime.gemini.quickCheck1')}</li>
+                        <li>{t('setupProviders.runtime.gemini.quickCheck2')}</li>
+                        <li>{t('setupProviders.runtime.gemini.quickCheck3')}</li>
                       </ol>
                     </div>
                   </div>
@@ -903,7 +944,9 @@ export function SetupProvidersPage() {
                   {(engineMode !== 'gemini' || geminiAccessMode === 'api_key') && (
                     <div className="rounded-lg bg-muted/10 p-3">
                       <label className="block text-sm font-medium text-foreground/80 mb-1">
-                        {engineMode === 'gemini' ? 'GEMINI_API_KEY（必填）' : 'CODEX_API_KEY（必填）'}
+                        {engineMode === 'gemini'
+                          ? t('setupProviders.runtime.generic.geminiApiKeyLabel')
+                          : t('setupProviders.runtime.generic.codexApiKeyLabel')}
                       </label>
                       <Input
                         type="password"
@@ -915,7 +958,11 @@ export function SetupProvidersPage() {
                             setCodexApiKey(e.target.value);
                           }
                         }}
-                        placeholder={engineMode === 'gemini' ? '输入 Gemini API Key' : '输入 Codex API Key'}
+                        placeholder={
+                          engineMode === 'gemini'
+                            ? t('setupProviders.runtime.generic.geminiApiKeyPlaceholder')
+                            : t('setupProviders.runtime.generic.codexApiKeyPlaceholder')
+                        }
                         className="h-10 rounded-xl border-border/75 bg-card/95"
                         disabled={saving}
                       />
@@ -924,13 +971,13 @@ export function SetupProvidersPage() {
                   {engineMode === 'gemini' && (
                     <div className="rounded-lg bg-muted/10 p-3">
                       <label className="block text-sm font-medium text-foreground/80 mb-1">
-                        GOOGLE_GEMINI_BASE_URL（可选）
+                        {t('setupProviders.runtime.generic.geminiBaseUrlLabel')}
                       </label>
                       <Input
                         type="text"
                         value={geminiBaseUrl}
                         onChange={(e) => setGeminiBaseUrl(e.target.value)}
-                        placeholder="https://generativelanguage.googleapis.com"
+                        placeholder={t('setupProviders.runtime.generic.geminiBaseUrlPlaceholder')}
                         className="h-10 rounded-xl border-border/75 bg-card/95"
                         disabled={saving}
                       />
@@ -938,12 +985,14 @@ export function SetupProvidersPage() {
                   )}
                   {engineMode !== 'gemini' && currentRuntime.capabilities.supportsCustomBaseUrl && (
                     <div className="rounded-lg bg-muted/10 p-3">
-                      <label className="block text-sm font-medium text-foreground/80 mb-1">OPENAI_BASE_URL（可选）</label>
+                      <label className="block text-sm font-medium text-foreground/80 mb-1">
+                        {t('setupProviders.runtime.generic.openaiBaseUrlLabel')}
+                      </label>
                       <Input
                         type="text"
                         value={codexBaseUrl}
                         onChange={(e) => setCodexBaseUrl(e.target.value)}
-                        placeholder="https://api.openai.com/v1"
+                        placeholder={t('setupProviders.runtime.generic.openaiBaseUrlPlaceholder')}
                         className="h-10 rounded-xl border-border/75 bg-card/95"
                         disabled={saving}
                       />
@@ -952,7 +1001,9 @@ export function SetupProvidersPage() {
                   {supportsModelOverride && (
                     <div className="rounded-lg bg-muted/10 p-3">
                       <label className="block text-sm font-medium text-foreground/80 mb-1">
-                        {engineMode === 'gemini' ? 'GEMINI_MODEL（可选）' : 'CODEX_MODEL（可选）'}
+                        {engineMode === 'gemini'
+                          ? t('setupProviders.runtime.generic.geminiModelLabel')
+                          : t('setupProviders.runtime.generic.codexModelLabel')}
                       </label>
                       <Input
                         type="text"
@@ -964,7 +1015,11 @@ export function SetupProvidersPage() {
                             setCodexModel(e.target.value);
                           }
                         }}
-                        placeholder={engineMode === 'gemini' ? 'gemini-2.5-pro' : 'gpt-5-codex'}
+                        placeholder={
+                          engineMode === 'gemini'
+                            ? t('setupProviders.runtime.generic.geminiModelPlaceholder')
+                            : t('setupProviders.runtime.generic.codexModelPlaceholder')
+                        }
                         className="h-10 rounded-xl border-border/75 bg-card/95"
                         disabled={saving}
                       />
@@ -979,11 +1034,11 @@ export function SetupProvidersPage() {
         <div className="surface-card-soft flex flex-col gap-3 rounded-xl border border-border/70 p-4 md:flex-row md:items-center md:justify-between">
           <div className="text-sm text-muted-foreground flex items-start gap-2">
             <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-            当前页保存的数据会作为系统全局默认配置，后续可在后台设置页继续修改。
+            {t('setupProviders.footer.summary')}
           </div>
           <Button onClick={handleFinish} disabled={saving} className="h-10 w-full rounded-xl md:w-auto md:min-w-64">
             {saving && <Loader2 className="size-4 animate-spin" />}
-            保存全局默认并进入后台
+            {t('setupProviders.footer.save')}
             <ArrowRight className="w-4 h-4" />
           </Button>
         </div>

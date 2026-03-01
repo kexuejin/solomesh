@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Folder, FolderPlus, ChevronRight, ArrowLeft, Loader2, FolderCheck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { api } from '../../api/client';
+import { useI18n } from '../../i18n';
 
 interface DirectoryEntry {
   name: string;
@@ -23,6 +24,7 @@ interface DirectoryBrowserProps {
 }
 
 export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrowserProps) {
+  const { t } = useI18n();
   const [browsing, setBrowsing] = useState(false);
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -45,11 +47,14 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
       setParentPath(data.parentPath);
       setDirectories(data.directories);
     } catch (err: any) {
-      setError(err?.message || (err instanceof Error ? err.message : 'Failed to load directories'));
+      setError(
+        err?.message
+          || (err instanceof Error ? err.message : t('shared.directoryBrowser.errors.loadDirectoriesFailed')),
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleToggleBrowse = () => {
     if (browsing) {
@@ -99,7 +104,10 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
       setCreating(false);
       setNewFolderName('');
     } catch (err: any) {
-      setError(err?.message || (err instanceof Error ? err.message : 'Failed to create folder'));
+      setError(
+        err?.message
+          || (err instanceof Error ? err.message : t('shared.directoryBrowser.errors.createFolderFailed')),
+      );
     } finally {
       setCreateLoading(false);
     }
@@ -119,14 +127,14 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
   return (
     <div>
       <label className="block text-sm font-medium text-foreground/80 mb-1">
-        工作目录（可选）
+        {t('shared.directoryBrowser.label')}
       </label>
       <div className="flex gap-2">
         <Input
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder || '默认: data/groups/{folder}/'}
+          placeholder={placeholder || t('shared.directoryBrowser.defaultPlaceholder')}
           className="flex-1 text-sm"
         />
         <button
@@ -134,7 +142,7 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
           onClick={handleToggleBrowse}
           className="px-3 py-2 text-sm font-medium text-primary bg-brand-50 border border-brand-200 rounded-lg hover:bg-brand-100 transition-colors cursor-pointer whitespace-nowrap"
         >
-          {browsing ? '收起' : '浏览'}
+          {browsing ? t('shared.directoryBrowser.collapse') : t('shared.directoryBrowser.browse')}
         </button>
       </div>
 
@@ -176,7 +184,7 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
                 className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-primary rounded hover:bg-primary/90 transition-colors cursor-pointer flex-shrink-0 ml-2"
               >
                 <FolderCheck className="w-3.5 h-3.5" />
-                选择此目录
+                {t('shared.directoryBrowser.selectCurrent')}
               </button>
             </div>
           )}
@@ -198,13 +206,13 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40 transition-colors cursor-pointer border-b border-border/70"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    返回上级
+                    {t('shared.directoryBrowser.goUp')}
                   </button>
                 )}
 
                 {directories.length === 0 && (
                   <div className="px-3 py-4 text-sm text-muted-foreground/80 text-center">
-                    此目录下没有子目录
+                    {t('shared.directoryBrowser.noSubdirectories')}
                   </div>
                 )}
 
@@ -227,7 +235,7 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
                       onClick={() => handleSelect(dir.path)}
                       className="px-2 py-1 text-xs font-medium text-primary bg-brand-50 hover:bg-brand-100 rounded transition-colors cursor-pointer flex-shrink-0 ml-2"
                     >
-                      选择
+                      {t('shared.directoryBrowser.select')}
                     </button>
                   </div>
                 ))}
@@ -251,7 +259,7 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
                         setNewFolderName('');
                       }
                     }}
-                    placeholder="文件夹名称"
+                    placeholder={t('shared.directoryBrowser.newFolderPlaceholder')}
                     className="flex-1 px-2 py-1.5 text-sm h-auto"
                     autoFocus
                   />
@@ -263,7 +271,7 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
                     {createLoading ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
-                      '创建'
+                      t('shared.directoryBrowser.create')
                     )}
                   </button>
                   <button
@@ -273,7 +281,7 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
                     }}
                     className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground/80 transition-colors cursor-pointer"
                   >
-                    取消
+                    {t('shared.directoryBrowser.cancel')}
                   </button>
                 </div>
               ) : (
@@ -282,7 +290,7 @@ export function DirectoryBrowser({ value, onChange, placeholder }: DirectoryBrow
                   className="flex items-center gap-1.5 text-sm text-primary hover:text-primary transition-colors cursor-pointer"
                 >
                   <FolderPlus className="w-4 h-4" />
-                  新建文件夹
+                  {t('shared.directoryBrowser.newFolder')}
                 </button>
               )}
             </div>

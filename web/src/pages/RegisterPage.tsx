@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth';
 import { api } from '../api/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useI18n } from '../i18n';
 
 interface RegisterStatus {
   allowRegistration: boolean;
@@ -12,6 +13,7 @@ interface RegisterStatus {
 }
 
 export function RegisterPage() {
+  const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -56,15 +58,15 @@ export function RegisterPage() {
 
     // Client-side validation
     if (!/^[a-zA-Z0-9_]{3,32}$/.test(username)) {
-      setError('用户名须为 3-32 位字母、数字或下划线');
+      setError(t('auth.register.usernameInvalid'));
       return;
     }
     if (password.length < 8) {
-      setError('密码长度不能少于 8 位');
+      setError(t('auth.register.passwordTooShort'));
       return;
     }
     if (password.length > 128) {
-      setError('密码长度不能超过 128 位');
+      setError(t('auth.register.passwordTooLong'));
       return;
     }
 
@@ -92,7 +94,7 @@ export function RegisterPage() {
           ? err.message
           : typeof err === 'object' && err !== null && 'message' in err
             ? String((err as { message: unknown }).message)
-            : '注册失败',
+            : t('auth.register.failed'),
       );
     } finally {
       setLoading(false);
@@ -105,7 +107,7 @@ export function RegisterPage() {
         <div className="mx-auto flex h-full w-full max-w-md items-center justify-center">
           <div className="surface-card-soft flex items-center gap-2.5 border border-border/70 px-4 py-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            加载中...
+            {t('auth.loading')}
           </div>
         </div>
       </div>
@@ -124,13 +126,13 @@ export function RegisterPage() {
               </div>
             </div>
             <h1 className="mb-2 text-center text-2xl font-bold text-foreground">
-              注册已关闭
+              {t('auth.register.closedTitle')}
             </h1>
             <p className="mb-6 text-center text-muted-foreground">
-              管理员已关闭注册功能，如需账户请联系管理员。
+              {t('auth.register.closedDesc')}
             </p>
             <Button asChild className="h-10 w-full rounded-xl">
-              <Link to="/login">返回登录</Link>
+              <Link to="/login">{t('auth.register.backToLogin')}</Link>
             </Button>
           </div>
         </div>
@@ -153,10 +155,12 @@ export function RegisterPage() {
             Account Setup
           </p>
           <h1 className="mb-2 text-center text-2xl font-bold text-foreground">
-            注册新账户
+            {t('auth.register.title')}
           </h1>
           <p className="mb-6 text-center text-muted-foreground">
-            {status.requireInviteCode ? '需要邀请码才能注册' : '创建你的账户'}
+            {status.requireInviteCode
+              ? t('auth.register.requireInvite')
+              : t('auth.register.createAccount')}
           </p>
 
           {error && (
@@ -169,7 +173,7 @@ export function RegisterPage() {
             {status.requireInviteCode && (
               <div>
                 <label htmlFor="invite_code" className="mb-1 block text-sm font-medium text-foreground/80">
-                  邀请码
+                  {t('auth.register.inviteCode')}
                 </label>
                 <Input
                   id="invite_code"
@@ -177,7 +181,7 @@ export function RegisterPage() {
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                   className="h-10 rounded-xl border-border/75 bg-card/95 font-mono"
-                  placeholder="请输入邀请码"
+                  placeholder={t('auth.register.invitePlaceholder')}
                   required
                   autoFocus
                 />
@@ -186,14 +190,14 @@ export function RegisterPage() {
 
             <div>
               <label htmlFor="reg-username" className="mb-1 block text-sm font-medium text-foreground/80">
-                用户名
+                {t('auth.register.username')}
               </label>
               <Input
                 id="reg-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="3-32位字母、数字或下划线"
+                placeholder={t('auth.register.usernamePlaceholder')}
                 className="h-10 rounded-xl border-border/75 bg-card/95"
                 required
                 autoFocus={!status.requireInviteCode}
@@ -202,28 +206,31 @@ export function RegisterPage() {
 
             <div>
               <label htmlFor="reg-display-name" className="mb-1 block text-sm font-medium text-foreground/80">
-                显示名称 <span className="text-muted-foreground/80">(可选)</span>
+                {t('auth.register.displayName')}{' '}
+                <span className="text-muted-foreground/80">
+                  ({t('auth.register.optional')})
+                </span>
               </label>
               <Input
                 id="reg-display-name"
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="留空则使用用户名"
+                placeholder={t('auth.register.displayNamePlaceholder')}
                 className="h-10 rounded-xl border-border/75 bg-card/95"
               />
             </div>
 
             <div>
               <label htmlFor="reg-password" className="mb-1 block text-sm font-medium text-foreground/80">
-                密码
+                {t('auth.register.password')}
               </label>
               <Input
                 id="reg-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="至少 8 位"
+                placeholder={t('auth.register.passwordPlaceholder')}
                 className="h-10 rounded-xl border-border/75 bg-card/95"
                 required
               />
@@ -231,14 +238,14 @@ export function RegisterPage() {
 
             <Button type="submit" disabled={loading} className="h-10 w-full rounded-xl">
               {loading && <Loader2 className="size-4 animate-spin" />}
-              {loading ? '注册中...' : '注册'}
+              {loading ? t('auth.register.submitting') : t('auth.register.submit')}
             </Button>
           </form>
 
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            已有账户？
+            {t('auth.register.hasAccount')}
             <Link to="/login" className="text-primary hover:text-primary/80 ml-1">
-              去登录
+              {t('auth.register.toLogin')}
             </Link>
           </p>
 

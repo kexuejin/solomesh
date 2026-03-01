@@ -8,17 +8,16 @@ import { Button } from '@/components/ui/button';
 import { SettingsActionBar } from './SettingsActionBar';
 import type { SettingsNotification, SystemSettings } from './types';
 import { getErrorMessage } from './types';
+import { useI18n, type MessageKey } from '../../i18n';
 
 interface SystemSettingsSectionProps extends SettingsNotification {}
 
 interface FieldConfig {
   key: keyof SystemSettings;
-  label: string;
-  description: string;
-  unit: string;
-  /** Convert stored value to display value */
+  labelKey: MessageKey;
+  descriptionKey: MessageKey;
+  unitKey: MessageKey;
   toDisplay: (v: number) => number;
-  /** Convert display value to stored value */
   toStored: (v: number) => number;
   min: number;
   max: number;
@@ -28,9 +27,9 @@ interface FieldConfig {
 const fields: FieldConfig[] = [
   {
     key: 'containerTimeout',
-    label: '容器最大运行时间',
-    description: '单个容器/进程的最长运行时间',
-    unit: '分钟',
+    labelKey: 'settings.system.fields.containerTimeout.label',
+    descriptionKey: 'settings.system.fields.containerTimeout.description',
+    unitKey: 'settings.system.units.minutes',
     toDisplay: (v) => Math.round(v / 60000),
     toStored: (v) => v * 60000,
     min: 1,
@@ -39,9 +38,9 @@ const fields: FieldConfig[] = [
   },
   {
     key: 'idleTimeout',
-    label: '容器空闲超时',
-    description: '最后一次输出后无新消息则关闭容器',
-    unit: '分钟',
+    labelKey: 'settings.system.fields.idleTimeout.label',
+    descriptionKey: 'settings.system.fields.idleTimeout.description',
+    unitKey: 'settings.system.units.minutes',
     toDisplay: (v) => Math.round(v / 60000),
     toStored: (v) => v * 60000,
     min: 1,
@@ -50,9 +49,9 @@ const fields: FieldConfig[] = [
   },
   {
     key: 'containerMaxOutputSize',
-    label: '单次输出上限',
-    description: '单次容器运行的最大输出大小',
-    unit: 'MB',
+    labelKey: 'settings.system.fields.containerMaxOutputSize.label',
+    descriptionKey: 'settings.system.fields.containerMaxOutputSize.description',
+    unitKey: 'settings.system.units.mb',
     toDisplay: (v) => Math.round(v / 1048576),
     toStored: (v) => v * 1048576,
     min: 1,
@@ -61,9 +60,9 @@ const fields: FieldConfig[] = [
   },
   {
     key: 'maxConcurrentContainers',
-    label: '最大并发容器数',
-    description: '同时运行的 Docker 容器数量上限',
-    unit: '个',
+    labelKey: 'settings.system.fields.maxConcurrentContainers.label',
+    descriptionKey: 'settings.system.fields.maxConcurrentContainers.description',
+    unitKey: 'settings.system.units.count',
     toDisplay: (v) => v,
     toStored: (v) => v,
     min: 1,
@@ -72,9 +71,9 @@ const fields: FieldConfig[] = [
   },
   {
     key: 'maxConcurrentHostProcesses',
-    label: '最大并发宿主机进程数',
-    description: '同时运行的宿主机模式进程数量上限',
-    unit: '个',
+    labelKey: 'settings.system.fields.maxConcurrentHostProcesses.label',
+    descriptionKey: 'settings.system.fields.maxConcurrentHostProcesses.description',
+    unitKey: 'settings.system.units.count',
     toDisplay: (v) => v,
     toStored: (v) => v,
     min: 1,
@@ -83,9 +82,9 @@ const fields: FieldConfig[] = [
   },
   {
     key: 'maxLoginAttempts',
-    label: '登录失败锁定次数',
-    description: '连续失败该次数后锁定账户',
-    unit: '次',
+    labelKey: 'settings.system.fields.maxLoginAttempts.label',
+    descriptionKey: 'settings.system.fields.maxLoginAttempts.description',
+    unitKey: 'settings.system.units.times',
     toDisplay: (v) => v,
     toStored: (v) => v,
     min: 1,
@@ -94,9 +93,9 @@ const fields: FieldConfig[] = [
   },
   {
     key: 'loginLockoutMinutes',
-    label: '锁定时间',
-    description: '账户被锁定后的等待时间',
-    unit: '分钟',
+    labelKey: 'settings.system.fields.loginLockoutMinutes.label',
+    descriptionKey: 'settings.system.fields.loginLockoutMinutes.description',
+    unitKey: 'settings.system.units.minutes',
     toDisplay: (v) => v,
     toStored: (v) => v,
     min: 1,
@@ -107,6 +106,7 @@ const fields: FieldConfig[] = [
 
 export function SystemSettingsSection({ setNotice, setError }: SystemSettingsSectionProps) {
   const { hasPermission } = useAuthStore();
+  const { t } = useI18n();
 
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [displayValues, setDisplayValues] = useState<Record<string, number>>({});
@@ -127,12 +127,12 @@ export function SystemSettingsSection({ setNotice, setError }: SystemSettingsSec
         }
         setDisplayValues(display);
       } catch (err) {
-        setError(getErrorMessage(err, '加载系统参数失败'));
+        setError(getErrorMessage(err, t('settings.system.errors.loadFailed')));
       } finally {
         setLoading(false);
       }
     })();
-  }, [setError]);
+  }, [setError, t]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -153,9 +153,9 @@ export function SystemSettingsSection({ setNotice, setError }: SystemSettingsSec
         display[f.key] = f.toDisplay(data[f.key]);
       }
       setDisplayValues(display);
-      setNotice('系统参数已保存，新的容器/进程将使用最新配置');
+      setNotice(t('settings.system.notice.saved'));
     } catch (err) {
-      setError(getErrorMessage(err, '保存系统参数失败'));
+      setError(getErrorMessage(err, t('settings.system.errors.saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -170,7 +170,7 @@ export function SystemSettingsSection({ setNotice, setError }: SystemSettingsSec
   }
 
   if (!canManage) {
-    return <div className="text-sm text-muted-foreground">需要系统配置权限才能修改系统参数。</div>;
+    return <div className="text-sm text-muted-foreground">{t('settings.system.noPermission')}</div>;
   }
 
   if (!settings) return null;
@@ -178,47 +178,50 @@ export function SystemSettingsSection({ setNotice, setError }: SystemSettingsSec
   return (
     <div className="space-y-4">
       <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/65 px-4 py-3 text-sm text-foreground/85">
-        调整容器运行参数和安全限制。修改后无需重启，新参数对后续创建的容器/进程立即生效。
+        {t('settings.system.description')}
       </div>
 
       <section className="surface-card overflow-hidden">
         <div className="border-b border-border/70 bg-muted/35 px-4 py-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">系统参数</div>
-          <div className="mt-1 text-sm font-medium text-foreground">资源与安全限制</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">{t('settings.system.headerBadge')}</div>
+          <div className="mt-1 text-sm font-medium text-foreground">{t('settings.system.headerTitle')}</div>
         </div>
         <div className="grid gap-3 px-4 py-4 md:grid-cols-2">
-        {fields.map((f) => (
-          <div key={f.key} className="surface-card-soft rounded-xl space-y-2 border border-border/70 bg-muted/20 p-3">
-            <label className="block text-sm font-medium text-foreground">{f.label}</label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                value={displayValues[f.key] ?? ''}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  setDisplayValues((prev) => ({
-                    ...prev,
-                    [f.key]: Number.isFinite(val) ? val : 0,
-                  }));
-                }}
-                min={f.min}
-                max={f.max}
-                step={f.step}
-                className="h-10 max-w-32 rounded-xl border-border/75 bg-card/95"
-              />
-              <span className="text-xs text-muted-foreground">{f.unit}</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {f.description}（范围：{f.min} - {f.max} {f.unit}）
-            </p>
-          </div>
-        ))}
+          {fields.map((f) => {
+            const unit = t(f.unitKey);
+            return (
+              <div key={f.key} className="surface-card-soft rounded-xl space-y-2 border border-border/70 bg-muted/20 p-3">
+                <label className="block text-sm font-medium text-foreground">{t(f.labelKey)}</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={displayValues[f.key] ?? ''}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setDisplayValues((prev) => ({
+                        ...prev,
+                        [f.key]: Number.isFinite(val) ? val : 0,
+                      }));
+                    }}
+                    min={f.min}
+                    max={f.max}
+                    step={f.step}
+                    className="h-10 max-w-32 rounded-xl border-border/75 bg-card/95"
+                  />
+                  <span className="text-xs text-muted-foreground">{unit}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t(f.descriptionKey)} {t('settings.system.range', { min: f.min, max: f.max, unit })}
+                </p>
+              </div>
+            );
+          })}
         </div>
         <div className="px-4 pb-4">
           <SettingsActionBar>
             <Button onClick={handleSave} disabled={saving} className="h-10 rounded-xl">
               {saving && <Loader2 className="size-4 animate-spin" />}
-              {saving ? '保存中...' : '保存系统参数'}
+              {saving ? t('settings.system.saving') : t('settings.system.save')}
             </Button>
           </SettingsActionBar>
         </div>

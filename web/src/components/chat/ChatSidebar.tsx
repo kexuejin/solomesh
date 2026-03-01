@@ -10,6 +10,7 @@ import { RenameDialog } from './RenameDialog';
 import { EditWorkspaceDirectoryDialog } from './EditWorkspaceDirectoryDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useI18n } from '../../i18n';
 
 interface ChatSidebarProps {
   className?: string;
@@ -18,6 +19,7 @@ interface ChatSidebarProps {
 const isImSessionKind = (kind?: string) => kind === 'feishu' || kind === 'telegram';
 
 export function ChatSidebar({ className }: ChatSidebarProps) {
+  const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -88,9 +90,9 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
     const weekAgo = new Date(today.getTime() - 7 * 86400000);
 
     const sections: { label: string; items: typeof workspaceGroups }[] = [
-      { label: '今天', items: [] },
-      { label: '最近 7 天', items: [] },
-      { label: '更早', items: [] },
+      { label: t('chat.chatSidebar.date.today'), items: [] },
+      { label: t('chat.chatSidebar.date.recent7Days'), items: [] },
+      { label: t('chat.chatSidebar.date.older'), items: [] },
     ];
 
     const filtered = searchQuery.trim()
@@ -105,7 +107,7 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
     });
 
     return sections.filter((s) => s.items.length > 0);
-  }, [workspaceGroups, searchQuery]);
+  }, [workspaceGroups, searchQuery, t]);
 
   const handleGroupSelect = (jid: string, folder: string) => {
     selectGroup(jid);
@@ -151,33 +153,47 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
   const buildClearHistoryMessage = () => {
     const group = clearState.jid ? groups[clearState.jid] : undefined;
     if (!group) {
-      return `确认重建工作区「${clearState.name}」吗？此操作不可撤销。`;
+      return t('chat.chatSidebar.clear.messageFallback', { name: clearState.name });
     }
     const isHost = group.execution_mode === 'host';
     const customCwd = group.custom_cwd?.trim();
     if (isHost && customCwd) {
-      return `确认重建工作区「${clearState.name}」吗？这会清除聊天记录、上下文和 SoloMesh 内部缓存，但不会删除外部目录「${customCwd}」中的文件。此操作不可撤销。`;
+      return t('chat.chatSidebar.clear.messageHostCustomCwd', {
+        name: clearState.name,
+        appName,
+        customCwd,
+      });
     }
     if (isHost) {
-      return `确认重建工作区「${clearState.name}」吗？这会清除聊天记录、上下文，并重置默认工作目录（data/groups/${group.folder}/）中的文件。此操作不可撤销。`;
+      return t('chat.chatSidebar.clear.messageHostDefaultCwd', {
+        name: clearState.name,
+        folder: group.folder,
+      });
     }
-    return `确认重建工作区「${clearState.name}」吗？这会清除全部聊天记录、上下文，并删除工作目录中的所有文件。此操作不可撤销。`;
+    return t('chat.chatSidebar.clear.messageDocker', { name: clearState.name });
   };
 
   const buildDeleteMessage = () => {
     const group = deleteState.jid ? groups[deleteState.jid] : undefined;
     if (!group) {
-      return `确认删除工作区「${deleteState.name}」吗？此操作不可撤销。`;
+      return t('chat.chatSidebar.delete.messageFallback', { name: deleteState.name });
     }
     const isHost = group.execution_mode === 'host';
     const customCwd = group.custom_cwd?.trim();
     if (isHost && customCwd) {
-      return `确认删除工作区「${deleteState.name}」吗？此操作会删除该工作区在 SoloMesh 内的聊天记录、会话和定时任务，但不会删除外部目录「${customCwd}」中的文件。此操作不可撤销。`;
+      return t('chat.chatSidebar.delete.messageHostCustomCwd', {
+        name: deleteState.name,
+        appName,
+        customCwd,
+      });
     }
     if (isHost) {
-      return `确认删除工作区「${deleteState.name}」吗？此操作会删除该工作区的聊天记录、会话、定时任务，以及默认工作目录（data/groups/${group.folder}/）中的文件。此操作不可撤销。`;
+      return t('chat.chatSidebar.delete.messageHostDefaultCwd', {
+        name: deleteState.name,
+        folder: group.folder,
+      });
     }
-    return `确认删除工作区「${deleteState.name}」吗？此操作会彻底删除该工作区的全部数据，包括聊天记录、工作目录文件和定时任务。此操作不可撤销。`;
+    return t('chat.chatSidebar.delete.messageDocker', { name: deleteState.name });
   };
 
   return (
@@ -195,15 +211,15 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
       <div className="border-b border-sidebar-border px-6 pb-5 pt-6">
         <div className="mb-4 flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-bold tracking-tight text-foreground">Workspace</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">{totalWorkspaceCount} 个工作区</p>
+            <h2 className="truncate text-lg font-bold tracking-tight text-foreground">{t('chat.chatSidebar.title')}</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t('chat.chatSidebar.workspaceCount', { count: totalWorkspaceCount })}</p>
           </div>
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
             className="flex h-8 w-8 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
-            title="新工作区"
-            aria-label="新工作区"
+            title={t('chat.chatSidebar.newWorkspace')}
+            aria-label={t('chat.chatSidebar.newWorkspace')}
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -213,7 +229,7 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索工作区..."
+            placeholder={t('chat.chatSidebar.searchPlaceholder')}
             className="h-10 w-full rounded-[10px] border-0 bg-background pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:bg-muted/65"
           />
           {searchQuery && (
@@ -221,7 +237,7 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
               type="button"
               onClick={() => setSearchQuery('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
-              aria-label="清空搜索"
+              aria-label={t('chat.chatSidebar.clearSearch')}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -243,7 +259,7 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
             {mainGroup && (
               <section className="mb-2 pt-2">
                 <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                  主工作区
+                  {t('chat.chatSidebar.mainWorkspaceSection')}
                 </p>
                 <ChatGroupItem
                   jid={mainGroup.jid}
@@ -271,8 +287,12 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
             {!hasWorkspaceMatches && !mainGroup ? (
               <EmptyState
                 icon={FolderOpen}
-                title={searchQuery ? '未找到匹配工作区' : '暂无工作区'}
-                description={searchQuery ? '试试更短的关键词，或先创建一个工作区。' : '创建第一个工作区后，可以开始对话和任务编排。'}
+                title={searchQuery ? t('chat.chatSidebar.empty.noMatchTitle') : t('chat.chatSidebar.empty.noWorkspaceTitle')}
+                description={
+                  searchQuery
+                    ? t('chat.chatSidebar.empty.noMatchDescription')
+                    : t('chat.chatSidebar.empty.noWorkspaceDescription')
+                }
                 className="py-14"
               />
             ) : (
@@ -280,8 +300,8 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
                 {!hasWorkspaceMatches && !!searchQuery && mainGroup && (
                   <EmptyState
                     icon={FolderOpen}
-                    title="未找到匹配工作区"
-                    description="主工作区仍可继续使用，或清空搜索查看全部列表。"
+                    title={t('chat.chatSidebar.empty.noMatchTitle')}
+                    description={t('chat.chatSidebar.empty.mainStillAvailableDescription')}
                     className="py-10"
                   />
                 )}
@@ -289,7 +309,7 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
                 {hasWorkspaceMatches && (
                   <section>
                     <p className="px-2 pb-1.5 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      工作区
+                      {t('chat.chatSidebar.workspaceSection')}
                     </p>
                     {groupedByDate.map((section) => (
                       <div key={section.label} className="mb-2">
@@ -356,13 +376,13 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
         open={clearState.open}
         onClose={() => setClearState({ open: false, jid: '', name: '' })}
         onConfirm={handleClearConfirm}
-        title="重建工作区"
+        title={t('chat.chatSidebar.clear.title')}
         message={buildClearHistoryMessage()}
-        confirmText="确认重建"
-        cancelText="取消"
+        confirmText={t('chat.chatSidebar.clear.confirm')}
+        cancelText={t('chat.chatSidebar.clear.cancel')}
         confirmVariant="danger"
         requireConfirmText={clearState.name}
-        requireConfirmLabel="请输入工作区名称以确认重建"
+        requireConfirmLabel={t('chat.chatSidebar.clear.requireConfirmLabel')}
         loading={clearLoading}
       />
 
@@ -370,13 +390,13 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
         open={deleteState.open}
         onClose={() => setDeleteState({ open: false, jid: '', name: '' })}
         onConfirm={handleDeleteConfirm}
-        title="删除工作区"
+        title={t('chat.chatSidebar.delete.title')}
         message={buildDeleteMessage()}
-        confirmText="删除"
-        cancelText="取消"
+        confirmText={t('chat.chatSidebar.delete.confirm')}
+        cancelText={t('chat.chatSidebar.delete.cancel')}
         confirmVariant="danger"
         requireConfirmText={deleteState.name}
-        requireConfirmLabel="请输入工作区名称以确认删除"
+        requireConfirmLabel={t('chat.chatSidebar.delete.requireConfirmLabel')}
         loading={deleteLoading}
       />
     </div>

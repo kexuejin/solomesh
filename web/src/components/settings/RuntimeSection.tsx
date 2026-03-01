@@ -34,8 +34,9 @@ import type {
   EnvRow,
   SettingsNotification,
 } from './types';
-import { getErrorMessage, runtimeSecretSourceLabel } from './types';
+import { getErrorMessage } from './types';
 import { looksLikeHttpUrl } from '../../lib/runtime-input-validation';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 type ClaudeAccessMode = 'official' | 'third_party';
 type GeminiAccessMode = 'api_key' | 'oauth';
@@ -44,6 +45,7 @@ type EngineMode = AgentRuntimeId;
 interface RuntimeSectionProps extends SettingsNotification {}
 
 export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
+  const { locale, t } = useI18n();
   const [config, setConfig] = useState<RuntimeConfigPublic | null>(null);
   const [engineMode, setEngineMode] = useState<EngineMode>('claude');
   const [runtimeDefinitions, setRuntimeDefinitions] = useState<RuntimeDefinition[]>([]);
@@ -136,11 +138,11 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
           : 'third_party';
       setClaudeAccessMode(inferredMode);
     } catch (err) {
-      setError(getErrorMessage(err, '加载 Runtime 配置失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [setError]);
+  }, [setError, t]);
 
   useEffect(() => { void loadConfig({ preserveCurrentTab: false }); }, [loadConfig]);
   const runtimeOptions =
@@ -167,9 +169,9 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
         : claudeAccessMode;
 
   const updatedAt = useMemo(() => {
-    if (!config?.updatedAt) return '未记录';
-    return new Date(config.updatedAt).toLocaleString('zh-CN');
-  }, [config?.updatedAt]);
+    if (!config?.updatedAt) return t('settings.runtime.notRecorded');
+    return new Date(config.updatedAt).toLocaleString(localeForDateTime(locale));
+  }, [config?.updatedAt, locale, t]);
   const savedRuntimeLabel = useMemo(() => {
     const savedId = config?.agentRuntime ?? engineMode;
     return runtimeOptions.find((item) => item.id === savedId)?.label ?? savedId;
@@ -197,6 +199,13 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       ? geminiOAuthConfigured
       : geminiConfigured || !!geminiApiKey.trim();
   const sdkRuntimeDraftReady = isGeminiRuntime ? geminiDraftReady : codexDraftReady;
+  const configuredText = t('settings.runtime.configured');
+  const notConfiguredText = t('settings.runtime.notConfigured');
+  const secretSourceLabel = (source: RuntimeConfigPublic['codexApiKeySource']) => {
+    if (source === 'runtime') return t('settings.runtime.source.runtime');
+    if (source === 'env') return t('settings.runtime.source.env');
+    return t('settings.runtime.source.none');
+  };
   useEffect(() => {
     if (!isGeminiRuntime || effectiveGeminiAccessMode !== 'oauth') {
       setGeminiOauthState(null);
@@ -213,10 +222,10 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
         agentRuntime: engineMode,
       });
       setConfig(saved);
-      setNotice(`默认 Runtime 已更新为 ${currentRuntime.label}`);
+      setNotice(t('settings.runtime.notice.defaultRuntimeUpdated', { label: currentRuntime.label }));
       await loadConfig();
     } catch (err) {
-      setError(getErrorMessage(err, '保存默认 Runtime 失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.saveDefaultRuntimeFailed')));
     } finally {
       setSaving(false);
     }
@@ -224,7 +233,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
   const handleSaveOfficial = async () => {
     if (!officialCode.trim()) {
-      setError('请填写官方 setup-token 或粘贴 .credentials.json 内容');
+      setError(t('settings.runtime.errors.officialCodeRequired'));
       return;
     }
 
@@ -261,7 +270,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
             setConfig(saved);
             setOfficialCode('');
             setClaudeAccessMode('official');
-            setNotice('Claude OAuth 凭据已保存（支持自动续期）');
+            setNotice(t('settings.runtime.notice.claudeOauthSaved'));
             await loadConfig();
             return;
           }
@@ -278,11 +287,11 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
         setConfig(saved);
         setOfficialCode('');
         setClaudeAccessMode('official');
-        setNotice('Claude 凭据已保存');
+        setNotice(t('settings.runtime.notice.claudeCredentialsSaved'));
         await loadConfig();
       }
     } catch (err) {
-      setError(getErrorMessage(err, '保存官方 Runtime 配置失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.saveOfficialFailed')));
     } finally {
       setSaving(false);
     }
@@ -298,7 +307,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       setOauthCode('');
       window.open(data.authorizeUrl, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      setError(getErrorMessage(err, 'OAuth 授权启动失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.oauthStartFailed')));
     } finally {
       setOauthLoading(false);
     }
@@ -306,7 +315,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
   const handleOAuthCallback = async () => {
     if (!oauthState || !oauthCode.trim()) {
-      setError('请粘贴授权码');
+      setError(t('settings.runtime.errors.oauthCodeRequired'));
       return;
     }
     setOauthExchanging(true);
@@ -319,10 +328,10 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       });
       setOauthState(null);
       setOauthCode('');
-      setNotice('Claude OAuth 登录成功');
+      setNotice(t('settings.runtime.notice.oauthLoginSuccess'));
       await loadConfig();
     } catch (err) {
-      setError(getErrorMessage(err, 'OAuth 授权码换取失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.oauthCallbackFailed')));
     } finally {
       setOauthExchanging(false);
     }
@@ -340,7 +349,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       setGeminiOauthCode('');
       window.open(data.authorizeUrl, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      setError(getErrorMessage(err, 'Gemini OAuth 授权启动失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.geminiOauthStartFailed')));
     } finally {
       setGeminiOauthLoading(false);
     }
@@ -348,7 +357,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
   const handleGeminiOAuthCallback = async () => {
     if (!geminiOauthState || !geminiOauthCode.trim()) {
-      setError('请粘贴 Gemini 授权码');
+      setError(t('settings.runtime.errors.geminiOauthCodeRequired'));
       return;
     }
     setGeminiOauthExchanging(true);
@@ -361,10 +370,10 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       });
       setGeminiOauthState(null);
       setGeminiOauthCode('');
-      setNotice('Gemini OAuth 登录成功');
+      setNotice(t('settings.runtime.notice.geminiOauthLoginSuccess'));
       await loadConfig();
     } catch (err) {
-      setError(getErrorMessage(err, 'Gemini OAuth 授权码换取失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.geminiOauthCallbackFailed')));
     } finally {
       setGeminiOauthExchanging(false);
     }
@@ -400,10 +409,10 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       setAuthToken('');
       setAuthTokenDirty(false);
       setClaudeAccessMode('third_party');
-      setNotice(`${currentRuntime.label} 第三方网关配置已保存`);
+      setNotice(t('settings.runtime.notice.thirdPartySaved', { label: currentRuntime.label }));
       await loadConfig();
     } catch (err) {
-      setError(getErrorMessage(err, '保存第三方 Runtime 配置失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.saveThirdPartyFailed')));
     } finally {
       setSaving(false);
     }
@@ -420,11 +429,11 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
     const requiresApiKey =
       isCodexRuntime || effectiveGeminiAccessMode === 'api_key';
     if (requiresApiKey && !keyDirty && !hasSavedKey && !keyValue) {
-      setError(`请填写 ${currentRuntime.label} 所需的 ${keyName}`);
+      setError(t('settings.runtime.errors.apiKeyRequired', { label: currentRuntime.label, keyName }));
       return;
     }
     if (requiresApiKey && keyDirty && keyValue && looksLikeHttpUrl(keyValue)) {
-      setError(`${keyName} 不能填写 URL，请填写真实 API Key`);
+      setError(t('settings.runtime.errors.apiKeyInvalid', { keyName }));
       return;
     }
 
@@ -475,10 +484,10 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       await api.put<RuntimeCustomEnvResp>(getRuntimeCustomEnvEndpoint(), {
         customEnv: {},
       });
-      setNotice(`${currentRuntime.label} 配置已保存`);
+      setNotice(t('settings.runtime.notice.runtimeSaved', { label: currentRuntime.label }));
       await loadConfig();
     } catch (err) {
-      setError(getErrorMessage(err, `保存 ${currentRuntime.label} 配置失败`));
+      setError(getErrorMessage(err, t('settings.runtime.errors.saveRuntimeFailed', { label: currentRuntime.label })));
     } finally {
       setSaving(false);
     }
@@ -495,13 +504,15 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
     try {
       const result = await api.post<RuntimeApplyResult>(getRuntimeApplyEndpoint());
       if (result.success) {
-        setNotice(`Runtime 配置已应用，已停止 ${result.stoppedCount} 个运行中工作区`);
+        setNotice(t('settings.runtime.notice.applySuccess', { stoppedCount: result.stoppedCount }));
       } else {
-        const suffix = typeof result.failedCount === 'number' ? `（失败 ${result.failedCount} 个）` : '';
-        setError(result.error || `应用配置部分失败${suffix}`);
+        const suffix = typeof result.failedCount === 'number'
+          ? t('settings.runtime.applyFailedSuffix', { failedCount: result.failedCount })
+          : '';
+        setError(result.error || t('settings.runtime.errors.applyPartialFailed', { suffix }));
       }
     } catch (err) {
-      setError(getErrorMessage(err, '应用配置失败'));
+      setError(getErrorMessage(err, t('settings.runtime.errors.applyFailed')));
     } finally {
       setApplying(false);
     }
@@ -517,14 +528,12 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   return (
     <div className="space-y-4">
       <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/60 px-3 py-2.5">
-        <div className="text-xs font-medium text-foreground">全局默认 Runtime</div>
+        <div className="text-xs font-medium text-foreground">{t('settings.runtime.globalDefaultTitle')}</div>
         <div className="mt-1 text-xs text-muted-foreground">
-          当前已保存：
-          {' '}
-          {savedRuntimeLabel}
+          {t('settings.runtime.currentSaved', { label: savedRuntimeLabel })}
         </div>
         <div className="text-xs text-muted-foreground">
-          工作区可在“环境变量”里单独覆盖；修改全局后需点击“应用到所有工作区”使运行中会话生效。
+          {t('settings.runtime.globalHint')}
         </div>
       </div>
 
@@ -548,7 +557,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
       <div className="surface-card-soft rounded-xl border border-border/70 bg-muted/15 p-3">
         <div className="mb-2 text-xs text-muted-foreground">
-          切换上方 Runtime 仅用于编辑对应 Provider 配置；默认 Runtime 不会自动改变。
+          {t('settings.runtime.switchHint')}
         </div>
         <Button
           variant="outline"
@@ -557,7 +566,9 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
           className="h-10 rounded-xl"
         >
           {saving && <Loader2 className="size-4 animate-spin" />}
-          {saving ? '保存中...' : `设为默认 Runtime（${currentRuntime.label}）`}
+          {saving
+            ? t('settings.runtime.saving')
+            : t('settings.runtime.setDefault', { label: currentRuntime.label })}
         </Button>
       </div>
 
@@ -565,11 +576,11 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
         <div className="rounded-xl space-y-4 border border-border/70 bg-muted/10 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Claude 凭据</h3>
+              <h3 className="text-sm font-semibold text-foreground">{t('setupProviders.runtime.claude.title')}</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {effectiveClaudeAccessMode === 'official' || !supportsThirdPartyGateway
-                  ? '使用 Claude 官方登录或 setup-token 作为系统默认凭据。'
-                  : '使用第三方网关地址与 Token 作为系统默认 Claude 凭据。'}
+                  ? t('setupProviders.runtime.claude.officialDescription')
+                  : t('setupProviders.runtime.claude.thirdPartyDescription')}
               </p>
             </div>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -582,8 +593,8 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                   : 'border-border/70 bg-card/75 text-muted-foreground'
             }`}>
               {(effectiveClaudeAccessMode === 'official' || !supportsThirdPartyGateway)
-                ? claudeOfficialDraftReady ? '已配置' : '未配置'
-                : claudeThirdPartyDraftReady ? '已配置' : '未配置'}
+                ? claudeOfficialDraftReady ? configuredText : notConfiguredText
+                : claudeThirdPartyDraftReady ? configuredText : notConfiguredText}
             </span>
           </div>
 
@@ -599,7 +610,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Claude 官方
+                {t('setupProviders.runtime.claude.tabOfficial')}
               </button>
               <button
                 type="button"
@@ -611,7 +622,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                第三方网关
+                {t('setupProviders.runtime.claude.tabThirdParty')}
               </button>
             </div>
           )}
@@ -620,27 +631,29 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
             <div className="rounded-lg space-y-4 bg-muted/15 p-4">
               {config?.hasRuntimeOAuthCredentials && (
                 <div className="surface-card-soft rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-1">
-                  <div className="text-sm font-medium text-emerald-800">OAuth 凭据（自动续期）</div>
+                  <div className="text-sm font-medium text-emerald-800">{t('settings.runtime.oauthCredentialsTitle')}</div>
                   <div className="text-xs text-emerald-700">
-                    Access Token: {config.claudeOAuthCredentialsAccessTokenMasked || '***'}
+                    {t('settings.runtime.accessTokenLabel')} {config.claudeOAuthCredentialsAccessTokenMasked || '***'}
                   </div>
                   {config.claudeOAuthCredentialsExpiresAt && (
                     <div className="text-xs text-emerald-700">
-                      过期时间: {new Date(config.claudeOAuthCredentialsExpiresAt).toLocaleString('zh-CN')}
+                      {t('settings.runtime.expiresAtLabel')} {new Date(config.claudeOAuthCredentialsExpiresAt).toLocaleString(localeForDateTime(locale))}
                       {config.claudeOAuthCredentialsExpiresAt > Date.now()
-                        ? ` (${Math.round((config.claudeOAuthCredentialsExpiresAt - Date.now()) / 60000)} 分钟后)`
-                        : ' (已过期，等待自动刷新)'}
+                        ? t('settings.runtime.expiresInMinutes', {
+                          minutes: Math.round((config.claudeOAuthCredentialsExpiresAt - Date.now()) / 60000),
+                        })
+                        : t('settings.runtime.expiredWaitingRefresh')}
                     </div>
                   )}
-                  <div className="text-xs text-emerald-600">系统每 5 分钟检查一次，过期前 30 分钟内自动刷新。</div>
+                  <div className="text-xs text-emerald-600">{t('settings.runtime.oauthAutoRefreshHint')}</div>
                 </div>
               )}
 
               {supportsOAuthLogin && (
                 <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/60 p-4 space-y-3">
-                  <div className="text-sm font-medium text-foreground">一键登录 Claude（推荐）</div>
+                  <div className="text-sm font-medium text-foreground">{t('setupProviders.runtime.claude.oauth.title')}</div>
                   <div className="text-xs text-muted-foreground">
-                    点击按钮后会打开 claude.ai 授权页面，完成授权后将页面上显示的授权码粘贴回来。
+                    {t('setupProviders.runtime.claude.oauth.description')}
                   </div>
 
                   {!oauthState ? (
@@ -650,12 +663,12 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                       className="h-10 rounded-xl"
                     >
                       {oauthLoading ? <Loader2 className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
-                      {oauthLoading ? '打开授权中...' : '一键登录 Claude'}
+                      {oauthLoading ? t('settings.runtime.openingAuth') : t('setupProviders.runtime.claude.oauth.start')}
                     </Button>
                   ) : (
                     <div className="space-y-2">
                       <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                        授权窗口已打开，请在 claude.ai 完成授权后，将页面上显示的授权码粘贴到下方。
+                        {t('setupProviders.runtime.claude.oauth.windowOpened')}
                       </div>
                       <div className="flex gap-2">
                         <Input
@@ -663,7 +676,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                           value={oauthCode}
                           onChange={(e) => setOauthCode(e.target.value)}
                           disabled={controlsBusy || oauthExchanging}
-                          placeholder="粘贴授权码"
+                          placeholder={t('setupProviders.runtime.claude.oauth.codePlaceholder')}
                           className="h-10 flex-1 rounded-xl border-border/75 bg-card/95"
                         />
                         <Button
@@ -672,7 +685,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                           className="h-10 rounded-xl"
                         >
                           {oauthExchanging && <Loader2 className="size-4 animate-spin" />}
-                          {oauthExchanging ? '确认中...' : '确认'}
+                          {oauthExchanging ? t('settings.runtime.confirming') : t('setupProviders.common.confirm')}
                         </Button>
                         <Button
                           variant="outline"
@@ -680,7 +693,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                           className="h-10 rounded-xl"
                           onClick={() => { setOauthState(null); setOauthCode(''); }}
                         >
-                          取消
+                          {t('setupProviders.common.cancel')}
                         </Button>
                       </div>
                     </div>
@@ -690,13 +703,13 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
               <div className="relative flex items-center gap-3 text-xs text-muted-foreground">
                 <div className="flex-1 border-t border-border" />
-                或手动粘贴 setup-token / .credentials.json
+                {t('settings.runtime.orManualCredentials')}
                 <div className="flex-1 border-t border-border" />
               </div>
 
               <div className="rounded-lg bg-muted/10 p-3">
                 <label className="mb-1 block text-xs font-medium text-foreground/80">
-                  setup-token 或 .credentials.json{' '}
+                  {t('setupProviders.runtime.claude.tokenLabel')}{' '}
                   {config?.hasClaudeCodeOauthToken ? `(${config.claudeCodeOauthTokenMasked})` : ''}
                 </label>
                 <Input
@@ -705,12 +718,12 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                   onChange={(e) => setOfficialCode(e.target.value)}
                   disabled={controlsBusy}
                   placeholder={config?.hasClaudeCodeOauthToken || config?.hasRuntimeOAuthCredentials
-                    ? '输入新值覆盖'
-                    : '粘贴 setup-token 或 cat ~/.claude/.credentials.json 输出'}
+                    ? t('settings.runtime.overridePlaceholder')
+                    : t('setupProviders.runtime.claude.tokenPlaceholder')}
                   className="h-10 rounded-xl border-border/75 bg-card/95"
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  支持粘贴 <code className="rounded bg-muted px-1">cat ~/.claude/.credentials.json</code> 的 JSON 内容（含自动续期）
+                  {t('setupProviders.runtime.claude.tokenHint')}
                 </p>
               </div>
 
@@ -720,22 +733,22 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                 className="h-10 rounded-xl"
               >
                 {saving && <Loader2 className="size-4 animate-spin" />}
-                {saving ? '保存中...' : '保存凭据'}
+                {saving ? t('settings.runtime.saving') : t('settings.runtime.saveCredentials')}
               </Button>
             </div>
           ) : (
             <div className="rounded-lg space-y-4 bg-muted/15 p-4">
               <div className="grid grid-cols-1 gap-4">
                 <div className="rounded-lg bg-muted/10 p-3">
-                  <label className="mb-1 block text-xs font-medium text-foreground/80">ANTHROPIC_BASE_URL</label>
-                  <Input
-                    type="text"
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    disabled={controlsBusy}
-                    placeholder="https://your-relay.example.com/v1"
-                    className="h-10 rounded-xl border-border/75 bg-card/95"
-                  />
+                  <label className="mb-1 block text-xs font-medium text-foreground/80">{t('setupProviders.runtime.claude.baseUrlLabel')}</label>
+                <Input
+                  type="text"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  disabled={controlsBusy}
+                  placeholder={t('setupProviders.runtime.claude.baseUrlPlaceholder')}
+                  className="h-10 rounded-xl border-border/75 bg-card/95"
+                />
                 </div>
 
                 <div className="rounded-lg bg-muted/10 p-3">
@@ -750,7 +763,9 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                       setAuthTokenDirty(true);
                     }}
                     disabled={controlsBusy}
-                    placeholder={config?.hasAnthropicAuthToken ? '留空并保存可清空' : '输入 Token'}
+                    placeholder={config?.hasAnthropicAuthToken
+                      ? t('settings.runtime.keepOrClearPlaceholder')
+                      : t('setupProviders.runtime.claude.authTokenPlaceholder')}
                     className="h-10 rounded-xl border-border/75 bg-card/95"
                   />
                 </div>
@@ -758,7 +773,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
               <div className="rounded-lg space-y-3 bg-muted/15 p-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs text-muted-foreground">其他自定义环境变量</label>
+                  <label className="text-xs text-muted-foreground">{t('setupProviders.runtime.claude.customEnvLabel')}</label>
                   <button
                     type="button"
                     onClick={addRow}
@@ -766,12 +781,12 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                     className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    添加
+                    {t('setupProviders.common.add')}
                   </button>
                 </div>
 
                 {customEnvRows.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">暂无</p>
+                  <p className="text-xs text-muted-foreground">{t('setupProviders.common.empty')}</p>
                 ) : (
                   <div className="space-y-2">
                     {customEnvRows.map((row, idx) => (
@@ -780,7 +795,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                           type="text"
                           value={row.key}
                           onChange={(e) => updateRow(idx, 'key', e.target.value)}
-                          placeholder="KEY"
+                          placeholder={t('setupProviders.runtime.claude.customEnvKeyPlaceholder')}
                           className="h-9 w-full rounded-lg border-border/75 bg-card/95 px-2.5 py-1.5 text-xs font-mono sm:w-[38%]"
                           disabled={controlsBusy}
                         />
@@ -788,7 +803,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                           type="text"
                           value={row.value}
                           onChange={(e) => updateRow(idx, 'value', e.target.value)}
-                          placeholder="value"
+                          placeholder={t('setupProviders.runtime.claude.customEnvValuePlaceholder')}
                           className="h-9 flex-1 rounded-lg border-border/75 bg-card/95 px-2.5 py-1.5 text-xs font-mono"
                           disabled={controlsBusy}
                         />
@@ -797,7 +812,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                           onClick={() => removeRow(idx)}
                           disabled={controlsBusy}
                           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                          aria-label="删除环境变量"
+                          aria-label={t('setupProviders.runtime.claude.removeEnvAria')}
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -813,7 +828,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                 className="h-10 rounded-xl"
               >
                 {saving && <Loader2 className="size-4 animate-spin" />}
-                {saving ? '保存中...' : '保存第三方配置'}
+                {saving ? t('settings.runtime.saving') : t('settings.runtime.saveThirdParty')}
               </Button>
             </div>
           )}
@@ -822,11 +837,11 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
         <div className="rounded-xl space-y-4 border border-border/70 bg-muted/10 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">{currentRuntime.label} 凭据</h3>
+              <h3 className="text-sm font-semibold text-foreground">{t('setupProviders.runtime.generic.title', { label: currentRuntime.label })}</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {isGeminiRuntime
-                  ? '使用 Gemini CLI。可切换 Google 官方 或 API Key 模式；支持可选自定义网关地址。'
-                  : '使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可保存。'}
+                  ? t('settings.runtime.generic.geminiDescription', { label: currentRuntime.label })
+                  : t('settings.runtime.generic.codexDescription', { label: currentRuntime.label })}
               </p>
             </div>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -834,7 +849,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 : 'border-border/70 bg-card/75 text-muted-foreground'
             }`}>
-              {sdkRuntimeDraftReady ? '已配置' : '未配置'}
+              {sdkRuntimeDraftReady ? configuredText : notConfiguredText}
             </span>
           </div>
 
@@ -851,7 +866,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Google 官方
+                  {t('setupProviders.runtime.gemini.tabOfficial')}
                 </button>
                 <button
                   type="button"
@@ -863,20 +878,20 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  API Key
+                  {t('setupProviders.runtime.gemini.tabApiKey')}
                 </button>
               </div>
             )}
 
             {isGeminiRuntime && effectiveGeminiAccessMode === 'oauth' && (
               <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/70 p-4 space-y-3">
-                <div className="text-sm font-medium text-foreground/90">Google 官方（推荐）</div>
+                <div className="text-sm font-medium text-foreground/90">{t('setupProviders.runtime.gemini.officialTitle')}</div>
                 <div className="text-xs text-muted-foreground">
-                  Google 官方模式不使用 <code className="rounded bg-muted px-1">GEMINI_API_KEY</code>，可直接一键登录并保存到系统运行目录。
+                  {t('settings.runtime.gemini.oauthDescription')}
                 </div>
                 {geminiOAuthConfigured && (
                   <div className="surface-card-soft rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                    Google 官方登录已连接，可直接使用 Gemini CLI。
+                    {t('settings.runtime.gemini.oauthConnected')}
                   </div>
                 )}
 
@@ -887,12 +902,12 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                     className="h-10 rounded-xl"
                   >
                     {geminiOauthLoading ? <Loader2 className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
-                    {geminiOauthLoading ? '打开授权中...' : '一键登录 Google'}
+                    {geminiOauthLoading ? t('settings.runtime.openingAuth') : t('settings.runtime.gemini.oneClickLogin')}
                   </Button>
                 ) : (
                   <div className="space-y-2">
                     <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      授权窗口已打开，请完成 Google 授权后将页面返回的授权码粘贴到下方。
+                      {t('settings.runtime.gemini.oauthWindowOpened')}
                     </div>
                     <div className="flex gap-2">
                       <Input
@@ -900,7 +915,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                         value={geminiOauthCode}
                         onChange={(e) => setGeminiOauthCode(e.target.value)}
                         disabled={controlsBusy || geminiOauthExchanging}
-                        placeholder="粘贴 Gemini 授权码"
+                        placeholder={t('settings.runtime.gemini.oauthCodePlaceholder')}
                         className="h-10 flex-1 rounded-xl border-border/75 bg-card/95"
                       />
                       <Button
@@ -909,7 +924,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                         className="h-10 rounded-xl"
                       >
                         {geminiOauthExchanging && <Loader2 className="size-4 animate-spin" />}
-                        {geminiOauthExchanging ? '确认中...' : '确认'}
+                        {geminiOauthExchanging ? t('settings.runtime.confirming') : t('setupProviders.common.confirm')}
                       </Button>
                       <Button
                         variant="outline"
@@ -917,18 +932,18 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                         className="h-10 rounded-xl"
                         onClick={() => { setGeminiOauthState(null); setGeminiOauthCode(''); }}
                       >
-                        取消
+                        {t('setupProviders.common.cancel')}
                       </Button>
                     </div>
                   </div>
                 )}
 
                 <div className="text-xs text-muted-foreground">
-                  无法打开浏览器时，也可在目标环境手动执行 <code className="rounded bg-muted px-1">gemini login</code> 作为兜底。
+                  {t('settings.runtime.gemini.fallbackHint')}
                 </div>
                 {config?.hasGeminiApiKey && (
                   <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    当前已存在 API Key，保存 Google 官方模式后会自动清空已存的 Key。
+                    {t('settings.runtime.gemini.clearApiKeyHint')}
                   </div>
                 )}
               </div>
@@ -945,12 +960,12 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                   </label>
                   {(isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey) && (
                     <div className="mb-2 text-[11px] text-muted-foreground">
-                      当前来源：{runtimeSecretSourceLabel(sdkKeySource)}
+                      {t('settings.runtime.currentSource')}{secretSourceLabel(sdkKeySource)}
                     </div>
                   )}
                   {sdkKeyDegraded && (
                     <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                      已保存的 Key 值无效，系统已自动回退到环境变量中的有效值。
+                      {t('settings.runtime.apiKeyDegraded')}
                     </div>
                   )}
                   <Input
@@ -968,8 +983,8 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                     disabled={controlsBusy}
                     placeholder={
                       (isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey)
-                        ? '留空并保存可保持原值'
-                        : '输入 API Key'
+                        ? t('settings.runtime.keepCurrentPlaceholder')
+                        : t('settings.runtime.enterApiKeyPlaceholder')
                     }
                     className="h-10 rounded-xl border-border/75 bg-card/95"
                   />
@@ -978,27 +993,27 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
               {isGeminiRuntime ? (
                 <div className="rounded-lg bg-muted/10 p-3">
                   <label className="mb-1 block text-xs font-medium text-foreground/80">
-                    GOOGLE_GEMINI_BASE_URL（可选）
+                    {t('setupProviders.runtime.generic.geminiBaseUrlLabel')}
                   </label>
                   <Input
                     type="text"
                     value={geminiBaseUrl}
                     onChange={(e) => setGeminiBaseUrl(e.target.value)}
                     disabled={controlsBusy}
-                    placeholder="https://generativelanguage.googleapis.com"
+                    placeholder={t('setupProviders.runtime.generic.geminiBaseUrlPlaceholder')}
                     className="h-10 rounded-xl border-border/75 bg-card/95"
                   />
                 </div>
               ) : (
                 currentRuntime.capabilities.supportsCustomBaseUrl && (
                   <div className="rounded-lg bg-muted/10 p-3">
-                    <label className="mb-1 block text-xs font-medium text-foreground/80">OPENAI_BASE_URL</label>
+                    <label className="mb-1 block text-xs font-medium text-foreground/80">{t('setupProviders.runtime.generic.openaiBaseUrlLabel')}</label>
                     <Input
                       type="text"
                       value={codexBaseUrl}
                       onChange={(e) => setCodexBaseUrl(e.target.value)}
                       disabled={controlsBusy}
-                      placeholder="https://api.openai.com/v1"
+                      placeholder={t('setupProviders.runtime.generic.openaiBaseUrlPlaceholder')}
                       className="h-10 rounded-xl border-border/75 bg-card/95"
                     />
                   </div>
@@ -1007,7 +1022,9 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
               {supportsModelOverride && (
                 <div className="rounded-lg bg-muted/10 p-3">
                   <label className="mb-1 block text-xs font-medium text-foreground/80">
-                    {isGeminiRuntime ? 'GEMINI_MODEL' : 'CODEX_MODEL'}
+                    {isGeminiRuntime
+                      ? t('setupProviders.runtime.generic.geminiModelLabel')
+                      : t('setupProviders.runtime.generic.codexModelLabel')}
                   </label>
                   <Input
                     type="text"
@@ -1020,7 +1037,11 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
                       }
                     }}
                     disabled={controlsBusy}
-                    placeholder={isGeminiRuntime ? 'gemini-2.5-pro' : 'gpt-5-codex'}
+                    placeholder={
+                      isGeminiRuntime
+                        ? t('setupProviders.runtime.generic.geminiModelPlaceholder')
+                        : t('setupProviders.runtime.generic.codexModelPlaceholder')
+                    }
                     className="h-10 rounded-xl border-border/75 bg-card/95"
                   />
                 </div>
@@ -1039,7 +1060,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
               className="h-10 rounded-xl"
             >
               {saving && <Loader2 className="size-4 animate-spin" />}
-              {saving ? '保存中...' : `保存 ${currentRuntime.label} 配置`}
+              {saving ? t('settings.runtime.saving') : t('settings.runtime.saveRuntimeConfig', { label: currentRuntime.label })}
             </Button>
           </div>
         </div>
@@ -1053,28 +1074,28 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
           className="h-10 rounded-xl"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? '加载中...' : '重新加载'}
+          {loading ? t('settings.runtime.loading') : t('settings.runtime.reload')}
         </Button>
         <Button variant="destructive" onClick={handleApply} disabled={controlsBusy} className="h-10 rounded-xl">
           {applying && <Loader2 className="size-4 animate-spin" />}
           <Rocket className="w-4 h-4" />
-          {applying ? '应用中...' : '应用到所有工作区'}
+          {applying ? t('settings.runtime.applying') : t('settings.runtime.applyAll')}
         </Button>
       </div>
 
       <SettingsMetaGrid
         columns={1}
         className="max-w-sm"
-        items={[{ label: '最近保存', value: updatedAt }]}
+        items={[{ label: t('settings.runtime.lastSaved'), value: updatedAt }]}
       />
 
       <ConfirmDialog
         open={showApplyConfirm}
         onClose={() => setShowApplyConfirm(false)}
         onConfirm={doApply}
-        title="应用配置到所有工作区"
-        message="这会停止所有活动工作区并清空其待处理队列，是否继续？"
-        confirmText="确认应用"
+        title={t('settings.runtime.applyConfirm.title')}
+        message={t('settings.runtime.applyConfirm.message')}
+        confirmText={t('settings.runtime.applyConfirm.confirm')}
         confirmVariant="danger"
         loading={applying}
       />

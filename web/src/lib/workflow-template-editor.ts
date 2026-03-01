@@ -5,6 +5,13 @@ import type {
 } from '../components/settings/types';
 
 export type WorkflowTemplateEditorMode = 'json' | 'markdown';
+export type WorkflowTemplateEditorErrorCode =
+  | 'invalid_stage_id'
+  | 'stage_required'
+  | 'invalid_template_id_markdown'
+  | 'json_invalid'
+  | 'json_not_object'
+  | 'template_id_required';
 
 const TEMPLATE_ID_RE = /^[a-z0-9][a-z0-9-_]{1,63}$/;
 const STAGE_ID_RE = /^[a-z0-9][a-z0-9-_]{1,63}$/;
@@ -14,6 +21,27 @@ const DEPENDENCY_ON_MISSING = new Set(['auto_fix', 'guide_user', 'fallback', 'fa
 interface StageDraft {
   id: string;
   fields: Record<string, string>;
+}
+
+export class WorkflowTemplateEditorError extends Error {
+  code: WorkflowTemplateEditorErrorCode;
+  details?: Record<string, string>;
+
+  constructor(
+    code: WorkflowTemplateEditorErrorCode,
+    details?: Record<string, string>,
+  ) {
+    super(code);
+    this.name = 'WorkflowTemplateEditorError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export function isWorkflowTemplateEditorError(
+  err: unknown,
+): err is WorkflowTemplateEditorError {
+  return err instanceof WorkflowTemplateEditorError;
 }
 
 function normalizeTemplateId(value: string | null | undefined): string | null {
@@ -200,7 +228,7 @@ export function parseWorkflowTemplateMarkdown(
       pushStage();
       const stageId = normalizeStageId(stageMatch[1]);
       if (!stageId) {
-        throw new Error(`阶段 ID 不合法：${stageMatch[1]}`);
+        throw new WorkflowTemplateEditorError('invalid_stage_id', { stageId: stageMatch[1]?.trim() || '' });
       }
       currentStage = { id: stageId, fields: {} };
       continue;
@@ -219,12 +247,12 @@ export function parseWorkflowTemplateMarkdown(
   pushStage();
 
   if (stages.length === 0) {
-    throw new Error('模板至少需要一个阶段（## Stage: ...）');
+    throw new WorkflowTemplateEditorError('stage_required');
   }
 
   const templateId = normalizeTemplateId(metaFields.id) ?? normalizeTemplateId(templateIdFallback);
   if (!templateId) {
-    throw new Error('模板 ID 不合法（请在 markdown 里填写 `- id:` 或输入合法模板 ID）');
+    throw new WorkflowTemplateEditorError('invalid_template_id_markdown');
   }
 
   const versionRaw = Number.parseInt(metaFields.version || '1', 10);
@@ -260,11 +288,11 @@ export function parseWorkflowTemplateEditorInput(options: {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error('模板 JSON 格式错误，请先修正');
+    throw new WorkflowTemplateEditorError('json_invalid');
   }
 
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error('模板 JSON 必须是对象');
+    throw new WorkflowTemplateEditorError('json_not_object');
   }
 
   const payload = parsed as Partial<WorkflowTemplate>;
@@ -272,7 +300,7 @@ export function parseWorkflowTemplateEditorInput(options: {
   const normalizedInputId = normalizeTemplateId(templateIdFallback);
   const templateId = payloadId ?? normalizedInputId;
   if (!templateId) {
-    throw new Error('请先填写合法的模板 ID');
+    throw new WorkflowTemplateEditorError('template_id_required');
   }
 
   return {

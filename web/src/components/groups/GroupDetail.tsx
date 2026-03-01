@@ -6,6 +6,7 @@ import { api } from '../../api/client';
 import { Button } from '@/components/ui/button';
 import { useGroupsStore } from '../../stores/groups';
 import { useChatStore } from '../../stores/chat';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface UserImSessionBinding {
   targetFolder: string;
@@ -40,8 +41,9 @@ interface GroupDetailProps {
 }
 
 export function GroupDetail({ group }: GroupDetailProps) {
+  const { locale, t } = useI18n();
   const formatDate = (timestamp: string | number) => {
-    return new Date(timestamp).toLocaleString('zh-CN', {
+    return new Date(timestamp).toLocaleString(localeForDateTime(locale), {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -89,7 +91,8 @@ export function GroupDetail({ group }: GroupDetailProps) {
           '',
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : '加载会话绑定信息失败';
+      const message =
+        err instanceof Error ? err.message : t('groups.detail.errors.loadBindingFailed');
       setBindingError(message);
       setSessionBindingInfo(null);
       setAllImSessions([]);
@@ -97,7 +100,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
     } finally {
       setBindingLoading(false);
     }
-  }, [group.im_binding_target_folder, group.jid, isImSession, isWorkspace]);
+  }, [group.im_binding_target_folder, group.jid, isImSession, isWorkspace, t]);
 
   useEffect(() => {
     loadBindingContext();
@@ -106,7 +109,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
   const handleSaveBinding = async () => {
     const nextFolder = targetFolder.trim();
     if (!nextFolder) {
-      setBindingError('请选择目标工作区');
+      setBindingError(t('groups.detail.errors.selectTargetWorkspace'));
       return;
     }
 
@@ -118,11 +121,12 @@ export function GroupDetail({ group }: GroupDetailProps) {
         chatJid: group.jid,
         targetFolder: nextFolder,
       });
-      setBindingNotice('会话绑定已保存');
+      setBindingNotice(t('groups.detail.noticeBindingSaved'));
       await loadBindingContext();
       await Promise.all([reloadGroups(), reloadChatGroups()]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '保存会话绑定失败';
+      const message =
+        err instanceof Error ? err.message : t('groups.detail.errors.saveBindingFailed');
       setBindingError(message);
     } finally {
       setBindingSaving(false);
@@ -138,11 +142,12 @@ export function GroupDetail({ group }: GroupDetailProps) {
         chatJid,
         targetFolder: group.folder,
       });
-      setBindingNotice('会话绑定已保存');
+      setBindingNotice(t('groups.detail.noticeBindingSaved'));
       await loadBindingContext();
       await Promise.all([reloadGroups(), reloadChatGroups()]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '保存会话绑定失败';
+      const message =
+        err instanceof Error ? err.message : t('groups.detail.errors.saveBindingFailed');
       setBindingError(message);
     } finally {
       setSessionSavingByJid((prev) => ({ ...prev, [chatJid]: false }));
@@ -155,11 +160,12 @@ export function GroupDetail({ group }: GroupDetailProps) {
     setBindingNotice(null);
     try {
       await api.delete(`/api/config/user-im/bindings/${encodeURIComponent(chatJid)}`);
-      setBindingNotice('会话已恢复默认路由');
+      setBindingNotice(t('groups.detail.noticeRouteReset'));
       await loadBindingContext();
       await Promise.all([reloadGroups(), reloadChatGroups()]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '恢复默认路由失败';
+      const message =
+        err instanceof Error ? err.message : t('groups.detail.errors.resetBindingFailed');
       setBindingError(message);
     } finally {
       setSessionSavingByJid((prev) => ({ ...prev, [chatJid]: false }));
@@ -172,11 +178,12 @@ export function GroupDetail({ group }: GroupDetailProps) {
     setBindingNotice(null);
     try {
       await api.delete(`/api/config/user-im/bindings/${encodeURIComponent(group.jid)}`);
-      setBindingNotice('会话已恢复默认路由');
+      setBindingNotice(t('groups.detail.noticeRouteReset'));
       await loadBindingContext();
       await Promise.all([reloadGroups(), reloadChatGroups()]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '恢复默认路由失败';
+      const message =
+        err instanceof Error ? err.message : t('groups.detail.errors.resetBindingFailed');
       setBindingError(message);
     } finally {
       setBindingSaving(false);
@@ -187,7 +194,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
     <div className="surface-card-soft space-y-3 p-4">
       {/* JID */}
       <div>
-        <div className="text-xs text-muted-foreground mb-1">完整 JID</div>
+        <div className="text-xs text-muted-foreground mb-1">{t('groups.detail.fullJid')}</div>
         <code className="block text-xs font-mono bg-card px-3 py-2 rounded border border-border break-all">
           {group.jid}
         </code>
@@ -195,13 +202,13 @@ export function GroupDetail({ group }: GroupDetailProps) {
 
       {/* Folder */}
       <div>
-        <div className="text-xs text-muted-foreground mb-1">文件夹</div>
+        <div className="text-xs text-muted-foreground mb-1">{t('groups.detail.folder')}</div>
         <div className="text-sm text-foreground font-medium">{group.folder}</div>
       </div>
 
       {/* Added At */}
       <div>
-        <div className="text-xs text-muted-foreground mb-1">添加时间</div>
+        <div className="text-xs text-muted-foreground mb-1">{t('groups.detail.addedAt')}</div>
         <div className="text-sm text-foreground">
           {formatDate(group.added_at)}
         </div>
@@ -210,7 +217,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
       {/* Last Message */}
       {group.lastMessage && (
         <div>
-          <div className="text-xs text-muted-foreground mb-1">最后消息</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('groups.detail.lastMessage')}</div>
           <div className="text-sm text-foreground/80 bg-card px-3 py-2 rounded border border-border line-clamp-3 break-words">
             {group.lastMessage}
           </div>
@@ -224,12 +231,14 @@ export function GroupDetail({ group }: GroupDetailProps) {
 
       {isWorkspace && (
         <div className="space-y-2">
-          <div className="text-xs text-muted-foreground mb-1">工作区内消息会话绑定</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t('groups.detail.workspaceBindingsTitle')}
+          </div>
           {bindingLoading ? (
-            <div className="text-xs text-muted-foreground">加载中...</div>
+            <div className="text-xs text-muted-foreground">{t('groups.detail.loading')}</div>
           ) : allImSessions.length === 0 ? (
             <div className="rounded-md border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              暂无可绑定的消息会话，先在飞书或 Telegram 发送一条消息。
+              {t('groups.detail.noBindableSessions')}
             </div>
           ) : (
             <div className="space-y-2">
@@ -248,19 +257,23 @@ export function GroupDetail({ group }: GroupDetailProps) {
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[11px] px-2 py-0.5 rounded border border-border bg-muted/40 text-foreground/80">
-                        {session.channel === 'feishu' ? '飞书' : 'Telegram'}
+                        {session.channel === 'feishu'
+                          ? t('groups.detail.channelFeishu')
+                          : t('groups.detail.channelTelegram')}
                       </span>
                       <span className="text-xs font-medium text-foreground">{session.name}</span>
                       {explicitToCurrent && (
-                        <span className="text-[11px] text-emerald-700">已绑定到当前工作区</span>
+                        <span className="text-[11px] text-emerald-700">
+                          {t('groups.detail.boundToCurrentWorkspace')}
+                        </span>
                       )}
                     </div>
                     <div className="text-[11px] text-muted-foreground break-all mt-1">{session.chatJid}</div>
                     <div className="text-[11px] text-muted-foreground mt-1">
-                      当前路由：
+                      {t('groups.detail.currentRoute')}
                       {session.mappedWorkspaceName && session.mappedFolder
                         ? ` ${session.mappedWorkspaceName} (${session.mappedFolder})`
-                        : ' 未映射'}
+                        : ` ${t('groups.detail.unmapped')}`}
                     </div>
                     <div className="flex gap-2 mt-2">
                       <Button
@@ -269,7 +282,9 @@ export function GroupDetail({ group }: GroupDetailProps) {
                         disabled={isSaving || explicitToCurrent}
                       >
                         {isSaving && <Loader2 className="size-3.5 animate-spin" />}
-                        {explicitToCurrent ? '已绑定' : '绑定到当前工作区'}
+                        {explicitToCurrent
+                          ? t('groups.detail.bound')
+                          : t('groups.detail.bindToCurrentWorkspace')}
                       </Button>
                       <Button
                         size="sm"
@@ -277,7 +292,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
                         onClick={() => handleResetSessionBinding(session.chatJid)}
                         disabled={isSaving || !session.binding}
                       >
-                        恢复默认
+                        {t('groups.detail.resetDefault')}
                       </Button>
                     </div>
                   </div>
@@ -290,18 +305,18 @@ export function GroupDetail({ group }: GroupDetailProps) {
 
       {isImSession && (
         <div className="space-y-2">
-          <div className="text-xs text-muted-foreground mb-1">会话绑定</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('groups.detail.sessionBindingTitle')}</div>
           {bindingLoading ? (
-            <div className="text-xs text-muted-foreground">加载中...</div>
+            <div className="text-xs text-muted-foreground">{t('groups.detail.loading')}</div>
           ) : (
             <>
               {sessionBindingInfo ? (
                 <>
                   <div className="text-xs text-muted-foreground">
-                    当前路由：
+                    {t('groups.detail.currentRoute')}
                     {sessionBindingInfo.mappedWorkspaceName && sessionBindingInfo.mappedFolder
                       ? ` ${sessionBindingInfo.mappedWorkspaceName} (${sessionBindingInfo.mappedFolder})`
-                      : ' 未映射'}
+                      : ` ${t('groups.detail.unmapped')}`}
                   </div>
                   <div className="flex flex-col gap-2">
                     <select
@@ -311,7 +326,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
                       onChange={(e) => setTargetFolder(e.target.value)}
                     >
                       <option value="" disabled>
-                        选择目标工作区
+                        {t('groups.detail.selectTargetWorkspace')}
                       </option>
                       {workspaces.map((workspace) => (
                         <option key={workspace.folder} value={workspace.folder}>
@@ -326,7 +341,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
                         disabled={bindingSaving || !targetFolder}
                       >
                         {bindingSaving && <Loader2 className="size-3.5 animate-spin" />}
-                        保存绑定
+                        {t('groups.detail.saveBinding')}
                       </Button>
                       <Button
                         size="sm"
@@ -334,14 +349,14 @@ export function GroupDetail({ group }: GroupDetailProps) {
                         onClick={handleResetBinding}
                         disabled={bindingSaving || !sessionBindingInfo.binding}
                       >
-                        恢复默认
+                        {t('groups.detail.resetDefault')}
                       </Button>
                     </div>
                   </div>
                 </>
               ) : (
                 <div className="text-xs text-muted-foreground">
-                  当前账号暂无该会话的绑定管理权限，请联系管理员或在对应工作区页面处理。
+                  {t('groups.detail.noBindingPermission')}
                 </div>
               )}
               {bindingNotice && (
@@ -358,7 +373,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
                 to="/settings?tab=my-channels"
                 className="inline-flex items-center rounded-md border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted"
               >
-                消息通道设置
+                {t('groups.detail.settingsLink')}
               </Link>
             </>
           )}
@@ -367,7 +382,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
 
       {/* Note */}
       <div className="text-xs text-muted-foreground/80 pt-2 border-t border-border">
-        其他群组配置暂不支持编辑
+        {t('groups.detail.noteReadonly')}
       </div>
     </div>
   );

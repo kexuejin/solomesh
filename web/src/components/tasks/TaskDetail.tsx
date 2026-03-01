@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { ScheduledTask, useTasksStore } from '../../stores/tasks';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface TaskDetailProps {
   task: ScheduledTask;
 }
 
 export function TaskDetail({ task }: TaskDetailProps) {
+  const { t, locale } = useI18n();
   const { logs, loadLogs } = useTasksStore();
   const taskLogs = logs[task.id] || [];
 
@@ -17,7 +19,7 @@ export function TaskDetail({ task }: TaskDetailProps) {
     if (!timestamp) return '-';
     const parsed = new Date(timestamp);
     if (Number.isNaN(parsed.getTime())) return timestamp;
-    return parsed.toLocaleString('zh-CN', {
+    return parsed.toLocaleString(localeForDateTime(locale), {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -43,11 +45,11 @@ export function TaskDetail({ task }: TaskDetailProps) {
       const minute = 60 * 1000;
       const hour = 60 * minute;
       const day = 24 * hour;
-      if (ms % day === 0) return `每 ${ms / day} 天`;
-      if (ms % hour === 0) return `每 ${ms / hour} 小时`;
-      if (ms % minute === 0) return `每 ${ms / minute} 分钟`;
-      if (ms % 1000 === 0) return `每 ${ms / 1000} 秒`;
-      return `每 ${ms}ms`;
+      if (ms % day === 0) return t('tasks.detail.everyDays', { count: ms / day });
+      if (ms % hour === 0) return t('tasks.detail.everyHours', { count: ms / hour });
+      if (ms % minute === 0) return t('tasks.detail.everyMinutes', { count: ms / minute });
+      if (ms % 1000 === 0) return t('tasks.detail.everySeconds', { count: ms / 1000 });
+      return t('tasks.detail.everyMs', { count: ms });
     }
     if (task.schedule_type === 'once') {
       const parsed = new Date(task.schedule_value);
@@ -60,7 +62,7 @@ export function TaskDetail({ task }: TaskDetailProps) {
     <div className="p-4 bg-muted/40 space-y-4">
       {/* Full Prompt */}
       <div>
-        <div className="text-xs text-muted-foreground mb-2">完整 Prompt</div>
+        <div className="text-xs text-muted-foreground mb-2">{t('tasks.detail.fullPrompt')}</div>
         <div className="text-sm text-foreground bg-card px-3 py-2 rounded border border-border whitespace-pre-wrap">
           {task.prompt}
         </div>
@@ -69,26 +71,28 @@ export function TaskDetail({ task }: TaskDetailProps) {
       {/* Schedule Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <div className="text-xs text-muted-foreground mb-1">调度类型</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.scheduleType')}</div>
           <div className="text-sm text-foreground">
-            {task.schedule_type === 'cron' && 'Cron 表达式'}
-            {task.schedule_type === 'interval' && '间隔执行'}
-            {task.schedule_type === 'once' && '单次执行'}
+            {task.schedule_type === 'cron' && t('tasks.detail.scheduleTypeCron')}
+            {task.schedule_type === 'interval' && t('tasks.detail.scheduleTypeInterval')}
+            {task.schedule_type === 'once' && t('tasks.detail.scheduleTypeOnce')}
           </div>
         </div>
 
         <div>
-          <div className="text-xs text-muted-foreground mb-1">调度值</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.scheduleValue')}</div>
           <code className="text-sm text-foreground bg-card px-2 py-1 rounded border border-border">
             {formatScheduleValue()}
           </code>
           {task.schedule_type !== 'cron' && (
-            <div className="mt-1 text-xs text-muted-foreground">原始值：{task.schedule_value}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {t('tasks.detail.rawValue', { value: task.schedule_value })}
+            </div>
           )}
         </div>
 
         <div>
-          <div className="text-xs text-muted-foreground mb-1">下次运行</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.nextRun')}</div>
           <div className="text-sm text-foreground">
             {formatDate(task.next_run)}
           </div>
@@ -96,7 +100,7 @@ export function TaskDetail({ task }: TaskDetailProps) {
 
         {task.last_run && (
           <div>
-            <div className="text-xs text-muted-foreground mb-1">上次运行</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.lastRun')}</div>
             <div className="text-sm text-foreground">
               {formatDate(task.last_run)}
             </div>
@@ -104,18 +108,18 @@ export function TaskDetail({ task }: TaskDetailProps) {
         )}
 
         <div>
-          <div className="text-xs text-muted-foreground mb-1">上下文模式</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.contextMode')}</div>
           <div className="text-sm text-foreground">
             {task.context_mode === 'group'
-              ? '共享群组上下文'
+              ? t('tasks.detail.contextGroup')
               : task.context_mode === 'isolated'
-                ? '独立执行'
+                ? t('tasks.detail.contextIsolated')
                 : task.context_mode}
           </div>
         </div>
 
         <div>
-          <div className="text-xs text-muted-foreground mb-1">创建时间</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.createdAt')}</div>
           <div className="text-sm text-foreground">
             {formatDate(task.created_at)}
           </div>
@@ -123,7 +127,7 @@ export function TaskDetail({ task }: TaskDetailProps) {
 
         {task.last_result && (
           <div className="col-span-1 md:col-span-2">
-            <div className="text-xs text-muted-foreground mb-1">最近结果</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.lastResult')}</div>
             <div className="text-sm text-foreground bg-card px-3 py-2 rounded border border-border whitespace-pre-wrap break-words">
               {task.last_result}
             </div>
@@ -133,10 +137,10 @@ export function TaskDetail({ task }: TaskDetailProps) {
 
       {/* Execution Logs */}
       <div>
-        <div className="text-xs text-muted-foreground mb-2">执行日志</div>
+        <div className="text-xs text-muted-foreground mb-2">{t('tasks.detail.logs')}</div>
         {taskLogs.length === 0 ? (
           <div className="text-sm text-muted-foreground/80 bg-card px-3 py-4 rounded border border-border text-center">
-            暂无执行记录
+            {t('tasks.detail.noLogs')}
           </div>
         ) : (
           <div className="overflow-x-auto bg-card rounded border border-border">
@@ -144,16 +148,16 @@ export function TaskDetail({ task }: TaskDetailProps) {
               <thead className="bg-muted/40">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    运行时间
+                    {t('tasks.detail.runAt')}
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    耗时
+                    {t('tasks.detail.duration')}
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    状态
+                    {t('tasks.detail.status')}
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    结果
+                    {t('tasks.detail.result')}
                   </th>
                 </tr>
               </thead>
@@ -174,13 +178,13 @@ export function TaskDetail({ task }: TaskDetailProps) {
                             : 'bg-red-100 text-red-600'
                         }`}
                       >
-                        {log.status === 'success' ? '成功' : '失败'}
+                        {log.status === 'success' ? t('tasks.detail.success') : t('tasks.detail.failed')}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-foreground max-w-xs truncate">
                       {log.status === 'success'
                         ? log.result || '-'
-                        : log.error || '未知错误'}
+                        : log.error || t('tasks.detail.unknownError')}
                     </td>
                   </tr>
                 ))}

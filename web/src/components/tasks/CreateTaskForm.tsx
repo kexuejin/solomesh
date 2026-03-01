@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Clock3, Loader2, Sparkles, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,11 +12,12 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
-  AUTOMATION_TEMPLATES,
+  getAutomationTemplates,
   type AutomationTemplate,
   type ContextMode,
   type ScheduleType,
 } from './automation-presets';
+import { useI18n } from '../../i18n';
 
 interface Group {
   jid: string;
@@ -41,17 +42,8 @@ interface CreateTaskFormProps {
 type ScheduleMode = 'daily' | 'interval';
 type IntervalUnit = 'minute' | 'hour';
 
-const WEEKDAY_OPTIONS = [
-  { label: '一', value: 1 },
-  { label: '二', value: 2 },
-  { label: '三', value: 3 },
-  { label: '四', value: 4 },
-  { label: '五', value: 5 },
-  { label: '六', value: 6 },
-  { label: '日', value: 0 },
-] as const;
-
-const ALL_WEEKDAYS = WEEKDAY_OPTIONS.map((item) => item.value);
+const WEEKDAY_VALUES = [1, 2, 3, 4, 5, 6, 0] as const;
+const ALL_WEEKDAYS = [...WEEKDAY_VALUES];
 const WORKDAYS = [1, 2, 3, 4, 5];
 const TEMPLATE_NONE = '__none__';
 
@@ -194,6 +186,20 @@ function parseTemplateSchedule(template: AutomationTemplate): {
 }
 
 export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }: CreateTaskFormProps) {
+  const { t } = useI18n();
+  const templates = getAutomationTemplates(t);
+  const weekdayOptions = useMemo(
+    () => [
+      { label: t('tasks.form.weekdayMon'), value: 1 },
+      { label: t('tasks.form.weekdayTue'), value: 2 },
+      { label: t('tasks.form.weekdayWed'), value: 3 },
+      { label: t('tasks.form.weekdayThu'), value: 4 },
+      { label: t('tasks.form.weekdayFri'), value: 5 },
+      { label: t('tasks.form.weekdaySat'), value: 6 },
+      { label: t('tasks.form.weekdaySun'), value: 0 },
+    ],
+    [t],
+  );
   const [formData, setFormData] = useState({
     groupFolder: groups[0]?.folder || '',
     chatJid: groups[0]?.jid || '',
@@ -267,16 +273,17 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
   const handleTemplateChoiceChange = (value: string) => {
     setTemplateChoice(value);
     if (value === TEMPLATE_NONE) return;
-    const template = AUTOMATION_TEMPLATES.find((item) => item.id === value);
+    const template = templates.find((item) => item.id === value);
     if (template) applyTemplate(template);
   };
 
   useEffect(() => {
     if (!initialTemplateId) return;
-    const template = AUTOMATION_TEMPLATES.find((item) => item.id === initialTemplateId);
+    const template = templates.find((item) => item.id === initialTemplateId);
     if (!template) return;
     setTemplateChoice(template.id);
     applyTemplate(template);
+    // Keep original behavior: only apply initial template when template id changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTemplateId]);
 
@@ -292,35 +299,35 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
     const newErrors: Record<string, string> = {};
 
     if (!formData.groupFolder) {
-      newErrors.groupFolder = '请选择群组';
+      newErrors.groupFolder = t('tasks.form.errors.groupRequired');
     }
 
     if (!formData.prompt.trim()) {
-      newErrors.prompt = '请输入自动化指令';
+      newErrors.prompt = t('tasks.form.errors.promptRequired');
     }
 
     if (scheduleMode === 'daily') {
       if (!/^\d{2}:\d{2}$/.test(dailyTime)) {
-        newErrors.scheduleValue = '请选择每天执行时间';
+        newErrors.scheduleValue = t('tasks.form.errors.dailyTimeRequired');
       }
       if (dailyWeekdays.length === 0) {
-        newErrors.scheduleValue = '请至少选择一天';
+        newErrors.scheduleValue = t('tasks.form.errors.weekdayRequired');
       }
     }
 
     if (scheduleMode === 'interval') {
       const num = Number.parseInt(intervalNumber, 10);
       if (!Number.isFinite(num) || num <= 0) {
-        newErrors.scheduleValue = '间隔必须是正整数';
+        newErrors.scheduleValue = t('tasks.form.errors.intervalPositive');
       }
       if (intervalUnit === 'minute' && num > 59) {
-        newErrors.scheduleValue = '分钟间隔最大支持 59（超过请改用小时）';
+        newErrors.scheduleValue = t('tasks.form.errors.intervalMinuteMax');
       }
       if (intervalUnit === 'hour' && num > 23) {
-        newErrors.scheduleValue = '小时间隔最大支持 23';
+        newErrors.scheduleValue = t('tasks.form.errors.intervalHourMax');
       }
       if (intervalWeekdays.length === 0) {
-        newErrors.scheduleValue = '请至少选择一天';
+        newErrors.scheduleValue = t('tasks.form.errors.weekdayRequired');
       }
     }
 
@@ -384,12 +391,13 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
       <div className="surface-card w-full max-w-3xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <h2 className="text-xl font-bold text-foreground">新建自动化</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">模板 + 两种直观调度方式</p>
+            <h2 className="text-xl font-bold text-foreground">{t('tasks.form.title')}</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t('tasks.form.subtitle')}</p>
           </div>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-muted-foreground/80 transition-colors hover:bg-muted hover:text-muted-foreground"
+            aria-label={t('tasks.form.close')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -398,11 +406,11 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
         <form onSubmit={handleSubmit} className="space-y-5 p-6">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground/80">
-              工作区 <span className="text-red-500">*</span>
+              {t('tasks.form.workspace')} <span className="text-red-500">*</span>
             </label>
             <Select value={formData.groupFolder || undefined} onValueChange={handleGroupChange}>
               <SelectTrigger className={cn('w-full', errors.groupFolder && 'border-red-500')}>
-                <SelectValue placeholder="请选择" />
+                <SelectValue placeholder={t('tasks.form.choose')} />
               </SelectTrigger>
               <SelectContent>
                 {groups.map((group) => (
@@ -419,18 +427,18 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
             <div className="flex items-center justify-between gap-2 text-sm font-medium text-foreground/85">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-brand-600" />
-                自动化模板（可选）
+                {t('tasks.form.templateTitle')}
               </div>
-              <span className="text-xs font-normal text-muted-foreground">选择后自动填充，可继续修改</span>
+              <span className="text-xs font-normal text-muted-foreground">{t('tasks.form.templateHint')}</span>
             </div>
             <div className="flex flex-col gap-2">
               <Select value={templateChoice} onValueChange={handleTemplateChoiceChange}>
                 <SelectTrigger className="flex-1 bg-card">
-                  <SelectValue placeholder="选择模板" />
+                  <SelectValue placeholder={t('tasks.form.chooseTemplate')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={TEMPLATE_NONE}>不使用模板</SelectItem>
-                  {AUTOMATION_TEMPLATES.map((template) => (
+                  <SelectItem value={TEMPLATE_NONE}>{t('tasks.form.noTemplate')}</SelectItem>
+                  {templates.map((template) => (
                     <SelectItem key={template.id} value={template.id}>
                       {template.name}
                     </SelectItem>
@@ -442,7 +450,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground/80">
-              自动化指令 <span className="text-red-500">*</span>
+              {t('tasks.form.prompt')} <span className="text-red-500">*</span>
             </label>
             <Textarea
               value={formData.prompt}
@@ -451,14 +459,14 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
               }}
               rows={4}
               className={cn('resize-none', errors.prompt && 'border-red-500')}
-              placeholder="例如：每天早上汇总昨日新增问题，按优先级排序并给出建议"
+              placeholder={t('tasks.form.promptPlaceholder')}
             />
             {errors.prompt && <p className="text-sm text-red-600">{errors.prompt}</p>}
           </div>
 
           <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-3">
             <label className="block text-sm font-medium text-foreground/80">
-              调度方式 <span className="text-red-500">*</span>
+              {t('tasks.form.schedule')} <span className="text-red-500">*</span>
             </label>
 
             <div className="inline-flex rounded-xl border border-border/70 bg-card p-1">
@@ -475,7 +483,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 )}
               >
-                每天
+                {t('tasks.form.modeDaily')}
               </button>
               <button
                 type="button"
@@ -490,7 +498,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 )}
               >
-                时间间隔
+                {t('tasks.form.modeInterval')}
               </button>
             </div>
 
@@ -498,7 +506,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
               <div className="space-y-3 rounded-lg border border-border/70 bg-card p-3">
                 <div className="flex items-center gap-2">
                   <Clock3 className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-foreground">每天执行时间</span>
+                  <span className="text-sm font-medium text-foreground">{t('tasks.form.dailyTime')}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
@@ -510,9 +518,9 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                     }}
                     className="w-[140px]"
                   />
-                  <span className="ml-1 text-xs text-muted-foreground">周几</span>
+                  <span className="ml-1 text-xs text-muted-foreground">{t('tasks.form.weekday')}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {WEEKDAY_OPTIONS.map((item) => {
+                    {weekdayOptions.map((item) => {
                       const active = dailyWeekdays.includes(item.value);
                       return (
                         <button
@@ -543,7 +551,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Clock3 className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium text-foreground">执行间隔</span>
+                    <span className="text-sm font-medium text-foreground">{t('tasks.form.interval')}</span>
                   </div>
                 </div>
 
@@ -557,7 +565,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                       clearScheduleError();
                     }}
                     className="w-[110px]"
-                    placeholder="数值"
+                    placeholder={t('tasks.form.intervalValue')}
                   />
                   <Select
                     value={intervalUnit}
@@ -570,13 +578,13 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="minute">分钟</SelectItem>
-                      <SelectItem value="hour">小时</SelectItem>
+                      <SelectItem value="minute">{t('tasks.form.unitMinute')}</SelectItem>
+                      <SelectItem value="hour">{t('tasks.form.unitHour')}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <span className="ml-1 text-xs text-muted-foreground">周几</span>
+                  <span className="ml-1 text-xs text-muted-foreground">{t('tasks.form.weekday')}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {WEEKDAY_OPTIONS.map((item) => {
+                    {weekdayOptions.map((item) => {
                       const active = intervalWeekdays.includes(item.value);
                       return (
                         <button
@@ -606,7 +614,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-foreground/80">上下文模式</label>
+            <label className="block text-sm font-medium text-foreground/80">{t('tasks.form.contextMode')}</label>
             <Select
               value={formData.contextMode}
               onValueChange={(value) =>
@@ -620,20 +628,20 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="isolated">独立执行（推荐）</SelectItem>
-                <SelectItem value="group">共享群组上下文</SelectItem>
+                <SelectItem value="isolated">{t('tasks.form.contextIsolated')}</SelectItem>
+                <SelectItem value="group">{t('tasks.form.contextGroup')}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">共享群组上下文会复用该群组会话，独立执行每次使用隔离会话。</p>
+            <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
           </div>
 
           <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
-              取消
+              {t('tasks.form.cancel')}
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 className="size-4 animate-spin" />}
-              {submitting ? '创建中...' : '创建自动化'}
+              {submitting ? t('tasks.form.creating') : t('tasks.form.create')}
             </Button>
           </div>
         </form>

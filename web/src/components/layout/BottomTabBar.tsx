@@ -2,26 +2,29 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { MessageSquare, Clock, Activity, Settings } from 'lucide-react';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { lightTap } from '../../hooks/useHaptic';
+import { useI18n } from '../../i18n';
 
 export const navItems = [
-  { path: '/chat', icon: MessageSquare, label: '工作台' },
-  { path: '/tasks', icon: Clock, label: '任务' },
-  { path: '/monitor', icon: Activity, label: '监控' },
-  { path: '/settings', icon: Settings, label: '设置' },
+  { path: '/chat', icon: MessageSquare, labelKey: 'nav.workspace' as const },
+  { path: '/tasks', icon: Clock, labelKey: 'nav.tasks' as const },
+  { path: '/monitor', icon: Activity, labelKey: 'nav.monitor' as const },
+  { path: '/settings', icon: Settings, labelKey: 'nav.settings' as const },
 ];
 
 export function BottomTabBar() {
   const location = useLocation();
   const scrollDir = useScrollDirection();
   const isCompact = scrollDir === 'down';
+  const { t } = useI18n();
 
   return (
     <>
       <div className="pwa-bottom-guard" aria-hidden="true" />
       <div className={`floating-nav-container ${isCompact ? 'compact' : ''}`}>
         <nav className="floating-nav">
-          {navItems.map(({ path, icon: Icon, label }) => {
+          {navItems.map(({ path, icon: Icon, labelKey }) => {
             const isActive = location.pathname.startsWith(path);
+            const label = t(labelKey);
             return (
               <NavLink
                 key={path}

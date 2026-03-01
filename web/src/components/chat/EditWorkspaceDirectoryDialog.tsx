@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { DirectoryBrowser } from '../shared/DirectoryBrowser';
 import { useChatStore } from '../../stores/chat';
+import { useI18n } from '../../i18n';
 
 interface EditWorkspaceDirectoryDialogProps {
   open: boolean;
@@ -26,6 +27,7 @@ export function EditWorkspaceDirectoryDialog({
   currentCwd,
   onClose,
 }: EditWorkspaceDirectoryDialogProps) {
+  const { t } = useI18n();
   const [path, setPath] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function EditWorkspaceDirectoryDialog({
       const trimmed = path.trim();
       const ok = await updateFlowDirectory(jid, trimmed ? trimmed : null);
       if (!ok) {
-        setError(useChatStore.getState().error || '保存目录失败');
+        setError(useChatStore.getState().error || t('chat.editWorkspaceDirectoryDialog.saveFailed'));
         return;
       }
       onClose();
@@ -58,28 +60,28 @@ export function EditWorkspaceDirectoryDialog({
       <DialogContent className="sm:max-w-lg overflow-hidden p-0">
         <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600">
-            工作区
+            {t('chat.editWorkspaceDirectoryDialog.badge')}
           </div>
         </div>
         <DialogHeader className="px-5 pt-4 text-left">
-          <DialogTitle>修改工作区目录</DialogTitle>
+          <DialogTitle>{t('chat.editWorkspaceDirectoryDialog.title')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3 px-5">
           <p className="text-sm text-muted-foreground">
-            工作区：{currentName}
+            {t('chat.editWorkspaceDirectoryDialog.workspaceName', { name: currentName })}
           </p>
           <div className="surface-card-soft border border-border/70 bg-muted/20 p-3">
             <DirectoryBrowser
               value={path}
               onChange={setPath}
-              placeholder="留空则恢复默认目录 data/groups/{folder}/"
+              placeholder={t('chat.editWorkspaceDirectoryDialog.placeholder')}
             />
           </div>
           <div className="surface-card-soft flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 p-3">
             <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700">
-              保存后会中断当前运行中的任务，并清除会话上下文，以确保新目录立即生效。
+              {t('chat.editWorkspaceDirectoryDialog.warning')}
             </p>
           </div>
           {error && (
@@ -91,11 +93,11 @@ export function EditWorkspaceDirectoryDialog({
 
         <DialogFooter className="mt-4 gap-2 border-t border-border/70 bg-muted/20 px-5 py-4 sm:justify-end">
           <Button variant="outline" onClick={onClose} disabled={saving}>
-            取消
+            {t('chat.editWorkspaceDirectoryDialog.cancel')}
           </Button>
           <Button onClick={handleConfirm} disabled={saving}>
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-            保存
+            {t('chat.editWorkspaceDirectoryDialog.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

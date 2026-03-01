@@ -1,4 +1,5 @@
 import { replaceInApp, stripBasePath, withBasePath } from '../utils/url';
+import { translateLocaleMessage } from '../i18n/runtime';
 import { mapFetchExceptionToApiError, type ApiError } from './error-utils';
 
 const REQUEST_TIMEOUT_MS = 8000;
@@ -38,7 +39,11 @@ export async function apiFetch<T>(path: string, options?: RequestInit & { timeou
     if (!currentPath.startsWith('/login')) {
       replaceInApp('/login');
     }
-    throw new Error('Unauthorized');
+    const unauthorizedError = new Error(
+      translateLocaleMessage('api.errors.unauthorized'),
+    ) as Error & ApiError;
+    unauthorizedError.status = 401;
+    throw unauthorizedError;
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

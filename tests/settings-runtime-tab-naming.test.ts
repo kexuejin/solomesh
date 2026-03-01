@@ -34,7 +34,7 @@ test('workflow dependency suggested tab points to runtime settings', () => {
   assert.ok(systemMessage.includes("normalized === 'runtime'"));
   assert.ok(systemMessage.includes("if (dependencyType === 'provider') return 'runtime';"));
 
-  assert.ok(messageList.includes("if (tab === 'runtime') return 'Agent 运行时';"));
+  assert.ok(messageList.includes("if (tab === 'runtime') return t('chat.list.settingsTab.runtime');"));
 });
 
 test('setup flow redirects to runtime tab', () => {

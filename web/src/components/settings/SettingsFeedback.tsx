@@ -1,4 +1,5 @@
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 interface SettingsFeedbackProps {
   notice: string | null;
@@ -13,6 +14,8 @@ export function SettingsFeedback({
   onClearNotice,
   onClearError,
 }: SettingsFeedbackProps) {
+  const { t } = useI18n();
+
   if (!notice && !error) return null;
 
   return (
@@ -27,7 +30,7 @@ export function SettingsFeedback({
             type="button"
             onClick={onClearNotice}
             className="rounded-lg p-1 text-emerald-700/70 transition-colors hover:bg-emerald-100 hover:text-emerald-800"
-            aria-label="关闭成功提示"
+            aria-label={t('settings.feedback.closeNoticeAria')}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -44,7 +47,7 @@ export function SettingsFeedback({
             type="button"
             onClick={onClearError}
             className="rounded-lg p-1 text-red-700/70 transition-colors hover:bg-red-100 hover:text-red-800"
-            aria-label="关闭错误提示"
+            aria-label={t('settings.feedback.closeErrorAria')}
           >
             <X className="h-3.5 w-3.5" />
           </button>

@@ -1,11 +1,13 @@
 import { Activity } from 'lucide-react';
 import { SystemStatus } from '../../stores/monitor';
+import { useI18n } from '../../i18n';
 
 interface SystemInfoProps {
   status: SystemStatus;
 }
 
 export function SystemInfo({ status }: SystemInfoProps) {
+  const { t } = useI18n();
   const formatUptime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -23,14 +25,14 @@ export function SystemInfo({ status }: SystemInfoProps) {
           <Activity className="w-6 h-6 text-green-600" />
         </div>
         <div>
-          <h3 className="text-sm font-medium text-muted-foreground">系统信息</h3>
-          <p className="text-2xl font-bold text-foreground">运行中</p>
+          <h3 className="text-sm font-medium text-muted-foreground">{t('monitor.components.system.title')}</h3>
+          <p className="text-2xl font-bold text-foreground">{t('monitor.status.running')}</p>
         </div>
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">运行时间</span>
+          <span className="text-muted-foreground">{t('monitor.components.system.uptime')}</span>
           <span className="text-foreground font-medium">
             {formatUptime(status.uptime)}
           </span>
@@ -38,17 +40,17 @@ export function SystemInfo({ status }: SystemInfoProps) {
 
         {status.claudeCodeVersion !== undefined && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Claude Code</span>
+            <span className="text-muted-foreground">{t('monitor.components.system.claudeCode')}</span>
             <span className="text-foreground font-medium font-mono text-xs">
-              {status.claudeCodeVersion || '未知'}
+              {status.claudeCodeVersion || t('monitor.components.system.unknown')}
             </span>
           </div>
         )}
 
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">飞书连接</span>
+          <span className="text-muted-foreground">{t('monitor.components.system.feishuConnection')}</span>
           <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-600">
-            已连接
+            {t('monitor.components.system.connected')}
           </span>
         </div>
       </div>

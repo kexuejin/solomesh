@@ -5,8 +5,10 @@ import { useAuthStore } from '../stores/auth';
 import { ChatSidebar } from '../components/chat/ChatSidebar';
 import { ChatView } from '../components/chat/ChatView';
 import { useSwipeBack } from '../hooks/useSwipeBack';
+import { useI18n } from '../i18n';
 
 export function ChatPage() {
+  const { t } = useI18n();
   const { groupFolder } = useParams<{ groupFolder?: string }>();
   const navigate = useNavigate();
   const { groups, currentGroup, selectGroup } = useChatStore();
@@ -68,10 +70,10 @@ export function ChatPage() {
               <img src={`${import.meta.env.BASE_URL}icons/icon-192.png`} alt="SoloMesh" className="w-full h-full object-cover" />
             </div>
             <h2 className="text-xl font-semibold text-foreground mb-2">
-              欢迎使用 {appearance?.appName || 'SoloMesh'}
+              {t('chat.empty.title', { appName: appearance?.appName || 'SoloMesh' })}
             </h2>
             <p className="text-muted-foreground text-sm">
-              从左侧选择一个工作区开始对话
+              {t('chat.empty.subtitle')}
             </p>
           </div>
         </div>

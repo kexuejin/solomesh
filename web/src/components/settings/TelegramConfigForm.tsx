@@ -8,11 +8,13 @@ import { SettingsSwitch } from './SettingsSwitch';
 import { SettingsActionBar } from './SettingsActionBar';
 import { SettingsMetaGrid } from './SettingsMetaGrid';
 import type { TelegramConfigPublic, TelegramTestResult, SettingsNotification } from './types';
-import { getErrorMessage, sourceLabel } from './types';
+import { getErrorMessage } from './types';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface TelegramConfigFormProps extends SettingsNotification {}
 
 export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormProps) {
+  const { locale, t } = useI18n();
   const [config, setConfig] = useState<TelegramConfigPublic | null>(null);
   const [botToken, setBotToken] = useState('');
   const [clearToken, setClearToken] = useState(false);
@@ -32,11 +34,11 @@ export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormPr
       setClearToken(false);
       setEnabled(data.enabled);
     } catch (err) {
-      setError(getErrorMessage(err, '加载 Telegram 配置失败'));
+      setError(getErrorMessage(err, t('settings.telegram.errors.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [setError]);
+  }, [setError, t]);
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
 
@@ -48,10 +50,13 @@ export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormPr
       const saved = await api.put<TelegramConfigPublic>('/api/config/telegram', { enabled: newEnabled });
       setConfig(saved);
       setEnabled(saved.enabled);
-      setNotice(`Telegram 渠道已${newEnabled ? '启用' : '停用'}${saved.connected ? '，连接正常' : ''}`);
+      setNotice(t('settings.telegram.notice.channelUpdated', {
+        status: newEnabled ? t('settings.telegram.status.enabled') : t('settings.telegram.status.disabled'),
+        connectedSuffix: saved.connected ? t('settings.telegram.status.connectedSuffix') : '',
+      }));
 
     } catch (err) {
-      setError(getErrorMessage(err, '切换 Telegram 渠道状态失败'));
+      setError(getErrorMessage(err, t('settings.telegram.errors.toggleFailed')));
     } finally {
       setToggling(false);
     }
@@ -70,10 +75,12 @@ export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormPr
       setConfig(saved);
       setBotToken('');
       setClearToken(false);
-      setNotice(`Telegram 配置已保存${saved.connected ? '，连接正常' : ''}`);
+      setNotice(t('settings.telegram.notice.saved', {
+        connectedSuffix: saved.connected ? t('settings.telegram.status.connectedSuffix') : '',
+      }));
 
     } catch (err) {
-      setError(getErrorMessage(err, '保存 Telegram 配置失败'));
+      setError(getErrorMessage(err, t('settings.telegram.errors.saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -86,12 +93,15 @@ export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormPr
     try {
       const result = await api.post<TelegramTestResult>('/api/config/telegram/test');
       if (result.success) {
-        setNotice(`Telegram 连接测试成功：@${result.bot_username} (${result.bot_name})`);
+        setNotice(t('settings.telegram.notice.testSuccess', {
+          username: result.bot_username || '-',
+          name: result.bot_name || '-',
+        }));
       } else {
-        setError(result.error || 'Telegram 连接失败');
+        setError(result.error || t('settings.telegram.errors.testFailed'));
       }
     } catch (err) {
-      setError(getErrorMessage(err, 'Telegram 连接测试失败'));
+      setError(getErrorMessage(err, t('settings.telegram.errors.testConnectionFailed')));
     } finally {
       setTesting(false);
     }
@@ -102,13 +112,12 @@ export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormPr
 
   return (
     <div className="surface-card overflow-hidden">
-      {/* 卡片头部 */}
       <div className="flex items-center justify-between border-b border-border/70 bg-muted/35 px-5 py-4">
         <div className="flex items-center gap-2">
           <span className={`inline-block h-2 w-2 rounded-full ${config?.connected ? 'bg-emerald-500' : 'bg-muted-foreground/35'}`} />
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Telegram</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">通过 Telegram Bot 接收和回复消息</p>
+            <h3 className="text-sm font-semibold text-foreground">{t('settings.telegram.title')}</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.telegram.subtitle')}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -118,33 +127,34 @@ export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormPr
               ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
               : 'border-border/70 bg-card/75 text-muted-foreground'
           }`}>
-            {config?.connected ? '已连接' : '未连接'}
+            {config?.connected ? t('settings.telegram.connected') : t('settings.telegram.notConnected')}
           </span>
           <SettingsSwitch
             checked={enabled}
             disabled={busy}
             onCheckedChange={handleToggle}
-            ariaLabel="切换 Telegram 渠道"
+            ariaLabel={t('settings.telegram.toggleAria')}
           />
         </div>
       </div>
 
-      {/* 卡片内容 */}
       <div className={`px-5 py-4 space-y-4 transition-opacity ${formDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="rounded-lg bg-muted/10 p-3">
           <label className="mb-1 block text-xs font-medium text-foreground/80">
-            Bot Token {config?.hasBotToken ? `(${config.botTokenMasked})` : ''}
+            {t('settings.telegram.botToken')} {config?.hasBotToken ? `(${config.botTokenMasked})` : ''}
           </label>
           <Input
             type="password"
             value={botToken}
             onChange={(e) => setBotToken(e.target.value)}
             disabled={loading || saving}
-            placeholder={config?.hasBotToken ? '留空保持不变，输入新值覆盖' : '输入 Telegram Bot Token'}
+            placeholder={config?.hasBotToken
+              ? t('settings.telegram.botTokenPlaceholderOverride')
+              : t('settings.telegram.botTokenPlaceholder')}
             className="h-10 rounded-xl border-border/75 bg-card/95"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            在 Telegram 中搜索 @BotFather，发送 /newbot 创建机器人后获得（安全原因不会回显明文）
+            {t('settings.telegram.botTokenHint')}
           </p>
           <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <input
@@ -153,31 +163,41 @@ export function TelegramConfigForm({ setNotice, setError }: TelegramConfigFormPr
               onChange={(e) => setClearToken(e.target.checked)}
               disabled={saving}
             />
-            清空现有 Token
+            {t('settings.telegram.clearToken')}
           </label>
         </div>
 
         <SettingsActionBar>
           <Button variant="outline" onClick={loadConfig} disabled={busy} className="h-10 rounded-xl">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? '刷新中...' : '刷新'}
+            {loading ? t('settings.telegram.refreshing') : t('settings.telegram.refresh')}
           </Button>
           <Button onClick={handleSave} disabled={busy} className="h-10 rounded-xl">
             {saving && <Loader2 className="size-4 animate-spin" />}
-            {saving ? '保存中...' : '保存 Telegram 配置'}
+            {saving ? t('settings.telegram.saving') : t('settings.telegram.save')}
           </Button>
           <Button variant="outline" onClick={handleTest} disabled={busy || !config?.hasBotToken} className="h-10 rounded-xl">
             {testing && <Loader2 className="size-4 animate-spin" />}
-            {testing ? '测试中...' : '测试连接'}
+            {testing ? t('settings.telegram.testing') : t('settings.telegram.test')}
           </Button>
         </SettingsActionBar>
 
         <SettingsMetaGrid
           items={[
-            { label: '当前来源', value: sourceLabel(config?.source || 'none') },
             {
-              label: '最近保存',
-              value: config?.updatedAt ? new Date(config.updatedAt).toLocaleString('zh-CN') : '未记录',
+              label: t('settings.telegram.currentSource'),
+              value:
+                config?.source === 'runtime'
+                  ? t('settings.telegram.source.runtime')
+                  : config?.source === 'env'
+                    ? t('settings.telegram.source.env')
+                    : t('settings.telegram.source.none'),
+            },
+            {
+              label: t('settings.telegram.lastSaved'),
+              value: config?.updatedAt
+                ? new Date(config.updatedAt).toLocaleString(localeForDateTime(locale))
+                : t('settings.telegram.notRecorded'),
             },
           ]}
         />

@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSkillsStore, type SearchResult } from '@/stores/skills';
+import { useI18n } from '../../i18n';
 
 interface InstallSkillDialogProps {
   open: boolean;
@@ -25,6 +26,7 @@ function SearchResultItem({
   installingPkg: string | null;
   onInstall: (result: SearchResult) => void;
 }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const { searchDetails, searchDetailLoading, fetchSearchDetail } = useSkillsStore();
 
@@ -55,7 +57,7 @@ function SearchResultItem({
             </span>
             {result.installs && (
               <span className="block text-xs text-muted-foreground">
-                安装量: {result.installs}
+                {t('skills.install.weeklyInstallsShort', { count: result.installs })}
               </span>
             )}
           </span>
@@ -72,7 +74,7 @@ function SearchResultItem({
           ) : (
             <Download className="size-3.5" />
           )}
-          <span className="ml-1">安装</span>
+          <span className="ml-1">{t('skills.install.install')}</span>
         </Button>
       </div>
 
@@ -81,7 +83,7 @@ function SearchResultItem({
           {loading && (
             <div className="flex items-center gap-2 py-3 text-muted-foreground text-xs">
               <Loader2 className="size-3 animate-spin" />
-              加载详情...
+              {t('skills.install.loadingDetail')}
             </div>
           )}
 
@@ -93,7 +95,7 @@ function SearchResultItem({
 
               {(detail.installs || detail.age) && (
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  {detail.installs && <span>每周安装: {detail.installs}</span>}
+                  {detail.installs && <span>{t('skills.install.weeklyInstalls', { count: detail.installs })}</span>}
                   {detail.age && <span>{detail.age}</span>}
                 </div>
               )}
@@ -112,7 +114,7 @@ function SearchResultItem({
           )}
 
           {!loading && detail === null && (
-            <p className="text-xs text-muted-foreground py-2">无法加载详情</p>
+            <p className="text-xs text-muted-foreground py-2">{t('skills.install.detailLoadFailed')}</p>
           )}
 
           {/* detail === undefined means not yet fetched (shouldn't happen since we fetch on expand) */}
@@ -124,7 +126,7 @@ function SearchResultItem({
               rel="noopener noreferrer"
               className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1 mt-2"
             >
-              在 skills.sh 查看
+              {t('skills.install.viewInMarket')}
               <ExternalLink className="size-3" />
             </a>
           )}
@@ -140,6 +142,7 @@ export function InstallSkillDialog({
   onInstall,
   installing,
 }: InstallSkillDialogProps) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('search');
   const [pkg, setPkg] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -165,7 +168,7 @@ export function InstallSkillDialog({
       onClose();
     } catch (err) {
       setInstallingPkg(null);
-      setError(err instanceof Error ? err.message : '安装失败');
+      setError(err instanceof Error ? err.message : t('skills.install.failed'));
     }
   };
 
@@ -173,7 +176,7 @@ export function InstallSkillDialog({
     e.preventDefault();
     const trimmed = pkg.trim();
     if (!trimmed) {
-      setError('请输入技能包名称');
+      setError(t('skills.install.packageRequired'));
       return;
     }
 
@@ -183,7 +186,7 @@ export function InstallSkillDialog({
       setPkg('');
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '安装失败');
+      setError(err instanceof Error ? err.message : t('skills.install.failed'));
     }
   };
 
@@ -204,11 +207,11 @@ export function InstallSkillDialog({
       <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col overflow-hidden p-0">
         <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600">
-            技能
+            {t('skills.install.badge')}
           </div>
         </div>
         <DialogHeader className="px-5 pt-4 text-left">
-          <DialogTitle>安装技能</DialogTitle>
+          <DialogTitle>{t('skills.install.title')}</DialogTitle>
         </DialogHeader>
 
         {/* Tabs */}
@@ -225,7 +228,7 @@ export function InstallSkillDialog({
               disabled={isInstalling}
             >
               <Search className="mr-1.5 inline-block size-3.5 -mt-0.5" />
-              搜索市场
+              {t('skills.install.searchTab')}
             </button>
             <button
               type="button"
@@ -237,7 +240,7 @@ export function InstallSkillDialog({
               onClick={() => { setTab('manual'); setError(null); }}
               disabled={isInstalling}
             >
-              手动安装
+              {t('skills.install.manualTab')}
             </button>
           </div>
         </div>
@@ -250,7 +253,7 @@ export function InstallSkillDialog({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索关键词..."
+                placeholder={t('skills.install.searchPlaceholder')}
                 disabled={searching || isInstalling}
                 className="h-10 flex-1 rounded-xl border-border/75 bg-card/95"
               />
@@ -269,13 +272,13 @@ export function InstallSkillDialog({
               {searching && (
                 <div className="flex items-center justify-center py-8 text-muted-foreground">
                   <Loader2 className="size-4 animate-spin mr-2" />
-                  搜索中...
+                  {t('skills.install.searching')}
                 </div>
               )}
 
               {!searching && searchResults.length === 0 && searchQuery.trim() && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
-                  未找到相关技能
+                  {t('skills.install.emptySearch')}
                 </div>
               )}
 
@@ -292,7 +295,7 @@ export function InstallSkillDialog({
 
             {!searching && searchResults.length === 0 && !searchQuery.trim() && (
               <p className="text-xs text-muted-foreground text-center py-4">
-                在 skills.sh 市场中搜索可用的技能包
+                {t('skills.install.searchHint')}
               </p>
             )}
 
@@ -309,19 +312,19 @@ export function InstallSkillDialog({
           <form onSubmit={handleManualSubmit} className="space-y-4 px-5 pb-5 pt-3">
             <div className="surface-card-soft space-y-2 border border-border/70 bg-muted/20 p-3">
               <label htmlFor="skill-pkg" className="block text-sm font-medium text-foreground/80">
-                技能包名称
+                {t('skills.install.packageName')}
               </label>
               <Input
                 id="skill-pkg"
                 type="text"
                 value={pkg}
                 onChange={(e) => setPkg(e.target.value)}
-                placeholder="owner/repo 或 owner/repo@skill"
+                placeholder={t('skills.install.packagePlaceholder')}
                 disabled={isInstalling}
                 className="h-10 rounded-xl border-border/75 bg-card/95"
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                支持格式：owner/repo 或 owner/repo@skill
+                {t('skills.install.packageHint')}
               </p>
             </div>
 
@@ -339,7 +342,7 @@ export function InstallSkillDialog({
                 disabled={isInstalling}
                 className="h-10 rounded-xl"
               >
-                取消
+                {t('skills.install.cancel')}
               </Button>
               <Button
                 type="submit"
@@ -347,7 +350,7 @@ export function InstallSkillDialog({
                 className="h-10 rounded-xl"
               >
                 {isInstalling && <Loader2 className="size-4 animate-spin" />}
-                安装
+                {t('skills.install.install')}
               </Button>
             </div>
           </form>

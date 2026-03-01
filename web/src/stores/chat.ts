@@ -12,6 +12,8 @@ import {
   isWorkflowCommandOnly,
   parseWorkflowDirectiveInput,
 } from '../lib/workflow-directive';
+import { translateLocaleMessage } from '../i18n/runtime';
+import { extractStoreErrorMessage } from './error-message';
 
 export type { GroupInfo, AgentInfo };
 
@@ -90,6 +92,43 @@ export interface StreamingState {
   activeHook: { hookName: string; hookEvent: string } | null;
   systemStatus: string | null;
   recentEvents: StreamingTimelineEvent[];
+}
+
+type ChatStoreMessageKey =
+  | 'chat.store.stream.skillLabel'
+  | 'chat.store.stream.toolLabel'
+  | 'chat.store.stream.toolDone'
+  | 'chat.store.stream.hookStarted'
+  | 'chat.store.stream.hookEnded'
+  | 'chat.store.stream.status'
+  | 'chat.store.stream.unknown'
+  | 'chat.store.stream.success'
+  | 'chat.store.stream.taskFallback'
+  | 'chat.store.errors.loadGroupsFailed'
+  | 'chat.store.errors.loadMessagesFailed'
+  | 'chat.store.errors.refreshMessagesFailed'
+  | 'chat.store.errors.sendMessageFailed'
+  | 'chat.store.errors.stopGroupFailed'
+  | 'chat.store.errors.interruptFailed'
+  | 'chat.store.errors.resetSessionFailed'
+  | 'chat.store.errors.clearHistoryFailed'
+  | 'chat.store.errors.createFlowFailed'
+  | 'chat.store.errors.renameFlowFailed'
+  | 'chat.store.errors.updateFlowDirectoryFailed'
+  | 'chat.store.errors.deleteFlowFailed'
+  | 'chat.store.errors.createConversationFailed'
+  | 'chat.store.errors.loadAgentMessagesFailed'
+  | 'chat.store.errors.refreshAgentMessagesFailed';
+
+function chatStoreText(
+  key: ChatStoreMessageKey,
+  params?: Record<string, string | number>,
+): string {
+  return translateLocaleMessage(key, params);
+}
+
+function chatStoreError(err: unknown, fallbackKey: ChatStoreMessageKey): string {
+  return extractStoreErrorMessage(err) ?? chatStoreText(fallbackKey);
 }
 
 function mergeMessagesChronologically(
@@ -404,6 +443,8 @@ function applyStreamEvent(
   next: StreamingState,
   maxText: number,
 ): void {
+  const unknownLabel = chatStoreText('chat.store.stream.unknown');
+  const successLabel = chatStoreText('chat.store.stream.success');
   switch (event.eventType) {
     case 'text_delta': {
       const combined = prev.partialText + (event.text || '');
@@ -422,7 +463,7 @@ function applyStreamEvent(
       const toolUseId = event.toolUseId || '';
       const existing = prev.activeTools.find(t => t.toolUseId === toolUseId && toolUseId);
       const tool = {
-        toolName: event.toolName || 'unknown',
+        toolName: event.toolName || unknownLabel,
         toolUseId,
         startTime: Date.now(),
         parentToolUseId: event.parentToolUseId,
@@ -436,8 +477,8 @@ function applyStreamEvent(
 
       const isSkill = tool.toolName === 'Skill';
       const label = isSkill
-        ? `技能 ${tool.skillName || 'unknown'}`
-        : `工具 ${tool.toolName}`;
+        ? chatStoreText('chat.store.stream.skillLabel', { name: tool.skillName || unknownLabel })
+        : chatStoreText('chat.store.stream.toolLabel', { name: tool.toolName });
       const detail = tool.toolInputSummary ? ` (${tool.toolInputSummary})` : '';
       next.recentEvents = pushEvent(prev.recentEvents, isSkill ? 'skill' : 'tool', `${label}${detail}`);
       break;
@@ -451,9 +492,16 @@ function applyStreamEvent(
           const elapsedSec = rawSec % 1 === 0 ? rawSec.toFixed(0) : rawSec.toFixed(1);
           const isSkill = ended.toolName === 'Skill';
           const label = isSkill
-            ? `技能 ${ended.skillName || 'unknown'}`
-            : `工具 ${ended.toolName}`;
-          next.recentEvents = pushEvent(prev.recentEvents, isSkill ? 'skill' : 'tool', `✓ ${label} (${elapsedSec}s)`);
+            ? chatStoreText('chat.store.stream.skillLabel', { name: ended.skillName || unknownLabel })
+            : chatStoreText('chat.store.stream.toolLabel', { name: ended.toolName });
+          next.recentEvents = pushEvent(
+            prev.recentEvents,
+            isSkill ? 'skill' : 'tool',
+            chatStoreText('chat.store.stream.toolDone', {
+              label,
+              elapsed: elapsedSec,
+            }),
+          );
         }
       } else {
         next.activeTools = [];
@@ -473,8 +521,8 @@ function applyStreamEvent(
             : t
         );
         if (skillNameResolved) {
-          const oldLabel = `技能 unknown`;
-          const newLabel = `技能 ${event.skillName}`;
+          const oldLabel = chatStoreText('chat.store.stream.skillLabel', { name: unknownLabel });
+          const newLabel = chatStoreText('chat.store.stream.skillLabel', { name: event.skillName || unknownLabel });
           next.recentEvents = prev.recentEvents.map(e =>
             e.kind === 'skill' && e.text.includes(oldLabel)
               ? { ...e, text: e.text.replace(oldLabel, newLabel) }
@@ -483,7 +531,7 @@ function applyStreamEvent(
         }
       } else {
         next.activeTools = [...prev.activeTools, {
-          toolName: event.toolName || 'unknown',
+          toolName: event.toolName || unknownLabel,
           toolUseId: event.toolUseId || '',
           startTime: Date.now(),
           parentToolUseId: event.parentToolUseId,
@@ -498,7 +546,10 @@ function applyStreamEvent(
       next.recentEvents = pushEvent(
         prev.recentEvents,
         'hook',
-        `Hook 开始: ${event.hookName || 'unknown'} (${event.hookEvent || 'unknown'})`,
+        chatStoreText('chat.store.stream.hookStarted', {
+          hook: event.hookName || unknownLabel,
+          event: event.hookEvent || unknownLabel,
+        }),
       );
       break;
     case 'hook_progress':
@@ -509,13 +560,20 @@ function applyStreamEvent(
       next.recentEvents = pushEvent(
         prev.recentEvents,
         'hook',
-        `Hook 结束: ${event.hookName || 'unknown'} (${event.hookOutcome || 'success'})`,
+        chatStoreText('chat.store.stream.hookEnded', {
+          hook: event.hookName || unknownLabel,
+          outcome: event.hookOutcome || successLabel,
+        }),
       );
       break;
     case 'status': {
       next.systemStatus = event.statusText || null;
       if (event.statusText) {
-        next.recentEvents = pushEvent(prev.recentEvents, 'status', `状态: ${event.statusText}`);
+        next.recentEvents = pushEvent(
+          prev.recentEvents,
+          'status',
+          chatStoreText('chat.store.stream.status', { text: event.statusText }),
+        );
       }
       break;
     }
@@ -576,7 +634,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       });
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : String(err) });
+      set({
+        loading: false,
+        error: chatStoreError(err, 'chat.store.errors.loadGroupsFailed'),
+      });
     }
   },
 
@@ -623,7 +684,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.loadMessagesFailed') });
     }
   },
 
@@ -697,7 +758,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
       }
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.refreshMessagesFailed') });
     }
   },
 
@@ -787,7 +848,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       }
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.sendMessageFailed') });
     }
   },
 
@@ -891,7 +952,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
       return true;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.stopGroupFailed') });
       return false;
     }
   },
@@ -922,7 +983,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
       return true;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.interruptFailed') });
       return false;
     }
   },
@@ -937,7 +998,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       await get().refreshMessages(jid);
       return true;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.resetSessionFailed') });
       return false;
     }
   },
@@ -989,7 +1050,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Release clearing lock on failure
       set((s) => {
         const { [jid]: _, ...nextClearing } = s.clearing;
-        return { clearing: nextClearing, error: err instanceof Error ? err.message : String(err) };
+        return {
+          clearing: nextClearing,
+          error: chatStoreError(err, 'chat.store.errors.clearHistoryFailed'),
+        };
       });
       return false;
     }
@@ -1018,7 +1082,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       return { jid: data.jid, folder: data.group.folder };
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.createFlowFailed') });
       return null;
     }
   },
@@ -1041,7 +1105,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.renameFlowFailed') });
     }
   },
 
@@ -1054,7 +1118,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ error: null });
       return true;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.updateFlowDirectoryFailed') });
       return false;
     }
   },
@@ -1100,7 +1164,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.deleteFlowFailed') });
     }
   },
 
@@ -1130,10 +1194,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
 
+    const defaultTaskLabel = chatStoreText('chat.store.stream.taskFallback');
+
     const ensureSdkTask = (taskId: string, description?: string) => {
       set((s) => {
         const existingTask = s.sdkTasks[taskId];
-        const desc = description || existingTask?.description || 'Task';
+        const desc = description || existingTask?.description || defaultTaskLabel;
         const agents = s.agents[chatJid] || [];
         const idx = agents.findIndex(a => a.id === taskId);
         const nextAgent: AgentInfo = {
@@ -1190,7 +1256,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (!existingTask && idx < 0) return {};
 
         const desc = existingTask?.description
-          || (idx >= 0 ? (agents[idx].prompt || agents[idx].name) : 'Task');
+          || (idx >= 0 ? (agents[idx].prompt || agents[idx].name) : defaultTaskLabel);
         const nextAgents = idx >= 0
           ? agents.map((a, i) => (
             i === idx
@@ -1651,7 +1717,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
       return data.agent;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.createConversationFailed') });
       return null;
     }
   },
@@ -1681,7 +1747,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.loadAgentMessagesFailed') });
     }
   },
 
@@ -1836,7 +1902,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
       }
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      set({ error: chatStoreError(err, 'chat.store.errors.refreshAgentMessagesFailed') });
     }
   },
 

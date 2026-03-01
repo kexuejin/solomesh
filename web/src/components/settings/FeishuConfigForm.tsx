@@ -8,11 +8,13 @@ import { SettingsSwitch } from './SettingsSwitch';
 import { SettingsActionBar } from './SettingsActionBar';
 import { SettingsMetaGrid } from './SettingsMetaGrid';
 import type { FeishuConfigPublic, SettingsNotification } from './types';
-import { getErrorMessage, sourceLabel } from './types';
+import { getErrorMessage } from './types';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface FeishuConfigFormProps extends SettingsNotification {}
 
 export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps) {
+  const { locale, t } = useI18n();
   const [config, setConfig] = useState<FeishuConfigPublic | null>(null);
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
@@ -33,11 +35,11 @@ export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps)
       setClearSecret(false);
       setEnabled(data.enabled);
     } catch (err) {
-      setError(getErrorMessage(err, '加载飞书配置失败'));
+      setError(getErrorMessage(err, t('settings.feishu.errors.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [setError]);
+  }, [setError, t]);
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
 
@@ -49,10 +51,15 @@ export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps)
       const saved = await api.put<FeishuConfigPublic>('/api/config/feishu', { enabled: newEnabled });
       setConfig(saved);
       setEnabled(saved.enabled);
-      setNotice(`飞书渠道已${newEnabled ? '启用' : '停用'}${saved.connected ? '，连接正常' : ''}`);
+      setNotice(t('settings.feishu.notice.channelUpdated', {
+        status: newEnabled
+          ? t('settings.feishu.status.enabled')
+          : t('settings.feishu.status.disabled'),
+        connectedSuffix: saved.connected ? t('settings.feishu.status.connectedSuffix') : '',
+      }));
 
     } catch (err) {
-      setError(getErrorMessage(err, '切换飞书渠道状态失败'));
+      setError(getErrorMessage(err, t('settings.feishu.errors.toggleFailed')));
     } finally {
       setToggling(false);
     }
@@ -71,10 +78,12 @@ export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps)
       setConfig(saved);
       setAppSecret('');
       setClearSecret(false);
-      setNotice(`飞书配置已保存${saved.connected ? '，连接正常' : ''}`);
+      setNotice(t('settings.feishu.notice.saved', {
+        connectedSuffix: saved.connected ? t('settings.feishu.status.connectedSuffix') : '',
+      }));
 
     } catch (err) {
-      setError(getErrorMessage(err, '保存飞书配置失败'));
+      setError(getErrorMessage(err, t('settings.feishu.errors.saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -85,13 +94,12 @@ export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps)
 
   return (
     <div className="surface-card overflow-hidden">
-      {/* 卡片头部 */}
       <div className="flex items-center justify-between border-b border-border/70 bg-muted/35 px-5 py-4">
         <div className="flex items-center gap-2">
           <span className={`inline-block h-2 w-2 rounded-full ${config?.connected ? 'bg-emerald-500' : 'bg-muted-foreground/35'}`} />
           <div>
-            <h3 className="text-sm font-semibold text-foreground">飞书 Feishu</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">接收飞书群消息并通过 Agent 自动回复</p>
+            <h3 className="text-sm font-semibold text-foreground">{t('settings.feishu.title')}</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.feishu.subtitle')}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -101,47 +109,50 @@ export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps)
               ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
               : 'border-border/70 bg-card/75 text-muted-foreground'
           }`}>
-            {config?.connected ? '已连接' : '未连接'}
+            {config?.connected ? t('settings.feishu.connected') : t('settings.feishu.notConnected')}
           </span>
           <SettingsSwitch
             checked={enabled}
             disabled={busy}
             onCheckedChange={handleToggle}
-            ariaLabel="切换飞书渠道"
+            ariaLabel={t('settings.feishu.toggleAria')}
           />
         </div>
       </div>
 
-      {/* 卡片内容 */}
       <div className={`px-5 py-4 space-y-4 transition-opacity ${formDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-lg bg-muted/10 p-3">
-            <label className="mb-1 block text-xs font-medium text-foreground/80">App ID</label>
+            <label className="mb-1 block text-xs font-medium text-foreground/80">{t('settings.feishu.appId')}</label>
             <Input
               type="text"
               value={appId}
               onChange={(e) => setAppId(e.target.value)}
               disabled={loading || saving}
-              placeholder="cli_xxx"
+              placeholder={t('settings.feishu.appIdPlaceholder')}
               className="h-10 rounded-xl border-border/75 bg-card/95"
             />
-            <p className="mt-1 text-xs text-muted-foreground">在飞书开放平台 → 应用管理 → 凭证与基础信息中获取</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('settings.feishu.appIdHint')}</p>
           </div>
 
           <div className="rounded-lg bg-muted/10 p-3">
             <label className="mb-1 block text-xs font-medium text-foreground/80">
-              App Secret {config?.hasAppSecret ? `(${config.appSecretMasked})` : ''}
+              {t('settings.feishu.appSecret')} {config?.hasAppSecret ? `(${config.appSecretMasked})` : ''}
             </label>
             <Input
               type="password"
               value={appSecret}
               onChange={(e) => setAppSecret(e.target.value)}
               disabled={loading || saving}
-              placeholder={config?.hasAppSecret ? '留空保持不变，输入新值覆盖' : '输入飞书 App Secret'}
+              placeholder={
+                config?.hasAppSecret
+                  ? t('settings.feishu.appSecretPlaceholderOverride')
+                  : t('settings.feishu.appSecretPlaceholder')
+              }
               className="h-10 rounded-xl border-border/75 bg-card/95"
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              应用密钥，与 App ID 在同一页面获取（安全原因不会回显明文）
+              {t('settings.feishu.appSecretHint')}
             </p>
             <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
               <input
@@ -150,7 +161,7 @@ export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps)
                 onChange={(e) => setClearSecret(e.target.checked)}
                 disabled={saving}
               />
-              清空现有 Secret
+              {t('settings.feishu.clearSecret')}
             </label>
           </div>
         </div>
@@ -158,20 +169,30 @@ export function FeishuConfigForm({ setNotice, setError }: FeishuConfigFormProps)
         <SettingsActionBar>
           <Button variant="outline" onClick={loadConfig} disabled={busy} className="h-10 rounded-xl">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? '刷新中...' : '刷新'}
+            {loading ? t('settings.feishu.refreshing') : t('settings.feishu.refresh')}
           </Button>
           <Button onClick={handleSave} disabled={busy} className="h-10 rounded-xl">
             {saving && <Loader2 className="size-4 animate-spin" />}
-            {saving ? '保存中...' : '保存飞书配置'}
+            {saving ? t('settings.feishu.saving') : t('settings.feishu.save')}
           </Button>
         </SettingsActionBar>
 
         <SettingsMetaGrid
           items={[
-            { label: '当前来源', value: sourceLabel(config?.source || 'none') },
             {
-              label: '最近保存',
-              value: config?.updatedAt ? new Date(config.updatedAt).toLocaleString('zh-CN') : '未记录',
+              label: t('settings.feishu.currentSource'),
+              value:
+                config?.source === 'runtime'
+                  ? t('settings.feishu.source.runtime')
+                  : config?.source === 'env'
+                    ? t('settings.feishu.source.env')
+                    : t('settings.feishu.source.none'),
+            },
+            {
+              label: t('settings.feishu.lastSaved'),
+              value: config?.updatedAt
+                ? new Date(config.updatedAt).toLocaleString(localeForDateTime(locale))
+                : t('settings.feishu.notRecorded'),
             },
           ]}
         />

@@ -10,22 +10,15 @@ import {
   type AgentRuntimeId,
   type RuntimeDefinition,
 } from '../../runtime-definitions';
+import { useI18n } from '../../i18n';
 
 interface ContainerEnvPanelProps {
   groupJid: string;
   onClose?: () => void;
 }
 
-function containerSecretSourceLabel(
-  source: 'override' | 'runtime' | 'env' | 'none',
-): string {
-  if (source === 'override') return '来自当前工作区';
-  if (source === 'runtime') return '来自全局设置';
-  if (source === 'env') return '来自环境变量';
-  return '未配置';
-}
-
 export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps) {
+  const { t } = useI18n();
   const { configs, loading, saving, loadConfig, saveConfig } = useContainerEnvStore();
   const config = configs[groupJid];
 
@@ -118,6 +111,14 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
   const sdkApiKeyDegraded = isGeminiRuntime
     ? !!config?.geminiApiKeyDegraded
     : !!config?.codexApiKeyDegraded;
+  const containerSecretSourceLabel = (
+    source: 'override' | 'runtime' | 'env' | 'none',
+  ): string => {
+    if (source === 'override') return t('chat.containerEnv.secretSource.override');
+    if (source === 'runtime') return t('chat.containerEnv.secretSource.runtime');
+    if (source === 'env') return t('chat.containerEnv.secretSource.env');
+    return t('chat.containerEnv.secretSource.none');
+  };
 
   useEffect(() => {
     if (!runtimeOptions.some((item) => item.id === agentRuntime)) {
@@ -231,7 +232,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
 
   if (loading && !config) {
     return (
-      <div className="p-4 text-sm text-muted-foreground text-center">加载中...</div>
+      <div className="p-4 text-sm text-muted-foreground text-center">{t('chat.containerEnv.loading')}</div>
     );
   }
 
@@ -239,12 +240,12 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
     <div className="flex h-full flex-col bg-card">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
-        <h3 className="text-sm font-semibold text-foreground">工作区环境变量</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('chat.containerEnv.title')}</h3>
         <div className="flex items-center gap-1">
           <button
             onClick={() => loadConfig(groupJid)}
             className="text-muted-foreground hover:text-foreground p-2 rounded-md hover:bg-muted cursor-pointer"
-            title="刷新"
+            title={t('chat.containerEnv.refresh')}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -262,7 +263,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
       {/* Content */}
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
         <p className="text-[11px] text-muted-foreground leading-relaxed">
-          覆盖全局 Runtime 配置，仅对当前工作区生效。留空则使用全局配置。保存后工作区将自动重建。
+          {t('chat.containerEnv.description')}
         </p>
 
         {/* Runtime selector */}
@@ -287,13 +288,15 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
         <div className="rounded-xl space-y-4 border border-border/70 bg-muted/10 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-foreground">{currentRuntime.label} 凭据覆盖</h4>
+              <h4 className="text-sm font-semibold text-foreground">
+                {t('chat.containerEnv.runtimeTitle', { label: currentRuntime.label })}
+              </h4>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {usesAnthropicRuntime
-                  ? '覆盖当前工作区的 Claude 凭据；未填写项会自动继承全局配置。'
+                  ? t('chat.containerEnv.anthropicDescription')
                   : isGeminiRuntime
-                    ? '覆盖当前工作区 Gemini 凭据；支持 Google 官方 与 API Key 两种模式。'
-                    : '覆盖当前工作区 Codex 凭据；仅覆盖你填写的字段。'}
+                    ? t('chat.containerEnv.geminiDescription')
+                    : t('chat.containerEnv.codexDescription')}
               </p>
             </div>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -306,8 +309,8 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                   : 'border-border/70 bg-card/75 text-muted-foreground'
             }`}>
               {usesAnthropicRuntime
-                ? (anthropicDraftReady ? '已配置' : '未配置')
-                : (sdkDraftReady ? '已配置' : '未配置')}
+                ? (anthropicDraftReady ? t('chat.containerEnv.configured') : t('chat.containerEnv.notConfigured'))
+                : (sdkDraftReady ? t('chat.containerEnv.configured') : t('chat.containerEnv.notConfigured'))}
             </span>
           </div>
 
@@ -325,7 +328,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                         : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    Google 官方
+                    {t('chat.containerEnv.geminiOfficial')}
                   </button>
                   <button
                     type="button"
@@ -344,9 +347,11 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
 
               {isGeminiRuntime && geminiAuthMode === 'oauth' && (
                 <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/70 p-3 space-y-2">
-                  <div className="text-xs font-medium text-foreground/90">Google 官方（推荐）</div>
+                  <div className="text-xs font-medium text-foreground/90">
+                    {t('chat.containerEnv.geminiOfficialRecommended')}
+                  </div>
                   <div className="text-[11px] text-muted-foreground">
-                    先在执行环境完成 <code className="rounded bg-muted px-1">gemini login</code>，再保存当前模式。Google 官方模式不会使用 <code className="rounded bg-muted px-1">GEMINI_API_KEY</code>，系统会自动读取默认登录目录。
+                    {t('chat.containerEnv.geminiOfficialHint')}
                   </div>
                 </div>
               )}
@@ -364,12 +369,12 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                     </label>
                     {(sdkHasApiKey || sdkApiKeyDegraded) && (
                       <div className="mb-2 text-[11px] text-muted-foreground">
-                        当前来源：{containerSecretSourceLabel(sdkApiKeySource)}
+                        {t('chat.containerEnv.currentSource')}{containerSecretSourceLabel(sdkApiKeySource)}
                       </div>
                     )}
                     {sdkApiKeyDegraded && (
                       <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                        检测到已保存的 Key 值无效，系统已自动回退到其他可用来源。
+                        {t('chat.containerEnv.apiKeyDegraded')}
                       </div>
                     )}
                     <Input
@@ -386,8 +391,8 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                       }}
                       placeholder={
                         (isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey)
-                          ? '已设置，输入新值覆盖；留空保持原值'
-                          : '留空使用全局配置'
+                          ? t('chat.containerEnv.placeholderOverrideKeep')
+                          : t('chat.containerEnv.placeholderUseGlobal')
                       }
                       className="h-9 rounded-lg border-border/75 bg-card px-2.5 py-1.5 text-xs"
                       disabled={controlsBusy}
@@ -403,7 +408,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                       type="text"
                       value={codexBaseUrl}
                       onChange={(e) => setCodexBaseUrl(e.target.value)}
-                      placeholder="留空使用全局配置"
+                      placeholder={t('chat.containerEnv.placeholderUseGlobal')}
                       className="h-9 rounded-lg border-border/75 bg-card px-2.5 py-1.5 text-xs"
                       disabled={controlsBusy}
                     />
@@ -418,7 +423,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                       type="text"
                       value={geminiBaseUrl}
                       onChange={(e) => setGeminiBaseUrl(e.target.value)}
-                      placeholder="留空使用全局配置"
+                      placeholder={t('chat.containerEnv.placeholderUseGlobal')}
                       className="h-9 rounded-lg border-border/75 bg-card px-2.5 py-1.5 text-xs"
                       disabled={controlsBusy}
                     />
@@ -439,7 +444,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                           setCodexModel(e.target.value);
                         }
                       }}
-                      placeholder="留空使用全局配置"
+                      placeholder={t('chat.containerEnv.placeholderUseGlobal')}
                       className="h-9 rounded-lg border-border/75 bg-card px-2.5 py-1.5 text-xs"
                       disabled={controlsBusy}
                     />
@@ -450,7 +455,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
           ) : (
             <div className="rounded-lg space-y-3 bg-muted/15 p-4">
               <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/60 px-3 py-2 text-[11px] text-muted-foreground">
-                当前工作区填写的字段会覆盖全局配置；留空会自动继承全局值。
+                {t('chat.containerEnv.anthropicHint')}
               </div>
               {currentRuntime.capabilities.supportsThirdPartyGateway && (
                 <div className="rounded-lg bg-muted/10 p-3">
@@ -461,7 +466,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                     type="text"
                     value={baseUrl}
                     onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="留空使用全局配置"
+                    placeholder={t('chat.containerEnv.placeholderUseGlobal')}
                     className="h-9 rounded-lg border-border/75 bg-card px-2.5 py-1.5 text-xs"
                     disabled={controlsBusy}
                   />
@@ -483,7 +488,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                     setAuthToken(e.target.value);
                     setAuthTokenDirty(true);
                   }}
-                  placeholder={config?.hasAnthropicAuthToken ? '已设置，输入新值覆盖；留空可清除覆盖' : '留空使用全局配置'}
+                  placeholder={config?.hasAnthropicAuthToken ? t('chat.containerEnv.placeholderOverrideClear') : t('chat.containerEnv.placeholderUseGlobal')}
                   className="h-9 rounded-lg border-border/75 bg-card/95 px-2.5 py-1.5 text-xs"
                   disabled={controlsBusy}
                 />
@@ -498,19 +503,19 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
         {/* Custom Env Vars */}
         <div className="rounded-xl space-y-3 border border-border/70 bg-muted/10 p-3">
           <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-medium text-muted-foreground">自定义环境变量</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('chat.containerEnv.customEnv')}</label>
             <button
               type="button"
               onClick={addCustomEnv}
               className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 text-[11px] font-medium text-brand-700 transition-colors hover:bg-brand-100"
             >
               <Plus className="w-3 h-3" />
-              添加
+              {t('chat.containerEnv.add')}
             </button>
           </div>
 
           {customEnv.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">暂无自定义变量</p>
+            <p className="text-[11px] text-muted-foreground">{t('chat.containerEnv.noCustomEnv')}</p>
           ) : (
             <div className="space-y-1.5">
               {customEnv.map((item, i) => (
@@ -519,7 +524,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                     type="text"
                     value={item.key}
                     onChange={(e) => updateCustomEnv(i, 'key', e.target.value)}
-                    placeholder="KEY"
+                    placeholder={t('chat.containerEnv.customEnvKeyPlaceholder')}
                     className="h-8 w-[40%] rounded-lg border-border/75 bg-card px-2 py-1 text-[11px] font-mono"
                   />
                   <span className="text-muted-foreground/70 text-xs">=</span>
@@ -527,7 +532,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                     type="text"
                     value={item.value}
                     onChange={(e) => updateCustomEnv(i, 'value', e.target.value)}
-                    placeholder="value"
+                    placeholder={t('chat.containerEnv.customEnvValuePlaceholder')}
                     className="h-8 flex-1 rounded-lg border-border/75 bg-card px-2 py-1 text-[11px] font-mono"
                   />
                   <button
@@ -549,11 +554,11 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
         <Button onClick={handleSave} disabled={saving} className="h-10 w-full rounded-xl">
           {saving && <Loader2 className="size-4 animate-spin" />}
           <Save className="w-4 h-4" />
-          {saveSuccess ? '已保存' : '保存并重建工作区'}
+          {saveSuccess ? t('chat.containerEnv.saved') : t('chat.containerEnv.saveAndRebuild')}
         </Button>
         {saveSuccess && (
           <p className="text-[11px] text-primary text-center mt-1.5">
-            配置已保存，工作区已重建
+            {t('chat.containerEnv.rebuildDone')}
           </p>
         )}
       </div>

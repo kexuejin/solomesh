@@ -1,5 +1,6 @@
 import { Plus, X } from 'lucide-react';
 import type { AgentInfo } from '../../types';
+import { useI18n } from '../../i18n';
 
 interface AgentTabBarProps {
   agents: AgentInfo[];
@@ -24,6 +25,7 @@ const tabClass = (active: boolean) =>
   }`;
 
 export function AgentTabBar({ agents, activeTab, onSelectTab, onDeleteAgent, onCreateConversation, sdkTaskIds }: AgentTabBarProps) {
+  const { t } = useI18n();
   const conversations = agents.filter(a => a.kind === 'conversation');
   const tasks = agents.filter(a => a.kind === 'task');
 
@@ -34,7 +36,7 @@ export function AgentTabBar({ agents, activeTab, onSelectTab, onDeleteAgent, onC
     <div className="flex items-center gap-1 overflow-x-auto border-b border-border/70 bg-muted/70 px-3 py-1.5 scrollbar-none">
       {/* Main conversation tab */}
       <button onClick={() => onSelectTab(null)} className={tabClass(activeTab === null)}>
-        主对话
+        {t('chat.agentTabs.main')}
       </button>
 
       {/* Conversation tabs — same visual level as main */}
@@ -51,7 +53,7 @@ export function AgentTabBar({ agents, activeTab, onSelectTab, onDeleteAgent, onC
           <button
             onClick={(e) => { e.stopPropagation(); onDeleteAgent(agent.id); }}
             className="cursor-pointer rounded p-0.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-muted"
-            title="关闭对话"
+            title={t('chat.agentTabs.closeConversation')}
           >
             <X className="w-3 h-3" />
           </button>
@@ -63,7 +65,7 @@ export function AgentTabBar({ agents, activeTab, onSelectTab, onDeleteAgent, onC
         <button
           onClick={onCreateConversation}
           className="flex-shrink-0 flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-          title="新建对话"
+          title={t('chat.agentTabs.newConversation')}
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
@@ -85,12 +87,12 @@ export function AgentTabBar({ agents, activeTab, onSelectTab, onDeleteAgent, onC
             >
               <span>{TASK_STATUS_ICON[agent.status] || ''}</span>
               <span className="truncate max-w-[100px]">{agent.name}</span>
-              {/* SDK Task 由 SDK 管理生命周期，不允许手动删除 */}
+              {/* SDK task lifecycle is managed by SDK; hide manual delete. */}
               {!sdkTaskIds?.has(agent.id) && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onDeleteAgent(agent.id); }}
                   className="cursor-pointer rounded p-0.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-muted"
-                  title="删除 Agent"
+                  title={t('chat.agentTabs.deleteAgent')}
                 >
                   <X className="w-3 h-3" />
                 </button>

@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth';
 import { api } from '../api/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useI18n } from '../i18n';
 
 interface RegisterStatus {
   allowRegistration: boolean;
@@ -12,6 +13,7 @@ interface RegisterStatus {
 }
 
 export function LoginPage() {
+  const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -61,7 +63,7 @@ export function LoginPage() {
       const mustChange = useAuthStore.getState().user?.must_change_password;
       navigate(mustChange ? '/settings' : '/chat');
     } catch (err) {
-      setError(err instanceof Error ? err.message : typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message) : '登录失败');
+      setError(err instanceof Error ? err.message : typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message) : t('auth.login.failed'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +75,7 @@ export function LoginPage() {
         <div className="mx-auto flex h-full w-full max-w-md items-center justify-center">
           <div className="surface-card-soft flex items-center gap-2.5 border border-border/70 px-4 py-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            加载中...
+            {t('auth.loading')}
           </div>
         </div>
       </div>
@@ -96,10 +98,10 @@ export function LoginPage() {
             Secure Access
           </p>
           <h1 className="mb-2 text-center text-2xl font-bold tracking-tight text-foreground">
-            欢迎使用 SoloMesh
+            {t('auth.login.title')}
           </h1>
           <p className="mb-6 text-center text-sm text-muted-foreground">
-            请登录以继续
+            {t('auth.login.subtitle')}
           </p>
 
           {/* Error Message */}
@@ -113,7 +115,7 @@ export function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="username" className="mb-1 block text-sm font-medium text-foreground/80">
-                用户名
+                {t('auth.login.username')}
               </label>
               <Input
                 id="username"
@@ -128,7 +130,7 @@ export function LoginPage() {
 
             <div>
               <label htmlFor="password" className="mb-1 block text-sm font-medium text-foreground/80">
-                密码
+                {t('auth.login.password')}
               </label>
               <Input
                 id="password"
@@ -142,16 +144,18 @@ export function LoginPage() {
 
             <Button type="submit" disabled={loading} className="h-10 w-full rounded-xl">
               {loading && <Loader2 className="size-4 animate-spin" />}
-              {loading ? '登录中...' : '登录'}
+              {loading ? t('auth.login.submitting') : t('auth.login.submit')}
             </Button>
           </form>
 
           {/* Register Link — hidden when registration is disabled */}
           {regStatus.allowRegistration && (
             <p className="mt-4 text-center text-sm text-muted-foreground">
-              {regStatus.requireInviteCode ? '有邀请码？' : '还没有账户？'}
+              {regStatus.requireInviteCode
+                ? t('auth.login.invitePrompt')
+                : t('auth.login.noAccountPrompt')}
               <Link to="/register" className="text-primary hover:text-primary/80 ml-1">
-                去注册
+                {t('auth.login.register')}
               </Link>
             </p>
           )}

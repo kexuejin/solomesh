@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles/globals.css';
 import { shouldUseHashRouter } from './utils/url';
+import { I18nProvider } from './i18n';
 
 if (typeof window !== 'undefined') {
   window.__SOLOMESH_HASH_ROUTER__ = shouldUseHashRouter();
@@ -28,6 +29,8 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </StrictMode>,
 );

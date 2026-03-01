@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { useChatStore } from '../../stores/chat';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { useI18n } from '../../i18n';
 
 interface TaskInlineCardProps {
   toolUseId: string;
@@ -11,6 +12,8 @@ interface TaskInlineCardProps {
 }
 
 export function TaskInlineCard({ toolUseId, description, startTime, groupJid }: TaskInlineCardProps) {
+  const { t } = useI18n();
+  const unknownLabel = t('chat.store.stream.unknown');
   const [expanded, setExpanded] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const taskInfo = useChatStore(s => s.sdkTasks[toolUseId]);
@@ -74,7 +77,7 @@ export function TaskInlineCard({ toolUseId, description, startTime, groupJid }: 
       >
         {statusIcon}
         <span className="text-xs font-medium text-foreground truncate flex-1">
-          Task: {description}
+          {t('chat.taskInlineCard.taskLabel', { description })}
         </span>
         {summary && !expanded && (
           <span className="text-[11px] text-muted-foreground truncate max-w-[200px]">
@@ -107,7 +110,7 @@ export function TaskInlineCard({ toolUseId, description, startTime, groupJid }: 
                   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
                   </svg>
-                  Reasoning
+                  {t('chat.taskInlineCard.reasoning')}
                 </div>
                 <div className="text-xs text-amber-900/70 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
                   {streaming.thinkingText.length > 2000
@@ -127,9 +130,9 @@ export function TaskInlineCard({ toolUseId, description, startTime, groupJid }: 
                   >
                     <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24" fill="none">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    {tool.toolName === 'Skill' ? (tool.skillName || 'unknown') : tool.toolName}
+                    {tool.toolName === 'Skill' ? (tool.skillName || unknownLabel) : tool.toolName}
                   </span>
                 ))}
               </div>
@@ -138,7 +141,7 @@ export function TaskInlineCard({ toolUseId, description, startTime, groupJid }: 
             {/* Recent events timeline */}
             {streaming.recentEvents.length > 0 && (
               <div className="rounded-md border border-sidebar-border bg-background p-1.5">
-                <div className="text-[10px] font-medium text-muted-foreground mb-0.5">调用轨迹</div>
+                <div className="text-[10px] font-medium text-muted-foreground mb-0.5">{t('chat.taskInlineCard.trace')}</div>
                 <div className="space-y-0.5 max-h-20 overflow-y-auto">
                   {streaming.recentEvents.map((item) => (
                     <div key={item.id} className="text-[11px] text-muted-foreground break-words">

@@ -4,6 +4,7 @@ import { BookOpen, Loader2, Plus, RefreshCw, Sparkles, Upload } from 'lucide-rea
 
 import { api } from '../../api/client';
 import {
+  isWorkflowTemplateEditorError,
   parseWorkflowTemplateEditorInput,
   serializeWorkflowTemplateForEditor,
   type WorkflowTemplateEditorMode,
@@ -26,6 +27,7 @@ import type {
   WorkflowTemplateScope,
 } from './types';
 import { getErrorMessage } from './types';
+import { localeForDateTime, useI18n } from '../../i18n';
 
 interface WorkflowSectionProps extends SettingsNotification {
   canManageSystemConfig: boolean;
@@ -241,30 +243,68 @@ function buildPublishDependencyDetailsFromPrecheck(
   };
 }
 
-function formatPublishDependencyError(err: unknown): string | null {
+function formatPublishDependencyError(
+  err: unknown,
+  t: ReturnType<typeof useI18n>['t'],
+): string | null {
   const parsed = parsePublishDependencyDetails(err);
   if (!parsed) return null;
+  const listSeparator = t('settings.workflows.format.listSeparator');
+  const segmentSeparator = t('settings.workflows.format.segmentSeparator');
 
   const segments: string[] = [];
   if (parsed.missingSkillRefs.length > 0) {
-    segments.push(`缺失技能：${parsed.missingSkillRefs.join('、')}`);
+    segments.push(t('settings.workflows.publishError.missingSkills', { refs: parsed.missingSkillRefs.join(listSeparator) }));
   }
   if (parsed.invalidSkillRefs.length > 0) {
-    segments.push(`非法技能引用：${parsed.invalidSkillRefs.join('、')}`);
+    segments.push(t('settings.workflows.publishError.invalidSkills', { refs: parsed.invalidSkillRefs.join(listSeparator) }));
   }
   if (parsed.unresolvedSkillRefs.length > 0) {
-    segments.push(`待选择安装包：${parsed.unresolvedSkillRefs.join('、')}`);
+    segments.push(t('settings.workflows.publishError.unresolvedPackages', { refs: parsed.unresolvedSkillRefs.join(listSeparator) }));
   }
   if (parsed.invalidPackageSkillRefs.length > 0) {
-    segments.push(`安装包无效：${parsed.invalidPackageSkillRefs.join('、')}`);
+    segments.push(t('settings.workflows.publishError.invalidPackages', { refs: parsed.invalidPackageSkillRefs.join(listSeparator) }));
   }
   if (parsed.availableSkillRefs.length > 0) {
     const preview = parsed.availableSkillRefs.slice(0, 12);
     segments.push(
-      `当前可用技能：${preview.join('、')}${parsed.availableSkillRefs.length > preview.length ? ' 等' : ''}`,
+      t('settings.workflows.publishError.availableSkills', {
+        refs: preview.join(listSeparator),
+        suffix: parsed.availableSkillRefs.length > preview.length ? t('settings.workflows.publishError.availableSuffix') : '',
+      }),
     );
   }
-  return `发布失败：${segments.join('；')}`;
+  return t('settings.workflows.publishError.prefix', { message: segments.join(segmentSeparator) });
+}
+
+function getWorkflowEditorErrorMessage(
+  err: unknown,
+  t: ReturnType<typeof useI18n>['t'],
+  fallback: string,
+): string {
+  if (isWorkflowTemplateEditorError(err)) {
+    if (err.code === 'invalid_stage_id') {
+      return t('settings.workflows.errors.invalidStageId', {
+        stageId: err.details?.stageId || '-',
+      });
+    }
+    if (err.code === 'stage_required') {
+      return t('settings.workflows.errors.stageRequired');
+    }
+    if (err.code === 'invalid_template_id_markdown') {
+      return t('settings.workflows.errors.invalidTemplateIdMarkdown');
+    }
+    if (err.code === 'json_invalid') {
+      return t('settings.workflows.errors.templateJsonInvalid');
+    }
+    if (err.code === 'json_not_object') {
+      return t('settings.workflows.errors.templateJsonNotObject');
+    }
+    if (err.code === 'template_id_required') {
+      return t('settings.workflows.errors.templateIdRequired');
+    }
+  }
+  return getErrorMessage(err, fallback);
 }
 
 function normalizeTemplateId(value: string): string | null {
@@ -272,6 +312,9 @@ function normalizeTemplateId(value: string): string | null {
   if (!TEMPLATE_ID_RE.test(normalized)) return null;
   return normalized;
 }
+
+const DEFAULT_STAGE_NAME = '\u9636\u6bb5 1';
+const DEFAULT_DONE_KEYWORD = '\u5b8c\u6210';
 
 function createDefaultTemplate(templateId: string): WorkflowTemplate {
   return {
@@ -282,13 +325,13 @@ function createDefaultTemplate(templateId: string): WorkflowTemplate {
     stages: [
       {
         id: 'step-1',
-        name: '阶段 1',
+        name: DEFAULT_STAGE_NAME,
         defaultProvider: 'claude',
         strictProvider: false,
         fallbackProviders: ['codex'],
         goal: '',
         requiredOutputHints: [],
-        doneKeywords: ['完成'],
+        doneKeywords: [DEFAULT_DONE_KEYWORD],
         skillRefs: [],
       },
     ],
@@ -318,15 +361,22 @@ function getLifecycleBadgeClass(lifecycle: WorkflowTemplateRecordPublic['lifecyc
   return 'bg-muted text-muted-foreground';
 }
 
-function getScopeLabel(scope: WorkflowTemplateScope): string {
-  return scope === 'global' ? '项目级' : '用户级';
+function getScopeLabel(
+  scope: WorkflowTemplateScope,
+  t: ReturnType<typeof useI18n>['t'],
+): string {
+  return scope === 'global' ? t('settings.workflows.scope.global') : t('settings.workflows.scope.user');
 }
 
-function formatLocalTime(value: string | null | undefined): string {
-  if (!value) return '-';
+function formatLocalTime(
+  value: string | null | undefined,
+  locale: ReturnType<typeof useI18n>['locale'],
+  t: ReturnType<typeof useI18n>['t'],
+): string {
+  if (!value) return t('settings.workflows.notAvailable');
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('zh-CN', { hour12: false });
+  if (Number.isNaN(date.getTime())) return t('settings.workflows.notAvailable');
+  return date.toLocaleString(localeForDateTime(locale), { hour12: false });
 }
 
 function parseTimestamp(value: string): number {
@@ -380,6 +430,9 @@ function collectWorkflowTemplateDetailMeta(template: WorkflowTemplate): Workflow
 
 export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: WorkflowSectionProps) {
   const navigate = useNavigate();
+  const { locale, t } = useI18n();
+  const listSeparator = t('settings.workflows.format.listSeparator');
+  const segmentSeparator = t('settings.workflows.format.segmentSeparator');
   const [scope, setScope] = useState<WorkflowTemplateScope>('user');
   const [visibleTemplates, setVisibleTemplates] = useState<WorkflowTemplateRecordPublic[]>([]);
   const [manageTemplates, setManageTemplates] = useState<WorkflowTemplateRecordPublic[]>([]);
@@ -492,7 +545,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
     [detailTemplate],
   );
   const activeRecord = selectedRecord ?? detachedRecord;
-  const detailScopeLabel = activeRecord ? getScopeLabel(activeRecord.scope) : getScopeLabel(scope);
+  const detailScopeLabel = activeRecord ? getScopeLabel(activeRecord.scope, t) : getScopeLabel(scope, t);
   const detailLifecycle = activeRecord?.lifecycle ?? 'draft';
   const detailCallable = detailLifecycle === 'published';
   const isGlobalReadonly = !!activeRecord && activeRecord.scope === 'global' && !canManageSystemConfig;
@@ -520,8 +573,8 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
 
   const confirmDiscardUnsavedChanges = useCallback((actionLabel: string): boolean => {
     if (!hasUnsavedChanges) return true;
-    return window.confirm(`当前有未保存修改，确认继续${actionLabel}？`);
-  }, [hasUnsavedChanges]);
+    return window.confirm(t('settings.workflows.confirmDiscard', { action: actionLabel }));
+  }, [hasUnsavedChanges, t]);
 
   const isEditingSelectedTemplate =
     !!selectedRecord && normalizeTemplateId(templateIdInput) === selectedRecord.template.id;
@@ -548,16 +601,16 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
           : 'bg-muted text-muted-foreground';
   const dependencyPrecheckStatusLabel =
     dependencyPrecheck.status === 'ok'
-      ? '通过'
+      ? t('settings.workflows.precheck.status.ok')
       : dependencyPrecheck.status === 'blocked'
-        ? '阻塞'
+        ? t('settings.workflows.precheck.status.blocked')
         : dependencyPrecheck.status === 'error'
-          ? '错误'
+          ? t('settings.workflows.precheck.status.error')
           : dependencyPrecheck.status === 'invalid'
-            ? '格式无效'
+            ? t('settings.workflows.precheck.status.invalid')
             : dependencyPrecheck.status === 'checking'
-              ? '检查中'
-              : '待检查';
+              ? t('settings.workflows.precheck.status.checking')
+              : t('settings.workflows.precheck.status.idle');
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -579,11 +632,11 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
         }
       }
     } catch (err) {
-      setError(getErrorMessage(err, '加载 workflow 模板失败'));
+      setError(getErrorMessage(err, t('settings.workflows.errors.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [scope, selectedKey, setError]);
+  }, [scope, selectedKey, setError, t]);
 
   useEffect(() => {
     void loadTemplates();
@@ -635,7 +688,11 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               status: 'invalid',
               templateId: null,
               details: null,
-              message: getErrorMessage(err, '模板格式错误，无法执行依赖预检'),
+              message: getWorkflowEditorErrorMessage(
+                err,
+                t,
+                t('settings.workflows.errors.precheckTemplateInvalid'),
+              ),
             });
           }
           return;
@@ -658,18 +715,18 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
         const blocked = details.invalidSkillRefs.length > 0 || details.missingSkillRefs.length > 0;
         const segments: string[] = [];
         if (details.missingSkillRefs.length > 0) {
-          segments.push(`缺失技能 ${details.missingSkillRefs.length}`);
+          segments.push(t('settings.workflows.precheck.summary.missingSkills', { count: details.missingSkillRefs.length }));
         }
         if (details.invalidSkillRefs.length > 0) {
-          segments.push(`非法技能引用 ${details.invalidSkillRefs.length}`);
+          segments.push(t('settings.workflows.precheck.summary.invalidSkills', { count: details.invalidSkillRefs.length }));
         }
         setDependencyPrecheck({
           status: blocked ? 'blocked' : 'ok',
           templateId: resp.templateId,
           details,
           message: blocked
-            ? `存在阻塞项：${segments.join('；')}`
-            : '依赖检查通过',
+            ? t('settings.workflows.precheck.summary.blocked', { segments: segments.join(segmentSeparator) })
+            : t('settings.workflows.precheck.summary.pass'),
         });
       } catch (err) {
         if (cancelled) return;
@@ -677,7 +734,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
           status: 'error',
           templateId: targetTemplateId || null,
           details: null,
-          message: getErrorMessage(err, '依赖预检失败'),
+          message: getErrorMessage(err, t('settings.workflows.errors.precheckFailed')),
         });
       }
     }, 450);
@@ -696,6 +753,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
     scope,
     selectedRecord?.template,
     templateIdInput,
+    t,
   ]);
 
   const handleRefreshDependencyPrecheck = () => {
@@ -703,19 +761,19 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
   };
 
   const handleRefreshTemplates = async () => {
-    if (!confirmDiscardUnsavedChanges('刷新模板列表')) return;
+    if (!confirmDiscardUnsavedChanges(t('settings.workflows.actions.refreshTemplates'))) return;
     await loadTemplates();
   };
 
   const handleScopeChange = (nextScope: WorkflowTemplateScope) => {
     if (nextScope === scope) return;
-    if (!confirmDiscardUnsavedChanges('切换作用域')) return;
+    if (!confirmDiscardUnsavedChanges(t('settings.workflows.actions.switchScope'))) return;
     setScope(nextScope);
   };
 
   const handleSelectRecord = (record: WorkflowTemplateRecordPublic) => {
     const nextKey = `${record.scope}:${record.template.id}:${record.lifecycle}`;
-    if (nextKey !== selectedKey && !confirmDiscardUnsavedChanges('切换模板')) return;
+    if (nextKey !== selectedKey && !confirmDiscardUnsavedChanges(t('settings.workflows.actions.switchTemplate'))) return;
     setSelectedKey(`${record.scope}:${record.template.id}:${record.lifecycle}`);
     setDetachedRecord(null);
     setPendingSaveDecision(null);
@@ -727,7 +785,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
   };
 
   const handleSelectVisibleTemplate = (record: WorkflowTemplateRecordPublic) => {
-    if (!confirmDiscardUnsavedChanges('切换模板')) return;
+    if (!confirmDiscardUnsavedChanges(t('settings.workflows.actions.switchTemplate'))) return;
     const matched = manageTemplates.find(
       (item) =>
         item.scope === record.scope
@@ -744,17 +802,17 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
     setTemplateIdInput(record.template.id);
     setEditorText(serializeWorkflowTemplateForEditor(record.template, editorMode));
     setPanelMode('detail');
-    setNotice(`已加载运行时模板：${record.template.id}`);
+    setNotice(t('settings.workflows.notice.loadedVisibleTemplate', { id: record.template.id }));
     setError(null);
   };
 
   const handleCreateDraft = () => {
-    if (!confirmDiscardUnsavedChanges('新建模板')) return;
+    if (!confirmDiscardUnsavedChanges(t('settings.workflows.actions.createTemplate'))) return;
     setNotice(null);
     setError(null);
     const templateId = normalizeTemplateId(newTemplateId);
     if (!templateId) {
-      setError('模板 ID 不合法（需 2-64 位，仅小写字母/数字/-/_）');
+      setError(t('settings.workflows.errors.invalidTemplateId'));
       return;
     }
 
@@ -765,13 +823,13 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
     setDetachedRecord(null);
     setPendingSaveDecision(null);
     setPanelMode('edit');
-    setNotice(`已创建草稿模板骨架：${templateId}`);
+    setNotice(t('settings.workflows.notice.draftScaffoldCreated', { id: templateId }));
   };
 
   const handleGenerateDraftWithAi = async () => {
     const idea = aiIdea.trim();
     if (idea.length < 8) {
-      setError('请先输入更具体的模板想法（至少 8 个字符）');
+      setError(t('settings.workflows.errors.aiIdeaTooShort'));
       return;
     }
 
@@ -800,9 +858,9 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setEditorMode('markdown');
       setEditorText(markdown);
       setPanelMode('edit');
-      setNotice(`AI 已生成模板草稿：${resp.templateId}（provider: ${resp.provider}）`);
+      setNotice(t('settings.workflows.notice.aiDraftGenerated', { id: resp.templateId, provider: resp.provider }));
     } catch (err) {
-      setError(getErrorMessage(err, 'AI 生成 workflow 模板失败'));
+      setError(getErrorMessage(err, t('settings.workflows.errors.aiGenerateFailed')));
     } finally {
       setAiGenerating(false);
     }
@@ -811,7 +869,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
   const handleOptimizeTemplateWithAi = async () => {
     const instruction = aiOptimizeInstruction.trim();
     if (instruction.length < 4) {
-      setError('请先输入要优化的内容（至少 4 个字符）');
+      setError(t('settings.workflows.errors.aiOptimizeInstructionTooShort'));
       return;
     }
 
@@ -842,9 +900,9 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setDetachedRecord(null);
       setPendingSaveDecision(null);
       setPanelMode('edit');
-      setNotice(`AI 已优化模板：${resp.templateId}（provider: ${resp.provider}），请确认后保存草稿`);
+      setNotice(t('settings.workflows.notice.aiTemplateOptimized', { id: resp.templateId, provider: resp.provider }));
     } catch (err) {
-      setError(getErrorMessage(err, 'AI 优化 workflow 模板失败'));
+      setError(getErrorMessage(err, t('settings.workflows.errors.aiOptimizeFailed')));
     } finally {
       setAiOptimizing(false);
     }
@@ -858,7 +916,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
         templateIdFallback: templateIdInput,
       });
     } catch (err) {
-      setError(getErrorMessage(err, '模板格式错误，请先修正'));
+      setError(getWorkflowEditorErrorMessage(err, t, t('settings.workflows.errors.templateFormatInvalid')));
       return null;
     }
   };
@@ -883,19 +941,19 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setEditorText(serializeWorkflowTemplateForEditor(parsed.payload, nextMode));
       setEditorMode(nextMode);
     } catch (err) {
-      setError(getErrorMessage(err, '当前模板内容无法切换编辑模式，请先修正内容'));
+      setError(getWorkflowEditorErrorMessage(err, t, t('settings.workflows.errors.switchEditorModeFailed')));
     }
   };
 
   const handleResetEditorToSelected = () => {
     if (!selectedRecord) {
-      setError('当前没有选中的模板可回滚');
+      setError(t('settings.workflows.errors.noSelectedTemplateToRollback'));
       return;
     }
     setTemplateIdInput(selectedRecord.template.id);
     setEditorText(serializeWorkflowTemplateForEditor(selectedRecord.template, editorMode));
     setPendingSaveDecision(null);
-    setNotice(`已回滚到选中模板：${selectedRecord.template.id}`);
+    setNotice(t('settings.workflows.notice.rolledBackToSelected', { id: selectedRecord.template.id }));
     setError(null);
   };
 
@@ -937,10 +995,10 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setEditorText(serializeWorkflowTemplateForEditor(saved.template, editorMode));
       setSelectedKey(`${saved.scope}:${saved.template.id}:${saved.lifecycle}`);
       setDetachedRecord(null);
-      setNotice(`草稿已保存：${saved.template.id}`);
+      setNotice(t('settings.workflows.notice.draftSaved', { id: saved.template.id }));
       await loadTemplates();
     } catch (err) {
-      setError(getErrorMessage(err, '保存 workflow 草稿失败'));
+      setError(getErrorMessage(err, t('settings.workflows.errors.saveDraftFailed')));
     } finally {
       setSavingDraft(false);
     }
@@ -949,7 +1007,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
   const handlePublish = async () => {
     const templateId = normalizeTemplateId(templateIdInput);
     if (!templateId) {
-      setError('请先选择或填写模板 ID');
+      setError(t('settings.workflows.errors.selectOrInputTemplateId'));
       return;
     }
 
@@ -968,7 +1026,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setDetachedRecord(null);
       setTemplateIdInput(saved.template.id);
       setEditorText(serializeWorkflowTemplateForEditor(saved.template, editorMode));
-      setNotice(`模板已发布：${saved.template.id}`);
+      setNotice(t('settings.workflows.notice.published', { id: saved.template.id }));
       await loadTemplates();
     } catch (err) {
       const dependencyDetails = parsePublishDependencyDetails(err);
@@ -986,9 +1044,9 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
           templateId,
           details: dependencyDetails,
         });
-        setError(formatPublishDependencyError(err));
+        setError(formatPublishDependencyError(err, t));
       } else {
-        setError(formatPublishDependencyError(err) ?? getErrorMessage(err, '发布 workflow 模板失败'));
+        setError(formatPublishDependencyError(err, t) ?? getErrorMessage(err, t('settings.workflows.errors.publishFailed')));
       }
     } finally {
       setPublishing(false);
@@ -1018,11 +1076,11 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
     }
 
     if (noOptionRefs.length > 0) {
-      setError(`以下技能缺少可安装候选，请先在技能管理中手动安装：${noOptionRefs.join('、')}`);
+      setError(t('settings.workflows.errors.missingInstallCandidates', { refs: noOptionRefs.join(listSeparator) }));
       return;
     }
     if (unresolvedSelectionRefs.length > 0) {
-      setError(`请先为以下技能选择安装包：${unresolvedSelectionRefs.join('、')}`);
+      setError(t('settings.workflows.errors.selectInstallPackage', { refs: unresolvedSelectionRefs.join(listSeparator) }));
       return;
     }
 
@@ -1048,9 +1106,9 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setPublishInstallSearchBySkillRef({});
       const installedCount = resp.autoInstallResult?.installedSkills?.length ?? Object.keys(packagesBySkillRef).length;
       if (installedCount > 0) {
-        setNotice(`模板已发布：${saved.template.id}（已安装 ${installedCount} 个技能）`);
+        setNotice(t('settings.workflows.notice.publishedWithInstalledSkills', { id: saved.template.id, count: installedCount }));
       } else {
-        setNotice(`模板已发布：${saved.template.id}`);
+        setNotice(t('settings.workflows.notice.published', { id: saved.template.id }));
       }
       await loadTemplates();
     } catch (err) {
@@ -1072,9 +1130,9 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
           templateId: pendingPublishInstall.templateId,
           details: dependencyDetails,
         });
-        setError(formatPublishDependencyError(err) ?? '自动安装后仍有依赖缺失，请处理后重试');
+        setError(formatPublishDependencyError(err, t) ?? t('settings.workflows.errors.autoInstallStillMissing'));
       } else {
-        setError(getErrorMessage(err, '自动安装并发布失败'));
+        setError(getErrorMessage(err, t('settings.workflows.errors.autoInstallAndPublishFailed')));
       }
     } finally {
       setPublishingWithInstall(false);
@@ -1084,7 +1142,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
   const handleArchive = async () => {
     const templateId = normalizeTemplateId(templateIdInput);
     if (!templateId) {
-      setError('请先选择或填写模板 ID');
+      setError(t('settings.workflows.errors.selectOrInputTemplateId'));
       return;
     }
 
@@ -1100,10 +1158,10 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setDetachedRecord(null);
       setTemplateIdInput(saved.template.id);
       setEditorText(serializeWorkflowTemplateForEditor(saved.template, editorMode));
-      setNotice(`模板已归档：${saved.template.id}`);
+      setNotice(t('settings.workflows.notice.archived', { id: saved.template.id }));
       await loadTemplates();
     } catch (err) {
-      setError(getErrorMessage(err, '归档 workflow 模板失败'));
+      setError(getErrorMessage(err, t('settings.workflows.errors.archiveFailed')));
     } finally {
       setArchiving(false);
     }
@@ -1136,16 +1194,20 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       <div className="surface-card overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 bg-muted/35 px-4 py-3">
           <div className="space-y-2">
-            <div className="text-sm font-semibold text-foreground">Workflow 模板管理</div>
+            <div className="text-sm font-semibold text-foreground">{t('settings.workflows.title')}</div>
             <div className="text-xs text-muted-foreground">
-              当前作用域 {getScopeLabel(scope)} · 管理列表 {manageTemplates.length} · 运行时可见 {visibleTemplates.length}
+              {t('settings.workflows.headerSummary', {
+                scope: getScopeLabel(scope, t),
+                manageCount: manageTemplates.length,
+                visibleCount: visibleTemplates.length,
+              })}
             </div>
             <div className="flex flex-wrap gap-2 text-[11px]">
               <span className="rounded-full bg-muted px-2 py-0.5 text-foreground">
-                Draft/Published/Archived 全生命周期
+                {t('settings.workflows.lifecycleHint')}
               </span>
               <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">
-                可见模板 {visibleTemplates.length}
+                {t('settings.workflows.visibleTemplatesBadge', { count: visibleTemplates.length })}
               </span>
             </div>
           </div>
@@ -1160,7 +1222,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                我的模板
+                {t('settings.workflows.scope.user')}
               </button>
               {canManageSystemConfig && (
                 <button
@@ -1171,14 +1233,14 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                       ? 'bg-card text-brand-700 shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
-                >
-                  项目模板
+                  >
+                  {t('settings.workflows.scope.global')}
                 </button>
               )}
             </div>
             <Button type="button" variant="outline" onClick={() => void handleRefreshTemplates()} className="h-10 rounded-xl">
               <RefreshCw className="size-4" />
-              刷新
+              {t('settings.workflows.refresh')}
             </Button>
           </div>
         </div>
@@ -1186,26 +1248,28 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
         <div className="grid gap-3 px-4 py-4 xl:grid-cols-2">
           <div className="rounded-lg space-y-3 bg-muted/15 p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-medium text-foreground">新建模板草稿</div>
-              <span className="rounded-full border border-border/70 bg-card/70 px-2 py-0.5 text-[11px] text-muted-foreground">Draft</span>
+              <div className="text-sm font-medium text-foreground">{t('settings.workflows.createDraftTitle')}</div>
+              <span className="rounded-full border border-border/70 bg-card/70 px-2 py-0.5 text-[11px] text-muted-foreground">
+                {t('settings.workflows.draftLabel')}
+              </span>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 value={newTemplateId}
                 onChange={(e) => setNewTemplateId(e.target.value)}
                 className="h-10 rounded-xl border-border/75 bg-card/95 sm:flex-1"
-                placeholder="如 feature-delivery-v2"
+                placeholder={t('settings.workflows.newTemplateIdPlaceholder')}
               />
               <Button type="button" variant="outline" onClick={handleCreateDraft} className="h-10 rounded-xl sm:shrink-0">
                 <Plus className="size-4" />
-                新建
+                {t('settings.workflows.create')}
               </Button>
             </div>
           </div>
 
           <div className="surface-card-soft rounded-xl space-y-3 border border-brand-200 bg-brand-50/40 p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-medium text-foreground">AI 一键生成模板</div>
+              <div className="text-sm font-medium text-foreground">{t('settings.workflows.aiGenerateTitle')}</div>
               <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-700">Claude/Codex/Gemini</span>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -1214,7 +1278,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                 onChange={(e) => setAiProvider(e.target.value as AiGenerateProvider)}
                 className="h-10 rounded-xl border border-border/75 bg-card/95 px-3 text-sm text-foreground sm:w-52"
               >
-                <option value="auto">自动选择 provider</option>
+                <option value="auto">{t('settings.workflows.autoSelectProvider')}</option>
                 <option value="claude">Claude</option>
                 <option value="codex">Codex</option>
                 <option value="gemini">Gemini</option>
@@ -1227,14 +1291,14 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                 className="h-10 rounded-xl sm:shrink-0"
               >
                 {aiGenerating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                AI 生成
+                {t('settings.workflows.aiGenerate')}
               </Button>
             </div>
             <Textarea
               value={aiIdea}
               onChange={(e) => setAiIdea(e.target.value)}
               className="min-h-[84px] rounded-xl border-border/75 bg-card/95 text-sm"
-              placeholder="输入想法，例如：先让 Claude 澄清需求，再让 Codex 编码和验收。"
+              placeholder={t('settings.workflows.aiIdeaPlaceholder')}
             />
           </div>
         </div>
@@ -1245,25 +1309,28 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
           <div className="surface-card overflow-hidden">
             <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-muted/35 px-4 py-3">
               <div className="text-sm font-medium text-foreground">
-                {scope === 'global' ? '项目模板列表' : '我的模板列表'}
+                {scope === 'global' ? t('settings.workflows.list.globalTitle') : t('settings.workflows.list.userTitle')}
               </div>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                显示 {filteredManageTemplates.length}/{manageTemplates.length}
+                {t('settings.workflows.list.showingCount', {
+                  filtered: filteredManageTemplates.length,
+                  total: manageTemplates.length,
+                })}
               </span>
             </div>
             <div className="space-y-3 px-4 py-3">
               <Input
                 value={templateQuery}
                 onChange={(e) => setTemplateQuery(e.target.value)}
-                placeholder="搜索模板 ID / 名称 / 描述"
+                placeholder={t('settings.workflows.list.searchPlaceholder')}
                 className="h-10 rounded-xl border-border/75 bg-card/95"
               />
               <div className="flex flex-wrap items-center gap-1.5">
                 {([
-                  { key: 'all', label: '全部', count: lifecycleCounts.all },
-                  { key: 'draft', label: '草稿', count: lifecycleCounts.draft },
-                  { key: 'published', label: '已发布', count: lifecycleCounts.published },
-                  { key: 'archived', label: '已归档', count: lifecycleCounts.archived },
+                  { key: 'all', label: t('settings.workflows.lifecycle.all'), count: lifecycleCounts.all },
+                  { key: 'draft', label: t('settings.workflows.lifecycle.draft'), count: lifecycleCounts.draft },
+                  { key: 'published', label: t('settings.workflows.lifecycle.published'), count: lifecycleCounts.published },
+                  { key: 'archived', label: t('settings.workflows.lifecycle.archived'), count: lifecycleCounts.archived },
                 ] as Array<{ key: LifecycleFilter; label: string; count: number }>).map((item) => (
                   <button
                     key={item.key}
@@ -1282,12 +1349,12 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
                 {filteredManageTemplates.length === 0 && manageTemplates.length === 0 && (
                   <div className="surface-card-soft rounded-xl border border-border/70 bg-muted/40 px-3 py-4 text-sm text-muted-foreground">
-                    该作用域下暂无模板。
+                    {t('settings.workflows.list.emptyForScope')}
                   </div>
                 )}
                 {filteredManageTemplates.length === 0 && manageTemplates.length > 0 && (
                   <div className="surface-card-soft rounded-xl border border-border/70 bg-muted/40 px-3 py-4 text-sm text-muted-foreground">
-                    没有匹配的模板。
+                    {t('settings.workflows.list.noMatch')}
                   </div>
                 )}
                 {filteredManageTemplates.map((item) => {
@@ -1316,15 +1383,15 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                           {item.lifecycle}
                         </span>
                         <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground">
-                          阶段 {item.template.stages.length}
+                          {t('settings.workflows.stagesCount', { count: item.template.stages.length })}
                         </span>
                         {item.isBuiltin && (
                           <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-700">
-                            builtin
+                            {t('settings.workflows.builtin')}
                           </span>
                         )}
                         <span className="text-[11px] text-muted-foreground">
-                          更新于 {formatLocalTime(item.updatedAt)}
+                          {t('settings.workflows.updatedAt', { time: formatLocalTime(item.updatedAt, locale, t) })}
                         </span>
                       </div>
                     </button>
@@ -1336,7 +1403,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
 
           <div className="surface-card overflow-hidden">
             <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-muted/35 px-4 py-3">
-              <div className="text-sm font-medium text-foreground">当前可见模板（运行时）</div>
+              <div className="text-sm font-medium text-foreground">{t('settings.workflows.visibleListTitle')}</div>
               <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] text-brand-700">
                 {visibleTemplates.length}
               </span>
@@ -1344,7 +1411,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
             <div className="min-h-32 max-h-[calc(100vh-24rem)] space-y-2 overflow-y-auto px-4 py-3 pr-3">
               {visibleTemplates.length === 0 && (
                 <div className="surface-card-soft rounded-xl border border-border/70 bg-muted/40 px-3 py-3 text-xs text-muted-foreground">
-                  暂无可见模板
+                  {t('settings.workflows.visibleListEmpty')}
                 </div>
               )}
               {visibleTemplates.map((item) => (
@@ -1358,7 +1425,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                   <div className="truncate text-[11px] text-muted-foreground">{item.template.name}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                      {getScopeLabel(item.scope)}
+                      {getScopeLabel(item.scope, t)}
                     </span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] ${getLifecycleBadgeClass(item.lifecycle)}`}>
                       {item.lifecycle}
@@ -1382,7 +1449,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                查看详情
+                {t('settings.workflows.view.detail')}
               </button>
               <button
                 type="button"
@@ -1393,16 +1460,16 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                编辑模板
+                {t('settings.workflows.view.edit')}
                 {hasUnsavedChanges && (
                   <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
-                    未保存
+                    {t('settings.workflows.unsaved')}
                   </span>
                 )}
               </button>
             </div>
             <span className="text-[11px] text-muted-foreground">
-              {panelMode === 'detail' ? '当前模式：只读详情' : '当前模式：编辑模板'}
+              {panelMode === 'detail' ? t('settings.workflows.mode.detail') : t('settings.workflows.mode.edit')}
             </span>
           </div>
 
@@ -1414,7 +1481,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     <h2 className="truncate text-xl font-bold text-foreground">{detailTemplate.name || detailTemplate.id}</h2>
                     <div className="mt-1 font-mono text-xs text-muted-foreground">{detailTemplate.id}</div>
                     <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-                      {detailTemplate.description?.trim() ? detailTemplate.description : '暂无描述'}
+                      {detailTemplate.description?.trim() ? detailTemplate.description : t('settings.workflows.noDescription')}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1429,14 +1496,14 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                         detailCallable ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                       }`}
                     >
-                      {detailCallable ? '可调用' : '草稿态'}
+                      {detailCallable ? t('settings.workflows.callable') : t('settings.workflows.draftState')}
                     </span>
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground">
-                      阶段 {detailTemplate.stages.length}
+                      {t('settings.workflows.stagesCount', { count: detailTemplate.stages.length })}
                     </span>
                     {isGlobalReadonly && (
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                        只读（项目模板）
+                        {t('settings.workflows.readonlyGlobal')}
                       </span>
                     )}
                   </div>
@@ -1446,11 +1513,11 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               <div className="border-b border-border/70 p-5">
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="rounded-lg bg-muted/15 px-3 py-2 text-sm">
-                    <span className="text-muted-foreground">可调用命令：</span>
+                    <span className="text-muted-foreground">{t('settings.workflows.invocableCommandLabel')}</span>
                     <code className="ml-2 text-xs text-foreground">/wf {detailTemplate.id}</code>
                   </div>
                   <div className="rounded-lg bg-muted/15 px-3 py-2 text-sm">
-                    <span className="text-muted-foreground">Provider：</span>
+                    <span className="text-muted-foreground">{t('settings.workflows.providerLabel')}</span>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {detailMeta.stageProviders.length > 0 ? (
                         detailMeta.stageProviders.map((provider) => (
@@ -1459,13 +1526,13 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                           </span>
                         ))
                       ) : (
-                        <span className="text-[11px] text-muted-foreground">未定义</span>
+                        <span className="text-[11px] text-muted-foreground">{t('settings.workflows.undefined')}</span>
                       )}
                     </div>
                   </div>
                   {detailTemplate.recommendedTriggers.length > 0 && (
                     <div className="rounded-lg bg-muted/15 px-3 py-2 text-sm sm:col-span-2">
-                      <span className="text-muted-foreground">推荐触发词：</span>
+                      <span className="text-muted-foreground">{t('settings.workflows.recommendedTriggersLabel')}</span>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {detailTemplate.recommendedTriggers.map((trigger) => (
                           <span key={trigger} className="rounded bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700">
@@ -1477,9 +1544,13 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                   )}
                   {activeRecord && (
                     <div className="text-[12px] text-muted-foreground sm:col-span-2">
-                      更新于 {formatLocalTime(activeRecord.updatedAt)}
-                      {activeRecord.publishedAt ? ` · 发布于 ${formatLocalTime(activeRecord.publishedAt)}` : ''}
-                      {activeRecord.createdAt ? ` · 创建于 ${formatLocalTime(activeRecord.createdAt)}` : ''}
+                      {t('settings.workflows.updatedAt', { time: formatLocalTime(activeRecord.updatedAt, locale, t) })}
+                      {activeRecord.publishedAt
+                        ? ` · ${t('settings.workflows.publishedAt', { time: formatLocalTime(activeRecord.publishedAt, locale, t) })}`
+                        : ''}
+                      {activeRecord.createdAt
+                        ? ` · ${t('settings.workflows.createdAt', { time: formatLocalTime(activeRecord.createdAt, locale, t) })}`
+                        : ''}
                     </div>
                   )}
                 </div>
@@ -1487,9 +1558,9 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
 
               <div className="border-b border-border/70 p-5">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">阶段定义</h3>
+                  <h3 className="text-sm font-semibold text-foreground">{t('settings.workflows.stageDefinitionsTitle')}</h3>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                    共 {detailTemplate.stages.length} 阶段
+                    {t('settings.workflows.totalStages', { count: detailTemplate.stages.length })}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -1525,11 +1596,11 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
 
               {(detailMeta.skillRefs.length > 0 || detailMeta.capabilityRefs.length > 0 || detailMeta.inferredFiles.length > 0) && (
                 <div className="border-b border-border/70 p-5">
-                  <h3 className="mb-3 text-sm font-semibold text-foreground">关联信息</h3>
+                  <h3 className="mb-3 text-sm font-semibold text-foreground">{t('settings.workflows.associationsTitle')}</h3>
                   <div className="space-y-2 text-sm">
                     {detailMeta.skillRefs.length > 0 && (
                       <div>
-                        <span className="text-muted-foreground">Skills：</span>
+                        <span className="text-muted-foreground">{t('settings.workflows.skillsLabel')}</span>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {detailMeta.skillRefs.map((skillRef) => (
                             <span key={`meta-skill:${skillRef}`} className="rounded bg-brand-50 px-2 py-0.5 text-[11px] text-primary">
@@ -1541,7 +1612,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     )}
                     {detailMeta.capabilityRefs.length > 0 && (
                       <div>
-                        <span className="text-muted-foreground">能力标签：</span>
+                        <span className="text-muted-foreground">{t('settings.workflows.capabilitiesLabel')}</span>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {detailMeta.capabilityRefs.map((capabilityRef) => (
                             <span key={`meta-capability:${capabilityRef}`} className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-700">
@@ -1553,7 +1624,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     )}
                     {detailMeta.inferredFiles.length > 0 && (
                       <div>
-                        <span className="text-muted-foreground">包含文件（推断）：</span>
+                        <span className="text-muted-foreground">{t('settings.workflows.inferredFilesLabel')}</span>
                         <div className="mt-1 space-y-1">
                           {detailMeta.inferredFiles.map((filePath) => (
                             <div key={filePath} className="font-mono text-[11px] text-muted-foreground">
@@ -1569,13 +1640,13 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
 
               <div className="surface-card-soft border-t border-border/70 p-4">
                 <p className="text-sm text-muted-foreground">
-                  当前为详情只读视图。切换到“编辑模板”后可修改内容、执行依赖预检并发布。
+                  {t('settings.workflows.detailReadonlyHint')}
                 </p>
               </div>
             </div>
           ) : (
             <div className="surface-card-soft rounded-xl border border-border/70 bg-muted/70 flex items-center justify-center px-4 py-10">
-              <p className="text-xs text-muted-foreground">选择一个模板后在这里查看详情与编辑。</p>
+              <p className="text-xs text-muted-foreground">{t('settings.workflows.emptyDetailHint')}</p>
             </div>
           ))}
 
@@ -1584,7 +1655,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               <div className={`surface-card-soft rounded-xl border p-3 ${dependencyPrecheckPanelClass}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <div className="text-sm font-medium text-foreground">发布前依赖预检</div>
+                    <div className="text-sm font-medium text-foreground">{t('settings.workflows.precheck.title')}</div>
                     <span className={`rounded-full px-2 py-0.5 text-[11px] ${dependencyPrecheckStatusBadgeClass}`}>
                       {dependencyPrecheckStatusLabel}
                     </span>
@@ -1604,28 +1675,28 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     ) : (
                       <RefreshCw className="size-4" />
                     )}
-                    重检
+                    {t('settings.workflows.precheck.recheck')}
                   </Button>
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {dependencyPrecheck.status === 'idle' && '暂无可检查模板'}
-                  {dependencyPrecheck.status === 'checking' && '检查中...'}
+                  {dependencyPrecheck.status === 'idle' && t('settings.workflows.precheck.noTemplate')}
+                  {dependencyPrecheck.status === 'checking' && t('settings.workflows.precheck.checking')}
                   {dependencyPrecheck.status !== 'idle' && dependencyPrecheck.status !== 'checking' && (dependencyPrecheck.message ?? '-')}
                 </div>
                 {dependencyPrecheck.details && (
                   <div className="mt-2 space-y-1 text-[11px]">
                     {dependencyPrecheck.details.missingSkillRefs.length > 0 && (
                       <div className="text-amber-800">
-                        缺失技能：{dependencyPrecheck.details.missingSkillRefs.join('、')}
+                        {t('settings.workflows.precheck.missingSkills', { refs: dependencyPrecheck.details.missingSkillRefs.join(listSeparator) })}
                       </div>
                     )}
                     {dependencyPrecheck.details.invalidSkillRefs.length > 0 && (
                       <div className="text-rose-700">
-                        非法技能引用：{dependencyPrecheck.details.invalidSkillRefs.join('、')}
+                        {t('settings.workflows.precheck.invalidSkills', { refs: dependencyPrecheck.details.invalidSkillRefs.join(listSeparator) })}
                       </div>
                     )}
                     {dependencyPrecheck.status === 'ok' && (
-                      <div className="text-emerald-700">当前模板依赖可满足，可直接发布。</div>
+                      <div className="text-emerald-700">{t('settings.workflows.precheck.passHint')}</div>
                     )}
                   </div>
                 )}
@@ -1633,7 +1704,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg bg-muted/10 p-3">
-                  <div className="mb-2 text-sm font-medium text-foreground">模板名称</div>
+                  <div className="mb-2 text-sm font-medium text-foreground">{t('settings.workflows.templateNameLabel')}</div>
                   <Input
                     value={detailTemplate?.name ?? ''}
                     onChange={(e) => {
@@ -1642,12 +1713,12 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                         description: detailTemplate?.description ?? '',
                       });
                     }}
-                    placeholder="输入模板名称"
+                    placeholder={t('settings.workflows.templateNamePlaceholder')}
                     className="h-10 rounded-xl border-border/75 bg-card/95"
                   />
                 </div>
                 <div className="rounded-lg bg-muted/10 p-3">
-                  <div className="mb-2 text-sm font-medium text-foreground">模板描述</div>
+                  <div className="mb-2 text-sm font-medium text-foreground">{t('settings.workflows.templateDescriptionLabel')}</div>
                   <Textarea
                     value={detailTemplate?.description ?? ''}
                     onChange={(e) => {
@@ -1657,7 +1728,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                       });
                     }}
                     className="min-h-[72px] rounded-xl border-border/75 bg-card/95 text-sm"
-                    placeholder="输入模板描述"
+                    placeholder={t('settings.workflows.templateDescriptionPlaceholder')}
                   />
                 </div>
               </div>
@@ -1665,11 +1736,11 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               <div className="rounded-lg space-y-3 bg-muted/15 p-3">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   <div>
-                    <div className="mb-2 text-sm font-medium text-foreground">模板 ID（保存路径）</div>
+                    <div className="mb-2 text-sm font-medium text-foreground">{t('settings.workflows.templateIdLabel')}</div>
                     <Input
                       value={templateIdInput}
                       onChange={(e) => setTemplateIdInput(e.target.value)}
-                      placeholder="template-id"
+                      placeholder={t('settings.workflows.newTemplateIdPlaceholder')}
                       className="h-10 rounded-xl border-border/75 bg-card/95"
                     />
                   </div>
@@ -1683,29 +1754,29 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                         disabled={!hasUnsavedChanges}
                         className="h-10 rounded-xl"
                       >
-                        回滚到已选版本
+                        {t('settings.workflows.rollbackToSelected')}
                       </Button>
                     )}
                     <Button type="button" onClick={() => void handleSaveDraft()} disabled={savingDraft} className="h-10 rounded-xl">
                       {savingDraft && <Loader2 className="size-4 animate-spin" />}
-                      保存草稿
+                      {t('settings.workflows.saveDraft')}
                     </Button>
                     <Button type="button" variant="outline" onClick={handlePublish} disabled={publishDisabled} className="h-10 rounded-xl">
                       {publishing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                      发布
+                      {t('settings.workflows.publish')}
                     </Button>
                     <Button type="button" variant="outline" onClick={handleArchive} disabled={archiveDisabled} className="h-10 rounded-xl">
                       {archiving && <Loader2 className="size-4 animate-spin" />}
-                      归档
+                      {t('settings.workflows.archive')}
                     </Button>
                   </div>
                 </div>
                 {isEditingSelectedTemplate && selectedRecord && (!selectedRecord.publishable || !selectedRecord.archivable) && (
                   <div className="text-xs text-muted-foreground">
-                    当前模板状态限制：
-                    {!selectedRecord.publishable ? ' 不可发布；' : ''}
-                    {!selectedRecord.archivable ? ' 不可归档；' : ''}
-                    可先保存新草稿或切换生命周期后重试。
+                    {t('settings.workflows.lifecycleLimitPrefix')}
+                    {!selectedRecord.publishable ? t('settings.workflows.lifecycleLimitNotPublishable') : ''}
+                    {!selectedRecord.archivable ? t('settings.workflows.lifecycleLimitNotArchivable') : ''}
+                    {t('settings.workflows.lifecycleLimitHint')}
                   </div>
                 )}
               </div>
@@ -1713,13 +1784,13 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50/80 p-3">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-900">
                   <BookOpen className="size-4" />
-                  AI 优化当前模板
+                  {t('settings.workflows.aiOptimizeTitle')}
                 </div>
                 <Textarea
                   value={aiOptimizeInstruction}
                   onChange={(e) => setAiOptimizeInstruction(e.target.value)}
                   className="min-h-[88px] rounded-xl border-border/75 bg-card/95 text-sm"
-                  placeholder="输入要修改的内容，例如：增加验收阶段，强制 codex 执行实现阶段。"
+                  placeholder={t('settings.workflows.aiOptimizePlaceholder')}
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Button
@@ -1730,10 +1801,10 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     className="h-10 rounded-xl"
                   >
                     {aiOptimizing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                    AI 优化并回填
+                    {t('settings.workflows.aiOptimizeAndFill')}
                   </Button>
                   <span className="text-xs text-amber-800">
-                    仅回填编辑器，不会自动保存；请确认后保存草稿/发布。
+                    {t('settings.workflows.aiOptimizeHint')}
                   </span>
                 </div>
               </div>
@@ -1741,10 +1812,10 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               <div>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-sm font-medium text-foreground">模板编辑器</div>
+                    <div className="text-sm font-medium text-foreground">{t('settings.workflows.editorTitle')}</div>
                     {hasUnsavedChanges && (
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-700">
-                        有未保存修改
+                        {t('settings.workflows.unsavedChanges')}
                       </span>
                     )}
                   </div>
@@ -1779,19 +1850,19 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                   className="min-h-[420px] rounded-xl border-border/75 bg-muted/20 font-mono text-xs"
                   placeholder={
                     editorMode === 'markdown'
-                      ? '在此编辑 workflow 模板 Markdown（推荐）'
-                      : '在此编辑 workflow 模板 JSON'
+                      ? t('settings.workflows.editorPlaceholderMarkdown')
+                      : t('settings.workflows.editorPlaceholderJson')
                   }
                 />
                 {selectedRecord && (
                   <div className="mt-2 text-xs text-muted-foreground">
-                    当前选中：{selectedRecord.template.id} · {selectedRecord.lifecycle} ·{' '}
-                    {getScopeLabel(selectedRecord.scope)}
+                    {t('settings.workflows.currentSelected')}: {selectedRecord.template.id} · {selectedRecord.lifecycle} ·{' '}
+                    {getScopeLabel(selectedRecord.scope, t)}
                   </div>
                 )}
                 {editorMode === 'markdown' && (
                   <div className="mt-1 text-xs text-muted-foreground">
-                    支持格式：`- id: xxx`、`## Stage: stage-id`、`- provider: claude|codex|gemini`，列表字段用 `|` 分隔。
+                    {t('settings.workflows.editorMarkdownFormatHint')}
                   </div>
                 )}
               </div>
@@ -1809,19 +1880,22 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
         <DialogContent className="sm:max-w-lg overflow-hidden p-0">
           <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600">
-              Workflow
+              {t('settings.workflows.dialogs.badge')}
             </div>
           </div>
           <DialogHeader className="px-5 pt-4 text-left">
-            <DialogTitle>检测到模板 ID 变更</DialogTitle>
+            <DialogTitle>{t('settings.workflows.saveDecision.title')}</DialogTitle>
             <DialogDescription>
-              当前模板 ID 从 <code>{pendingSaveDecision?.originalId}</code> 改为{' '}
-              <code>{pendingSaveDecision?.nextId}</code>。请选择保存方式。
+              {t('settings.workflows.saveDecision.descriptionPrefix')}
+              <code>{pendingSaveDecision?.originalId}</code>
+              {t('settings.workflows.saveDecision.descriptionMiddle')}
+              <code>{pendingSaveDecision?.nextId}</code>
+              {t('settings.workflows.saveDecision.descriptionSuffix')}
             </DialogDescription>
           </DialogHeader>
           <div className="px-5">
             <div className="surface-card-soft rounded-xl border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              建议先新建模板保留历史版本；只有确认需要覆盖时再使用“覆盖当前模板”。
+              {t('settings.workflows.saveDecision.hint')}
             </div>
           </div>
           <DialogFooter className="mt-4 gap-2 border-t border-border/70 bg-muted/20 px-5 py-4 sm:justify-end">
@@ -1832,7 +1906,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               disabled={savingDraft}
               className="h-10 rounded-xl"
             >
-              取消
+              {t('settings.workflows.saveDecision.cancel')}
             </Button>
             <Button
               type="button"
@@ -1841,7 +1915,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               disabled={savingDraft}
               className="h-10 rounded-xl"
             >
-              新建模板（使用新 ID）
+              {t('settings.workflows.saveDecision.createNew')}
             </Button>
             <Button
               type="button"
@@ -1849,7 +1923,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               disabled={savingDraft}
               className="h-10 rounded-xl"
             >
-              覆盖当前模板（保留原 ID）
+              {t('settings.workflows.saveDecision.overwrite')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1868,31 +1942,35 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
         <DialogContent className="sm:max-w-2xl overflow-hidden p-0">
           <div className="border-b border-border/70 bg-muted/30 px-5 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600">
-              Workflow
+              {t('settings.workflows.dialogs.badge')}
             </div>
           </div>
           <DialogHeader className="px-5 pt-4 text-left">
-            <DialogTitle>发布前安装缺失技能</DialogTitle>
+            <DialogTitle>{t('settings.workflows.installDialog.title')}</DialogTitle>
             <DialogDescription>
-              检测到模板依赖的技能未安装。可为每个技能选择安装包，确认后自动安装并继续发布。
+              {t('settings.workflows.installDialog.description')}
             </DialogDescription>
           </DialogHeader>
           <div className="px-5">
             <div className="surface-card-soft rounded-xl border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              缺失技能 {pendingPublishInstall?.details.missingSkillRefs.length ?? 0} 个，
-              非法引用 {pendingPublishInstall?.details.invalidSkillRefs.length ?? 0} 个。
+              {t('settings.workflows.installDialog.summary', {
+                missingCount: pendingPublishInstall?.details.missingSkillRefs.length ?? 0,
+                invalidCount: pendingPublishInstall?.details.invalidSkillRefs.length ?? 0,
+              })}
             </div>
           </div>
           <div className="max-h-[52vh] overflow-y-auto px-5 pr-6">
             <div className="space-y-3 py-3">
               {pendingPublishInstall?.details.invalidSkillRefs.length ? (
                 <div className="surface-card-soft border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  非法技能引用：{pendingPublishInstall.details.invalidSkillRefs.join('、')}
+                  {t('settings.workflows.installDialog.invalidRefs', {
+                    refs: pendingPublishInstall.details.invalidSkillRefs.join(listSeparator),
+                  })}
                 </div>
               ) : null}
               {!canAutoInstallForScope ? (
                 <div className="surface-card-soft border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  当前为项目级模板，暂不支持自动安装。请先在技能管理中安装所需技能，再重新发布。
+                  {t('settings.workflows.installDialog.scopeNotSupported')}
                 </div>
               ) : null}
               {pendingPublishInstall?.details.missingSkillRefs.map((rawSkillRef) => {
@@ -1914,12 +1992,12 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs font-semibold text-foreground">{skillRef}</div>
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                        候选 {options.length}
+                        {t('settings.workflows.installDialog.candidateCount', { count: options.length })}
                       </span>
                     </div>
                     {options.length > 1 ? (
                       <div className="mt-2">
-                        <div className="mb-1 text-[11px] text-muted-foreground">可选安装包（请选择一个）</div>
+                        <div className="mb-1 text-[11px] text-muted-foreground">{t('settings.workflows.installDialog.selectPackageHint')}</div>
                         <Input
                           value={publishInstallSearchBySkillRef[skillRef] ?? ''}
                           onChange={(event) => {
@@ -1930,7 +2008,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                             }));
                           }}
                           className="mb-2 h-8 rounded-lg border-border/70 bg-card/95 text-xs"
-                          placeholder="筛选候选包（包名/描述）"
+                          placeholder={t('settings.workflows.installDialog.searchPlaceholder')}
                         />
                         <select
                           className="h-10 w-full rounded-xl border border-border/75 bg-card/95 px-2 text-xs text-foreground"
@@ -1943,32 +2021,38 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                             }));
                           }}
                         >
-                          <option value="">请选择安装包</option>
+                          <option value="">{t('settings.workflows.installDialog.selectPlaceholder')}</option>
                           {resolvedCandidates.map((candidate) => (
                             <option key={`${skillRef}:${candidate.package}`} value={candidate.package}>
-                              {candidate.package === recommendedPackage ? '⭐推荐 · ' : ''}
+                              {candidate.package === recommendedPackage ? t('settings.workflows.installDialog.recommendedPrefix') : ''}
                               {candidate.package}
-                              {candidate.installs ? ` · ${candidate.installs} installs` : ''}
+                              {candidate.installs
+                                ? t('settings.workflows.installDialog.installCountSuffix', { installs: candidate.installs })
+                                : ''}
                             </option>
                           ))}
                         </select>
                         {searchKeyword && filteredCandidates.length === 0 ? (
                           <div className="mt-1 text-[11px] text-muted-foreground">
-                            没有匹配“{publishInstallSearchBySkillRef[skillRef]}”的候选，已回退显示全部选项。
+                            {t('settings.workflows.installDialog.noMatchFallback', {
+                              keyword: publishInstallSearchBySkillRef[skillRef] ?? '',
+                            })}
                           </div>
                         ) : null}
                       </div>
                     ) : null}
                     {options.length === 1 ? (
                       <div className="surface-card-soft rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[11px] text-emerald-700">
-                        将自动安装：
+                        {t('settings.workflows.installDialog.autoInstallPrefix')}
                         <code>{options[0]}</code>
-                        {candidates[0]?.installs ? `（${candidates[0].installs} installs）` : ''}
+                        {candidates[0]?.installs
+                          ? t('settings.workflows.installDialog.autoInstallCountSuffix', { installs: candidates[0].installs })
+                          : ''}
                       </div>
                     ) : null}
                     {options.length === 0 ? (
                       <div className="surface-card-soft rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-700">
-                        未找到可安装候选包，请前往技能管理手动安装后重试发布。
+                        {t('settings.workflows.installDialog.noCandidates')}
                       </div>
                     ) : null}
                   </div>
@@ -1988,7 +2072,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               disabled={publishingWithInstall}
               className="h-10 rounded-xl"
             >
-              取消
+              {t('settings.workflows.installDialog.cancel')}
             </Button>
             <Button
               type="button"
@@ -1997,7 +2081,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               disabled={publishingWithInstall}
               className="h-10 rounded-xl"
             >
-              去技能管理
+              {t('settings.workflows.installDialog.goSkills')}
             </Button>
             <Button
               type="button"
@@ -2006,7 +2090,9 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
               className="h-10 rounded-xl"
             >
               {publishingWithInstall ? <Loader2 className="size-4 animate-spin" /> : null}
-              {canAutoInstallForScope ? '安装并发布' : '项目级不支持自动安装'}
+              {canAutoInstallForScope
+                ? t('settings.workflows.installDialog.installAndPublish')
+                : t('settings.workflows.installDialog.scopeNotSupportedShort')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,16 +2,18 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, Users, Link2 } from 'lucide-react';
 import { GroupInfo } from '../../stores/groups';
 import { GroupDetail } from './GroupDetail';
+import { useI18n } from '../../i18n';
 
 interface GroupCardProps {
   group: GroupInfo & { jid: string };
 }
 
 export function GroupCard({ group }: GroupCardProps) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const isImSession = group.kind === 'feishu' || group.kind === 'telegram';
 
-  // 截短 JID 显示（保留前缀和后缀）
+  // Truncate long JIDs while keeping readable prefix/suffix.
   const truncateJid = (jid: string) => {
     if (jid.length <= 30) return jid;
     const parts = jid.split(':');
@@ -39,7 +41,7 @@ export function GroupCard({ group }: GroupCardProps) {
               {isImSession && group.im_binding_enabled && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium flex-shrink-0">
                   <Link2 className="w-3 h-3" />
-                  已绑定
+                  {t('groups.card.bound')}
                 </span>
               )}
               {group.is_shared && (
@@ -58,7 +60,7 @@ export function GroupCard({ group }: GroupCardProps) {
             {/* Folder & Trigger */}
             <div className="space-y-1 text-sm">
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">文件夹:</span>
+                <span className="text-muted-foreground">{t('groups.card.folder')}:</span>
                 <span className="text-foreground font-medium">
                   {group.folder}
                 </span>

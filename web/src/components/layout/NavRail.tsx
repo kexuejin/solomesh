@@ -3,21 +3,23 @@ import { MessageSquare, Clock, Activity, Settings, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth';
 import { EmojiAvatar } from '../common/EmojiAvatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useI18n } from '../../i18n';
 
 const mainNavItems = [
-  { path: '/chat', icon: MessageSquare, label: '工作台' },
-  { path: '/tasks', icon: Clock, label: '任务' },
-  { path: '/monitor', icon: Activity, label: '监控' },
+  { path: '/chat', icon: MessageSquare, labelKey: 'nav.workspace' as const },
+  { path: '/tasks', icon: Clock, labelKey: 'nav.tasks' as const },
+  { path: '/monitor', icon: Activity, labelKey: 'nav.monitor' as const },
 ];
 
 const utilityNavItems = [
-  { path: '/settings', icon: Settings, label: '设置' },
+  { path: '/settings', icon: Settings, labelKey: 'nav.settings' as const },
 ];
 
 export function NavRail() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const userInitial = (user?.display_name || user?.username || '?')[0].toUpperCase();
 
@@ -35,7 +37,7 @@ export function NavRail() {
         </div>
 
         <div className="flex w-full flex-1 flex-col items-center gap-6">
-          {mainNavItems.map(({ path, icon: Icon, label }) => (
+          {mainNavItems.map(({ path, icon: Icon, labelKey }) => (
             <Tooltip key={path}>
               <TooltipTrigger asChild>
                 <NavLink
@@ -52,7 +54,7 @@ export function NavRail() {
                 </NavLink>
               </TooltipTrigger>
               <TooltipContent side="right">
-                {label}
+                {t(labelKey)}
               </TooltipContent>
             </Tooltip>
           ))}
@@ -60,7 +62,7 @@ export function NavRail() {
 
         {/* Utilities + profile */}
         <div className="mt-auto flex flex-col items-center gap-6 pb-1">
-          {utilityNavItems.map(({ path, icon: Icon, label }) => (
+          {utilityNavItems.map(({ path, icon: Icon, labelKey }) => (
             <Tooltip key={path}>
               <TooltipTrigger asChild>
                 <NavLink
@@ -77,7 +79,7 @@ export function NavRail() {
                 </NavLink>
               </TooltipTrigger>
               <TooltipContent side="right">
-                {label}
+                {t(labelKey)}
               </TooltipContent>
             </Tooltip>
           ))}
@@ -111,7 +113,7 @@ export function NavRail() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              退出登录
+              {t('nav.signOut')}
             </TooltipContent>
           </Tooltip>
         </div>

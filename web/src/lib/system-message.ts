@@ -1,3 +1,5 @@
+import type { MessageKey } from '../i18n';
+
 export interface WorkflowTemplateEditSystemPayload {
   templateId: string;
   scope: 'user' | 'global';
@@ -34,6 +36,42 @@ export type ParsedSystemChatMessage =
   | { type: 'error'; content: string }
   | { type: 'workflow_template_edit'; payload: WorkflowTemplateEditSystemPayload }
   | { type: 'workflow_dependency_blocked'; payload: WorkflowDependencyBlockedSystemPayload };
+
+type SystemMessageKey =
+  | 'chat.system.contextReset'
+  | 'chat.system.workflowTemplateUpdatedInvalid'
+  | 'chat.system.workflowDependencyBlockedInvalid'
+  | 'chat.system.workflowRecommend'
+  | 'chat.system.workflow';
+
+type SystemMessageParams = Record<string, string | number>;
+type SystemMessageTranslator = (key: MessageKey, params?: SystemMessageParams) => string;
+
+const SYSTEM_MESSAGE_FALLBACK: Record<SystemMessageKey, string> = {
+  'chat.system.contextReset': 'Context cleared',
+  'chat.system.workflowTemplateUpdatedInvalid': 'Workflow template updated (invalid payload)',
+  'chat.system.workflowDependencyBlockedInvalid': 'Workflow dependency blocked (invalid payload)',
+  'chat.system.workflowRecommend': 'Workflow recommendation: {{content}}',
+  'chat.system.workflow': 'Workflow: {{content}}',
+};
+
+function applyParams(template: string, params?: SystemMessageParams): string {
+  if (!params) return template;
+  let result = template;
+  for (const [key, value] of Object.entries(params)) {
+    result = result.replaceAll(`{{${key}}}`, String(value));
+  }
+  return result;
+}
+
+function localizeSystemMessage(
+  key: SystemMessageKey,
+  t?: SystemMessageTranslator,
+  params?: SystemMessageParams,
+): string {
+  if (t) return t(key, params);
+  return applyParams(SYSTEM_MESSAGE_FALLBACK[key], params);
+}
 
 function parseWorkflowTemplateEditPayload(
   raw: string,
@@ -155,9 +193,12 @@ function parseWorkflowDependencyBlockedPayload(
   }
 }
 
-export function parseSystemChatMessage(content: string): ParsedSystemChatMessage {
+export function parseSystemChatMessage(
+  content: string,
+  t?: SystemMessageTranslator,
+): ParsedSystemChatMessage {
   if (content === 'context_reset') {
-    return { type: 'divider', content: '上下文已清除' };
+    return { type: 'divider', content: localizeSystemMessage('chat.system.contextReset', t) };
   }
   if (content.startsWith('workflow_template_edit:')) {
     const payloadRaw = content.slice('workflow_template_edit:'.length).trim();
@@ -168,7 +209,10 @@ export function parseSystemChatMessage(content: string): ParsedSystemChatMessage
         payload,
       };
     }
-    return { type: 'divider', content: 'Workflow 模板已更新（消息格式异常）' };
+    return {
+      type: 'divider',
+      content: localizeSystemMessage('chat.system.workflowTemplateUpdatedInvalid', t),
+    };
   }
   if (content.startsWith('workflow_dependency_blocked:')) {
     const payloadRaw = content.slice('workflow_dependency_blocked:'.length).trim();
@@ -179,18 +223,25 @@ export function parseSystemChatMessage(content: string): ParsedSystemChatMessage
         payload,
       };
     }
-    return { type: 'divider', content: 'Workflow 依赖阻塞（消息格式异常）' };
+    return {
+      type: 'divider',
+      content: localizeSystemMessage('chat.system.workflowDependencyBlockedInvalid', t),
+    };
   }
   if (content.startsWith('workflow_recommend:')) {
     return {
       type: 'divider',
-      content: `Workflow 推荐：${content.slice('workflow_recommend:'.length).trim()}`,
+      content: localizeSystemMessage('chat.system.workflowRecommend', t, {
+        content: content.slice('workflow_recommend:'.length).trim(),
+      }),
     };
   }
   if (content.startsWith('workflow:')) {
     return {
       type: 'divider',
-      content: `Workflow：${content.slice('workflow:'.length).trim()}`,
+      content: localizeSystemMessage('chat.system.workflow', t, {
+        content: content.slice('workflow:'.length).trim(),
+      }),
     };
   }
   if (content.startsWith('agent_error:')) {

@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { isConfirmPhraseMatched } from '@/lib/confirm-phrase';
+import { useI18n } from '../../i18n';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -34,14 +35,18 @@ export function ConfirmDialog({
   onConfirm,
   title,
   message,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   confirmVariant = 'primary',
   requireConfirmText,
-  requireConfirmLabel = '请输入名称确认操作',
+  requireConfirmLabel,
   loading = false,
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   const [confirmInput, setConfirmInput] = useState('');
+  const resolvedConfirmText = confirmText ?? t('shared.confirmDialog.confirm');
+  const resolvedCancelText = cancelText ?? t('shared.confirmDialog.cancel');
+  const resolvedRequireConfirmLabel = requireConfirmLabel ?? t('shared.confirmDialog.requireConfirmLabel');
 
   useEffect(() => {
     if (!open) {
@@ -58,7 +63,7 @@ export function ConfirmDialog({
       <AlertDialogContent className="surface-card gap-0 overflow-hidden border-border/70 p-0">
         <div className="border-b border-border/70 bg-muted/30 px-5 py-4">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-600">
-            确认操作
+            {t('shared.confirmDialog.badge')}
           </div>
         </div>
         <AlertDialogHeader className="gap-2 px-5 pt-4 text-left">
@@ -68,7 +73,7 @@ export function ConfirmDialog({
         {requiresPhrase && (
           <div className="surface-card-soft mx-5 mt-4 space-y-2 border border-border/70 bg-muted/30 p-3">
             <div className="text-xs text-muted-foreground">
-              {requireConfirmLabel}：<span className="font-medium text-foreground">{requireConfirmText}</span>
+              {resolvedRequireConfirmLabel}：<span className="font-medium text-foreground">{requireConfirmText}</span>
             </div>
             <Input
               value={confirmInput}
@@ -80,7 +85,7 @@ export function ConfirmDialog({
         )}
         <AlertDialogFooter className="mt-4 gap-2 border-t border-border/70 bg-muted/20 px-5 py-4 sm:justify-end">
           <AlertDialogCancel disabled={loading} className="sm:min-w-24">
-            {cancelText}
+            {resolvedCancelText}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => {
@@ -95,7 +100,7 @@ export function ConfirmDialog({
             )}
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
-            {confirmText}
+            {resolvedConfirmText}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

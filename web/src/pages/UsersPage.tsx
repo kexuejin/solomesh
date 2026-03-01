@@ -4,10 +4,12 @@ import { useAuthStore } from '../stores/auth';
 import { UserListTab } from '../components/users/UserListTab';
 import { InviteCodesTab } from '../components/users/InviteCodesTab';
 import { AuditLogTab } from '../components/users/AuditLogTab';
+import { useI18n } from '../i18n';
 
 type Tab = 'users' | 'invites' | 'audit';
 
 export function UsersPage() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>('users');
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -22,12 +24,12 @@ export function UsersPage() {
 
   const tabs = useMemo(() => {
     const list: Array<{ key: Tab; label: string; visible: boolean }> = [
-      { key: 'users', label: '用户列表', visible: canManageUsers },
-      { key: 'invites', label: '邀请码', visible: canManageInvites },
-      { key: 'audit', label: '审计日志', visible: canViewAudit },
+      { key: 'users', label: t('users.page.tabs.users'), visible: canManageUsers },
+      { key: 'invites', label: t('users.page.tabs.invites'), visible: canManageInvites },
+      { key: 'audit', label: t('users.page.tabs.audit'), visible: canViewAudit },
     ];
     return list.filter((item) => item.visible);
-  }, [canManageInvites, canManageUsers, canViewAudit]);
+  }, [canManageInvites, canManageUsers, canViewAudit, t]);
 
   useEffect(() => {
     if (tabs.length === 0) return;
@@ -40,7 +42,7 @@ export function UsersPage() {
     return (
       <div className="min-h-full app-canvas p-4 lg:p-8">
         <div className="mx-auto max-w-3xl surface-card-soft rounded-xl border border-border/70 bg-muted/20 p-8 text-sm text-muted-foreground">
-          当前账户无用户管理权限。
+          {t('users.page.noPermission')}
         </div>
       </div>
     );
@@ -50,8 +52,8 @@ export function UsersPage() {
     <div className="min-h-full app-canvas p-4 lg:p-8">
       <div className="mx-auto max-w-5xl space-y-6">
         <PageHeader
-          title="用户管理"
-          subtitle="账户、邀请码与审计日志"
+          title={t('users.page.title')}
+          subtitle={t('users.page.subtitle')}
         />
 
         {(notice || error) && (
