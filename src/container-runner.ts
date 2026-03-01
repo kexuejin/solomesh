@@ -63,6 +63,116 @@ interface VolumeMount {
   readonly: boolean;
 }
 
+const REQUIRED_SETTINGS_ENV: Record<string, string> = {
+  CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+  CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+};
+
+/**
+ * Create directory with container-writable permissions for volume mounts.
+ * Helps avoid uid mismatch issues between host user and container user.
+ */
+function mkdirForContainer(dirPath: string): void {
+  fs.mkdirSync(dirPath, { recursive: true });
+  try {
+    fs.chmodSync(dirPath, 0o777);
+  } catch {
+    // Ignore chmod failures on unsupported filesystems.
+  }
+}
+
+function ensureSettingsJson(
+  settingsFile: string,
+  mcpServers?: Record<string, Record<string, unknown>>,
+): void {
+  let existing: Record<string, unknown> = {};
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const parsed = JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        existing = parsed as Record<string, unknown>;
+      }
+    }
+  } catch {
+    // Ignore parse errors and overwrite with normalized content.
+  }
+
+  const existingEnv =
+    existing.env && typeof existing.env === 'object' && !Array.isArray(existing.env)
+      ? existing.env as Record<string, string>
+      : {};
+  const merged: Record<string, unknown> = {
+    ...existing,
+    env: {
+      ...existingEnv,
+      ...REQUIRED_SETTINGS_ENV,
+    },
+  };
+
+  if (mcpServers && Object.keys(mcpServers).length > 0) {
+    const existingMcp =
+      existing.mcpServers && typeof existing.mcpServers === 'object' && !Array.isArray(existing.mcpServers)
+        ? existing.mcpServers as Record<string, unknown>
+        : {};
+    merged.mcpServers = {
+      ...existingMcp,
+      ...mcpServers,
+    };
+  }
+
+  const nextContent = `${JSON.stringify(merged, null, 2)}\n`;
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const current = fs.readFileSync(settingsFile, 'utf8');
+      if (current === nextContent) return;
+    }
+  } catch {
+    // Fall through and write normalized content.
+  }
+
+  fs.writeFileSync(settingsFile, nextContent, { mode: 0o644 });
+}
+
+function loadUserMcpServers(userId: string): Record<string, Record<string, unknown>> {
+  const serversFile = path.join(DATA_DIR, 'mcp-servers', userId, 'servers.json');
+  try {
+    if (!fs.existsSync(serversFile)) return {};
+    const parsed = JSON.parse(fs.readFileSync(serversFile, 'utf8')) as {
+      servers?: Record<string, Record<string, unknown>>;
+    };
+    const raw = parsed.servers || {};
+    const result: Record<string, Record<string, unknown>> = {};
+
+    for (const [name, server] of Object.entries(raw)) {
+      if (!server.enabled) continue;
+
+      const isHttpType = server.type === 'http' || server.type === 'sse';
+      if (isHttpType) {
+        if (!server.url) continue;
+        const entry: Record<string, unknown> = { type: server.type, url: server.url };
+        if (server.headers && typeof server.headers === 'object' && Object.keys(server.headers as object).length > 0) {
+          entry.headers = server.headers;
+        }
+        result[name] = entry;
+        continue;
+      }
+
+      if (!server.command) continue;
+      const entry: Record<string, unknown> = { command: server.command };
+      if (server.args) entry.args = server.args;
+      if (server.env && typeof server.env === 'object' && Object.keys(server.env as object).length > 0) {
+        entry.env = server.env;
+      }
+      result[name] = entry;
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
+
 const CLAUDE_SKILLS_TARGET = '/home/node/.claude/skills';
 const CODEX_SKILLS_TARGET = '/home/node/.agents/skills';
 const GEMINI_SKILLS_TARGET = '/home/node/.gemini/skills';
@@ -93,7 +203,7 @@ function buildVolumeMounts(
   const ownerId = group.created_by;
   if (ownerId) {
     const userGlobalDir = path.join(GROUPS_DIR, 'user-global', ownerId);
-    fs.mkdirSync(userGlobalDir, { recursive: true });
+    mkdirForContainer(userGlobalDir);
     mounts.push({
       hostPath: userGlobalDir,
       containerPath: '/workspace/global',
@@ -102,7 +212,7 @@ function buildVolumeMounts(
   } else {
     // Legacy fallback for rows without created_by.
     const legacyGlobalDir = path.join(GROUPS_DIR, 'global');
-    fs.mkdirSync(legacyGlobalDir, { recursive: true });
+    mkdirForContainer(legacyGlobalDir);
     mounts.push({
       hostPath: legacyGlobalDir,
       containerPath: '/workspace/global',
@@ -135,7 +245,7 @@ function buildVolumeMounts(
 
   // Per-group memory directory (isolated from workspace to avoid polluting user files)
   const memoryDir = path.join(DATA_DIR, 'memory', group.folder);
-  fs.mkdirSync(memoryDir, { recursive: true });
+  mkdirForContainer(memoryDir);
   mounts.push({
     hostPath: memoryDir,
     containerPath: '/workspace/memory',
@@ -157,28 +267,8 @@ function buildVolumeMounts(
     : path.join(DATA_DIR, 'sessions', group.folder, '.gemini');
   fs.mkdirSync(groupGeminiDir, { recursive: true });
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) {
-    fs.writeFileSync(
-      settingsFile,
-      JSON.stringify(
-        {
-          env: {
-            // Enable agent swarms (subagent orchestration)
-            // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
-            CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-            // Load provider memory files from additional mounted directories
-            // https://code.claude.com/docs/en/memory#load-memory-from-additional-directories
-            CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
-            // Enable Claude's memory feature (persists user preferences between sessions)
-            // https://code.claude.com/docs/en/memory#manage-auto-memory
-            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-          },
-        },
-        null,
-        2,
-      ) + '\n',
-    );
-  }
+  const userMcpServers = ownerId ? loadUserMcpServers(ownerId) : undefined;
+  ensureSettingsJson(settingsFile, userMcpServers);
 
   mounts.push({
     hostPath: groupSessionsDir,
@@ -1028,49 +1118,53 @@ export async function runHostAgent(
 
   // 3. 写入 settings.json
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) {
-    fs.writeFileSync(
-      settingsFile,
-      JSON.stringify(
-        {
-          env: {
-            CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-            CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
-            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-          },
-        },
-        null,
-        2,
-      ) + '\n',
-      { mode: 0o600 },
-    );
-  }
+  const hostUserMcpServers = group.created_by ? loadUserMcpServers(group.created_by) : undefined;
+  ensureSettingsJson(settingsFile, hostUserMcpServers);
 
   // 4. Skills 自动链接到 session 目录
   try {
-    const skillsDir = path.join(groupSessionsDir, 'skills');
-    fs.mkdirSync(skillsDir, { recursive: true });
-    // 清空已有符号链接
-    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-      const entryPath = path.join(skillsDir, entry.name);
-      try {
-        if (entry.isSymbolicLink() || entry.isDirectory()) {
-          fs.rmSync(entryPath, { recursive: true, force: true });
+    const skillTargetDirs = [
+      path.join(groupSessionsDir, 'skills'),
+      path.join(groupCodexDir, 'skills'),
+      path.join(path.dirname(groupCodexDir), '.agents', 'skills'),
+      path.join(groupGeminiDir, 'skills'),
+    ];
+
+    for (const skillsDir of skillTargetDirs) {
+      fs.mkdirSync(skillsDir, { recursive: true });
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        const entryPath = path.join(skillsDir, entry.name);
+        try {
+          if (entry.isSymbolicLink() || entry.isDirectory()) {
+            fs.rmSync(entryPath, { recursive: true, force: true });
+          }
+        } catch {
+          // ignore
         }
-      } catch { /* ignore */ }
+      }
     }
+
+    const linkSkill = (name: string, sourcePath: string): void => {
+      for (const skillsDir of skillTargetDirs) {
+        const linkPath = path.join(skillsDir, name);
+        try {
+          if (fs.existsSync(linkPath)) {
+            fs.rmSync(linkPath, { recursive: true, force: true });
+          }
+          fs.symlinkSync(sourcePath, linkPath);
+        } catch {
+          // ignore per-target linking errors
+        }
+      }
+    };
+
     // 项目级 skills
     const projectRoot = process.cwd();
     const projectSkillsDir = path.join(projectRoot, 'container', 'skills');
     if (fs.existsSync(projectSkillsDir)) {
       for (const entry of fs.readdirSync(projectSkillsDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
-        try {
-          fs.symlinkSync(
-            path.join(projectSkillsDir, entry.name),
-            path.join(skillsDir, entry.name),
-          );
-        } catch { /* ignore */ }
+        linkSkill(entry.name, path.join(projectSkillsDir, entry.name));
       }
     }
     // 用户级 skills（同名覆盖项目级）
@@ -1080,17 +1174,7 @@ export async function runHostAgent(
       if (fs.existsSync(userSkillsDir)) {
         for (const entry of fs.readdirSync(userSkillsDir, { withFileTypes: true })) {
           if (!entry.isDirectory()) continue;
-          const linkPath = path.join(skillsDir, entry.name);
-          try {
-            // 移除已有的项目级符号链接（用户级覆盖）
-            if (fs.existsSync(linkPath)) {
-              fs.rmSync(linkPath, { recursive: true, force: true });
-            }
-            fs.symlinkSync(
-              path.join(userSkillsDir, entry.name),
-              linkPath,
-            );
-          } catch { /* ignore */ }
+          linkSkill(entry.name, path.join(userSkillsDir, entry.name));
         }
       }
     }
