@@ -36,6 +36,26 @@ export function TaskDetail({ task }: TaskDetailProps) {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
+  const formatScheduleValue = () => {
+    if (task.schedule_type === 'interval') {
+      const ms = Number.parseInt(task.schedule_value, 10);
+      if (!Number.isFinite(ms) || ms <= 0) return task.schedule_value;
+      const minute = 60 * 1000;
+      const hour = 60 * minute;
+      const day = 24 * hour;
+      if (ms % day === 0) return `每 ${ms / day} 天`;
+      if (ms % hour === 0) return `每 ${ms / hour} 小时`;
+      if (ms % minute === 0) return `每 ${ms / minute} 分钟`;
+      if (ms % 1000 === 0) return `每 ${ms / 1000} 秒`;
+      return `每 ${ms}ms`;
+    }
+    if (task.schedule_type === 'once') {
+      const parsed = new Date(task.schedule_value);
+      if (!Number.isNaN(parsed.getTime())) return formatDate(parsed.toISOString());
+    }
+    return task.schedule_value;
+  };
+
   return (
     <div className="p-4 bg-muted/40 space-y-4">
       {/* Full Prompt */}
@@ -60,8 +80,11 @@ export function TaskDetail({ task }: TaskDetailProps) {
         <div>
           <div className="text-xs text-muted-foreground mb-1">调度值</div>
           <code className="text-sm text-foreground bg-card px-2 py-1 rounded border border-border">
-            {task.schedule_value}
+            {formatScheduleValue()}
           </code>
+          {task.schedule_type !== 'cron' && (
+            <div className="mt-1 text-xs text-muted-foreground">原始值：{task.schedule_value}</div>
+          )}
         </div>
 
         <div>

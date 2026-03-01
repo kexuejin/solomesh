@@ -13,6 +13,36 @@ interface TaskCardProps {
 export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
 
+  const formatScheduleValue = () => {
+    if (task.schedule_type === 'interval') {
+      const ms = Number.parseInt(task.schedule_value, 10);
+      if (!Number.isFinite(ms) || ms <= 0) return task.schedule_value;
+      const minute = 60 * 1000;
+      const hour = 60 * minute;
+      const day = 24 * hour;
+      if (ms % day === 0) return `每 ${ms / day} 天`;
+      if (ms % hour === 0) return `每 ${ms / hour} 小时`;
+      if (ms % minute === 0) return `每 ${ms / minute} 分钟`;
+      if (ms % 1000 === 0) return `每 ${ms / 1000} 秒`;
+      return `每 ${ms}ms`;
+    }
+
+    if (task.schedule_type === 'once') {
+      const parsed = new Date(task.schedule_value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+    }
+
+    return task.schedule_value;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -77,7 +107,7 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
                   {task.schedule_type === 'once' && '单次'}
                 </span>
                 <code className="text-xs bg-muted px-2 py-0.5 rounded">
-                  {task.schedule_value}
+                  {formatScheduleValue()}
                 </code>
               </div>
 
