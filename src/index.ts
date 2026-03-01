@@ -100,6 +100,7 @@ import {
 } from './db.js';
 // feishu.js deprecated exports are no longer needed; imManager handles all connections
 import { imManager } from './im-manager.js';
+import { analyzeIntent } from './intent-analyzer.js';
 import {
   getRuntimeProviderConfig as getRuntimeProviderConfigForRefresh,
   getContainerEnvConfig,
@@ -3557,9 +3558,19 @@ async function startMessageLoop(): Promise<void> {
             continue;
           }
 
-          if (queue.sendMessage(chatJid, formatted, imagesForAgent)) {
+          const intent = analyzeIntent(formatted);
+          const sendResult = queue.sendMessage(chatJid, formatted, imagesForAgent, intent);
+          const handledByActiveRunner = sendResult !== 'no_active';
+
+          if (handledByActiveRunner) {
             logger.debug(
-              { chatJid, count: workflowMessages.length, imageCount: images.length },
+              {
+                chatJid,
+                count: workflowMessages.length,
+                imageCount: images.length,
+                sendResult,
+                intent,
+              },
               'Piped messages to active container',
             );
             const lastProcessed = workflowMessages[workflowMessages.length - 1];

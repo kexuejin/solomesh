@@ -68,6 +68,7 @@ import type { NewMessage, WsMessageOut, WsMessageIn, AuthUser, StreamEvent, User
 import { WEB_PORT, SESSION_COOKIE_NAME } from './config.js';
 import { logger } from './logger.js';
 import { parseProviderDirective } from './provider-directive.js';
+import { analyzeIntent } from './intent-analyzer.js';
 import { parseWorkflowCommand } from './workflow.js';
 
 // --- App Setup ---
@@ -314,9 +315,10 @@ async function handleWebUserMessage(
       data: attachment.data,
       mimeType: attachment.mimeType,
     }));
-    const sent = deps.queue.sendMessage(chatJid, formatted, images);
-    pipedToActive = !!sent;
-    if (!sent) {
+    const intent = analyzeIntent(formatted);
+    const sendResult = deps.queue.sendMessage(chatJid, formatted, images, intent);
+    pipedToActive = sendResult !== 'no_active';
+    if (sendResult === 'no_active') {
       deps.queue.enqueueMessageCheck(chatJid);
     }
   }
@@ -404,10 +406,15 @@ async function handleAgentConversationMessage(
   }
 
   // Try to pipe into running agent process
-  const sent = (providerDirective.hasDirective || hasWorkflowControl)
+  const sendResult = (providerDirective.hasDirective || hasWorkflowControl)
     ? false
-    : deps.queue.sendMessage(virtualChatJid, formatted);
-  if (!sent) {
+    : deps.queue.sendMessage(
+      virtualChatJid,
+      formatted,
+      undefined,
+      analyzeIntent(formatted),
+    );
+  if (sendResult === 'no_active' || sendResult === false) {
     // No running process — start one via processAgentConversation
     if (deps.processAgentConversation) {
       const taskId = `agent-conv:${agentId}:${Date.now()}`;
