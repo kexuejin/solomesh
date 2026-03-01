@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTasksStore } from '../stores/tasks';
 import { useChatStore } from '../stores/chat';
+import { useAuthStore } from '../stores/auth';
 import { TaskCard } from '../components/tasks/TaskCard';
 import { CreateTaskForm } from '../components/tasks/CreateTaskForm';
 import { Plus, RefreshCw, Clock, X } from 'lucide-react';
@@ -15,8 +16,10 @@ export function TasksPage() {
   const { t } = useI18n();
   const { tasks, loading, error, loadTasks, createTask, updateTaskStatus, deleteTask } = useTasksStore();
   const { groups, loadGroups } = useChatStore();
+  const user = useAuthStore((s) => s.user);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null);
+  const isAdmin = user?.role === 'admin';
   const templates = getAutomationTemplates(t);
 
   useEffect(() => {
@@ -31,6 +34,8 @@ export function TasksPage() {
     scheduleType: 'cron' | 'interval' | 'once';
     scheduleValue: string;
     contextMode: 'group' | 'isolated';
+    executionType: 'agent' | 'script';
+    scriptCommand: string;
   }) => {
     await createTask(
       data.groupFolder,
@@ -38,7 +43,9 @@ export function TasksPage() {
       data.prompt,
       data.scheduleType,
       data.scheduleValue,
-      data.contextMode
+      data.contextMode,
+      data.executionType,
+      data.scriptCommand,
     );
     setShowCreateForm(false);
   };
@@ -237,6 +244,7 @@ export function TasksPage() {
         <CreateTaskForm
           groups={groupsList}
           initialTemplateId={initialTemplateId}
+          isAdmin={isAdmin}
           onSubmit={handleCreateTask}
           onClose={() => {
             setShowCreateForm(false);

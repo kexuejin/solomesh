@@ -2349,6 +2349,8 @@ export interface SystemSettings {
   containerMaxOutputSize: number;
   maxConcurrentContainers: number;
   maxConcurrentHostProcesses: number;
+  maxConcurrentScripts: number;
+  scriptTimeout: number;
   maxLoginAttempts: number;
   loginLockoutMinutes: number;
 }
@@ -2359,6 +2361,8 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   containerMaxOutputSize: 10485760,
   maxConcurrentContainers: 20,
   maxConcurrentHostProcesses: 5,
+  maxConcurrentScripts: 5,
+  scriptTimeout: 300000,
   maxLoginAttempts: 5,
   loginLockoutMinutes: 15,
 };
@@ -2399,6 +2403,14 @@ function readSystemSettingsFromFile(): SystemSettings | null {
       typeof raw.maxConcurrentHostProcesses === 'number' && raw.maxConcurrentHostProcesses > 0
         ? raw.maxConcurrentHostProcesses
         : DEFAULT_SYSTEM_SETTINGS.maxConcurrentHostProcesses,
+    maxConcurrentScripts:
+      typeof raw.maxConcurrentScripts === 'number' && raw.maxConcurrentScripts > 0
+        ? raw.maxConcurrentScripts
+        : DEFAULT_SYSTEM_SETTINGS.maxConcurrentScripts,
+    scriptTimeout:
+      typeof raw.scriptTimeout === 'number' && raw.scriptTimeout > 0
+        ? raw.scriptTimeout
+        : DEFAULT_SYSTEM_SETTINGS.scriptTimeout,
     maxLoginAttempts:
       typeof raw.maxLoginAttempts === 'number' && raw.maxLoginAttempts > 0
         ? raw.maxLoginAttempts
@@ -2417,6 +2429,8 @@ function buildEnvFallbackSettings(): SystemSettings {
     containerMaxOutputSize: parseIntEnv(process.env.CONTAINER_MAX_OUTPUT_SIZE, DEFAULT_SYSTEM_SETTINGS.containerMaxOutputSize),
     maxConcurrentContainers: parseIntEnv(process.env.MAX_CONCURRENT_CONTAINERS, DEFAULT_SYSTEM_SETTINGS.maxConcurrentContainers),
     maxConcurrentHostProcesses: parseIntEnv(process.env.MAX_CONCURRENT_HOST_PROCESSES, DEFAULT_SYSTEM_SETTINGS.maxConcurrentHostProcesses),
+    maxConcurrentScripts: parseIntEnv(process.env.MAX_CONCURRENT_SCRIPTS, DEFAULT_SYSTEM_SETTINGS.maxConcurrentScripts),
+    scriptTimeout: parseIntEnv(process.env.SCRIPT_TIMEOUT, DEFAULT_SYSTEM_SETTINGS.scriptTimeout),
     maxLoginAttempts: parseIntEnv(process.env.MAX_LOGIN_ATTEMPTS, DEFAULT_SYSTEM_SETTINGS.maxLoginAttempts),
     loginLockoutMinutes: parseIntEnv(process.env.LOGIN_LOCKOUT_MINUTES, DEFAULT_SYSTEM_SETTINGS.loginLockoutMinutes),
   };
@@ -2470,6 +2484,10 @@ export function saveSystemSettings(partial: Partial<SystemSettings>): SystemSett
   if (merged.maxConcurrentContainers > 100) merged.maxConcurrentContainers = 100;
   if (merged.maxConcurrentHostProcesses < 1) merged.maxConcurrentHostProcesses = 1;
   if (merged.maxConcurrentHostProcesses > 50) merged.maxConcurrentHostProcesses = 50;
+  if (merged.maxConcurrentScripts < 1) merged.maxConcurrentScripts = 1;
+  if (merged.maxConcurrentScripts > 100) merged.maxConcurrentScripts = 100;
+  if (merged.scriptTimeout < 1000) merged.scriptTimeout = 1000;
+  if (merged.scriptTimeout > 86400000) merged.scriptTimeout = 86400000; // max 24 hours
   if (merged.maxLoginAttempts < 1) merged.maxLoginAttempts = 1;
   if (merged.maxLoginAttempts > 100) merged.maxLoginAttempts = 100;
   if (merged.loginLockoutMinutes < 1) merged.loginLockoutMinutes = 1;

@@ -60,16 +60,41 @@ export function TaskDetail({ task }: TaskDetailProps) {
 
   return (
     <div className="p-4 bg-muted/40 space-y-4">
-      {/* Full Prompt */}
-      <div>
-        <div className="text-xs text-muted-foreground mb-2">{t('tasks.detail.fullPrompt')}</div>
-        <div className="text-sm text-foreground bg-card px-3 py-2 rounded border border-border whitespace-pre-wrap">
-          {task.prompt}
+      {/* Script Command (script mode) */}
+      {task.execution_type === 'script' && task.script_command && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-2">{t('tasks.detail.scriptCommand')}</div>
+          <pre className="text-sm text-foreground bg-card px-3 py-2 rounded border border-border whitespace-pre-wrap font-mono">
+            {task.script_command}
+          </pre>
         </div>
-      </div>
+      )}
+
+      {/* Full Prompt / Description */}
+      {task.prompt && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-2">
+            {task.execution_type === 'script'
+              ? t('tasks.detail.taskDescription')
+              : t('tasks.detail.fullPrompt')}
+          </div>
+          <div className="text-sm text-foreground bg-card px-3 py-2 rounded border border-border whitespace-pre-wrap">
+            {task.prompt}
+          </div>
+        </div>
+      )}
 
       {/* Schedule Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.executionType')}</div>
+          <div className="text-sm text-foreground">
+            {task.execution_type === 'script'
+              ? t('tasks.detail.executionScript')
+              : t('tasks.detail.executionAgent')}
+          </div>
+        </div>
+
         <div>
           <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.scheduleType')}</div>
           <div className="text-sm text-foreground">
@@ -107,16 +132,18 @@ export function TaskDetail({ task }: TaskDetailProps) {
           </div>
         )}
 
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.contextMode')}</div>
-          <div className="text-sm text-foreground">
-            {task.context_mode === 'group'
-              ? t('tasks.detail.contextGroup')
-              : task.context_mode === 'isolated'
-                ? t('tasks.detail.contextIsolated')
-                : task.context_mode}
+        {task.execution_type !== 'script' && (
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.contextMode')}</div>
+            <div className="text-sm text-foreground">
+              {task.context_mode === 'group'
+                ? t('tasks.detail.contextGroup')
+                : task.context_mode === 'isolated'
+                  ? t('tasks.detail.contextIsolated')
+                  : task.context_mode}
+            </div>
           </div>
-        </div>
+        )}
 
         <div>
           <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.createdAt')}</div>

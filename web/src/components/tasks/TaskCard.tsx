@@ -94,13 +94,20 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
       >
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0 mr-4">
-            {/* Prompt (truncated 2 lines) */}
+            {/* Prompt / Script (truncated 2 lines) */}
             <p className="text-foreground font-medium line-clamp-2 mb-2">
-              {task.prompt}
+              {task.execution_type === 'script'
+                ? task.script_command || task.prompt
+                : task.prompt}
             </p>
 
             {/* Schedule Info */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm mb-2">
+              {task.execution_type === 'script' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                  {t('tasks.card.executionScript')}
+                </span>
+              )}
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">{t('tasks.card.schedule')}:</span>
                 <span className="text-foreground font-medium">

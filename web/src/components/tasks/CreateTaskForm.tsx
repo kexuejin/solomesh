@@ -28,6 +28,7 @@ interface Group {
 interface CreateTaskFormProps {
   groups: Group[];
   initialTemplateId?: string | null;
+  isAdmin?: boolean;
   onSubmit: (data: {
     groupFolder: string;
     chatJid: string;
@@ -35,6 +36,8 @@ interface CreateTaskFormProps {
     scheduleType: ScheduleType;
     scheduleValue: string;
     contextMode: ContextMode;
+    executionType: 'agent' | 'script';
+    scriptCommand: string;
   }) => Promise<void>;
   onClose: () => void;
 }
@@ -185,7 +188,13 @@ function parseTemplateSchedule(template: AutomationTemplate): {
   return fallback;
 }
 
-export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }: CreateTaskFormProps) {
+export function CreateTaskForm({
+  groups,
+  initialTemplateId,
+  isAdmin = false,
+  onSubmit,
+  onClose,
+}: CreateTaskFormProps) {
   const { t } = useI18n();
   const templates = getAutomationTemplates(t);
   const weekdayOptions = useMemo(
@@ -207,6 +216,8 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
     scheduleType: 'cron' as ScheduleType,
     scheduleValue: '',
     contextMode: 'isolated' as ContextMode,
+    executionType: 'agent' as 'agent' | 'script',
+    scriptCommand: '',
   });
 
   const [templateChoice, setTemplateChoice] = useState<string>(TEMPLATE_NONE);
@@ -302,8 +313,11 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
       newErrors.groupFolder = t('tasks.form.errors.groupRequired');
     }
 
-    if (!formData.prompt.trim()) {
+    if (formData.executionType === 'agent' && !formData.prompt.trim()) {
       newErrors.prompt = t('tasks.form.errors.promptRequired');
+    }
+    if (formData.executionType === 'script' && !formData.scriptCommand.trim()) {
+      newErrors.scriptCommand = t('tasks.form.errors.scriptCommandRequired');
     }
 
     if (scheduleMode === 'daily') {
@@ -361,6 +375,7 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
       await onSubmit({
         ...formData,
         prompt: formData.prompt.trim(),
+        scriptCommand: formData.scriptCommand.trim(),
         scheduleType,
         scheduleValue,
       });
@@ -448,9 +463,43 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
             </div>
           </div>
 
+          {isAdmin && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-foreground/80">
+                {t('tasks.form.executionType')}
+              </label>
+              <Select
+                value={formData.executionType}
+                onValueChange={(value) => {
+                  setFormData({
+                    ...formData,
+                    executionType: value as 'agent' | 'script',
+                  });
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.prompt;
+                    delete next.scriptCommand;
+                    return next;
+                  });
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="agent">{t('tasks.form.executionAgent')}</SelectItem>
+                  <SelectItem value="script">{t('tasks.form.executionScript')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground/80">
-              {t('tasks.form.prompt')} <span className="text-red-500">*</span>
+              {formData.executionType === 'script'
+                ? t('tasks.form.taskDescription')
+                : t('tasks.form.prompt')}{' '}
+              {formData.executionType === 'agent' && <span className="text-red-500">*</span>}
             </label>
             <Textarea
               value={formData.prompt}
@@ -463,6 +512,23 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
             />
             {errors.prompt && <p className="text-sm text-red-600">{errors.prompt}</p>}
           </div>
+
+          {formData.executionType === 'script' && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-foreground/80">
+                {t('tasks.form.scriptCommand')} <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={formData.scriptCommand}
+                onChange={(e) => {
+                  setFormData({ ...formData, scriptCommand: e.target.value });
+                }}
+                className={cn(errors.scriptCommand && 'border-red-500')}
+                placeholder={t('tasks.form.scriptCommandPlaceholder')}
+              />
+              {errors.scriptCommand && <p className="text-sm text-red-600">{errors.scriptCommand}</p>}
+            </div>
+          )}
 
           <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-3">
             <label className="block text-sm font-medium text-foreground/80">
@@ -632,7 +698,9 @@ export function CreateTaskForm({ groups, initialTemplateId, onSubmit, onClose }:
                 <SelectItem value="group">{t('tasks.form.contextGroup')}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
+            {formData.executionType !== 'script' && (
+              <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 border-t border-border pt-4">

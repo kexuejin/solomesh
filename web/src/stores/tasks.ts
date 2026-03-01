@@ -11,6 +11,8 @@ export interface ScheduledTask {
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
+  execution_type?: 'agent' | 'script';
+  script_command?: string | null;
   next_run: string | null;
   last_run?: string | null;
   last_result?: string | null;
@@ -40,7 +42,9 @@ interface TasksState {
     prompt: string,
     scheduleType: 'cron' | 'interval' | 'once',
     scheduleValue: string,
-    contextMode: 'group' | 'isolated'
+    contextMode: 'group' | 'isolated',
+    executionType?: 'agent' | 'script',
+    scriptCommand?: string,
   ) => Promise<void>;
   updateTaskStatus: (id: string, status: 'active' | 'paused') => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
@@ -92,7 +96,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     prompt: string,
     scheduleType: 'cron' | 'interval' | 'once',
     scheduleValue: string,
-    contextMode: 'group' | 'isolated'
+    contextMode: 'group' | 'isolated',
+    executionType?: 'agent' | 'script',
+    scriptCommand?: string,
   ) => {
     try {
       const normalizedScheduleValue =
@@ -100,14 +106,21 @@ export const useTasksStore = create<TasksState>((set, get) => ({
           ? normalizeOnceScheduleValue(scheduleValue)
           : scheduleValue.trim();
 
-      await api.post('/api/tasks', {
+      const body: Record<string, unknown> = {
         group_folder: groupFolder,
         chat_jid: chatJid,
         prompt: prompt.trim(),
         schedule_type: scheduleType,
         schedule_value: normalizedScheduleValue,
         context_mode: contextMode,
-      });
+      };
+      if (executionType) {
+        body.execution_type = executionType;
+      }
+      if (scriptCommand) {
+        body.script_command = scriptCommand;
+      }
+      await api.post('/api/tasks', body);
       set({ error: null });
       await get().loadTasks();
     } catch (err) {

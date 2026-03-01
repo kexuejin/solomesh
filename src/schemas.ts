@@ -60,6 +60,8 @@ export const TaskPatchSchema = z.object({
   schedule_type: z.enum(['cron', 'interval', 'once']).optional(),
   schedule_value: z.string().optional(),
   context_mode: z.enum(['group', 'isolated']).optional(),
+  execution_type: z.enum(['agent', 'script']).optional(),
+  script_command: z.string().max(4096).nullable().optional(),
   status: z.enum(['active', 'paused']).optional(),
   next_run: z.string().optional(),
 });
@@ -70,11 +72,28 @@ const CRON_REGEX = /^(\S+\s+){4,5}\S+$/;
 export const TaskCreateSchema = z.object({
   group_folder: z.string().min(1),
   chat_jid: z.string().min(1),
-  prompt: z.string().min(1),
+  prompt: z.string().optional().default(''),
   schedule_type: z.enum(['cron', 'interval', 'once']),
   schedule_value: z.string().min(1),
   context_mode: z.enum(['group', 'isolated']).optional(),
+  execution_type: z.enum(['agent', 'script']).optional(),
+  script_command: z.string().max(4096).optional(),
 }).superRefine((data, ctx) => {
+  const execType = data.execution_type || 'agent';
+  if (execType === 'agent' && !data.prompt?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['prompt'],
+      message: 'Agent mode requires prompt',
+    });
+  }
+  if (execType === 'script' && !data.script_command?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['script_command'],
+      message: 'Script mode requires script_command',
+    });
+  }
   if (data.schedule_type === 'cron') {
     if (!CRON_REGEX.test(data.schedule_value.trim())) {
       ctx.addIssue({
