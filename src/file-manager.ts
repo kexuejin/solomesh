@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { GROUPS_DIR } from './config.js';
 import { logger } from './logger.js';
+import { KNOWN_RUNTIME_MEMORY_FILE_NAMES } from './runtime-memory-profile.js';
 
 // 类型
 export interface FileEntry {
@@ -17,8 +18,7 @@ export interface FileEntry {
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const SYSTEM_PATHS = [
   'logs',
-  'CLAUDE.md',
-  'AGENTS.md',
+  ...KNOWN_RUNTIME_MEMORY_FILE_NAMES,
   '.claude',
   '.codex',
   '.gemini',

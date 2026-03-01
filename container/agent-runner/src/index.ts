@@ -31,6 +31,10 @@ import {
   loadRawUserMcpServers,
   normalizeUserMcpServers,
 } from './mcp-config.js';
+import {
+  getPrimaryMemoryFileName as getPrimaryRuntimeMemoryFileName,
+  KNOWN_RUNTIME_MEMORY_FILE_NAMES,
+} from './runtime-memory-profile.js';
 
 type AgentProviderId = 'claude' | 'codex' | 'gemini';
 
@@ -67,8 +71,8 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
 const AGENT_RUNNER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PRIMARY_MEMORY_FILE_NAME =
   process.env.SOLOMESH_PRIMARY_MEMORY_FILE_NAME ||
-  (AGENT_PROVIDER_ID === 'claude' ? 'CLAUDE.md' : 'AGENTS.md');
-const RUNTIME_PRIMARY_MEMORY_FILE_NAMES = ['CLAUDE.md', 'AGENTS.md'] as const;
+  getPrimaryRuntimeMemoryFileName(AGENT_PROVIDER_ID);
+const RUNTIME_PRIMARY_MEMORY_FILE_NAMES = KNOWN_RUNTIME_MEMORY_FILE_NAMES;
 
 function resolveGeminiCliPath(): string {
   const envBin = process.env.GEMINI_CLI_BIN?.trim();

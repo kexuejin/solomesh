@@ -24,5 +24,5 @@ test('gemini runtime mapping', () => {
   assert.equal(rt.skillInstallAgent, 'gemini-cli');
   assert.equal(rt.globalSkillsDirName, '.gemini/skills');
   assert.equal(rt.supportsSkillsInstall, false);
-  assert.equal(rt.primaryMemoryFileName, 'AGENTS.md');
+  assert.equal(rt.primaryMemoryFileName, 'GEMINI.md');
 });

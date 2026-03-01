@@ -10,6 +10,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
+import { getPrimaryMemoryFileName } from './runtime-memory-profile.js';
 
 const IPC_DIR = process.env.SOLOMESH_WORKSPACE_IPC || '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
@@ -422,7 +423,7 @@ const AGENT_PROVIDER_ID =
       : 'claude';
 const PRIMARY_MEMORY_FILE_NAME =
   process.env.SOLOMESH_PRIMARY_MEMORY_FILE_NAME ||
-  (AGENT_PROVIDER_ID === 'claude' ? 'CLAUDE.md' : 'AGENTS.md');
+  getPrimaryMemoryFileName(AGENT_PROVIDER_ID);
 const MEMORY_EXTENSIONS = new Set(['.md', '.txt']);
 const MEMORY_SUBDIRS = new Set(['memory', 'conversations']);
 const MEMORY_SKIP_DIRS = new Set([

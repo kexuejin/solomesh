@@ -1,4 +1,5 @@
 import type { AgentProvider } from './agent-providers.js';
+import { getPrimaryMemoryFileName } from './runtime-memory-profile.js';
 
 export interface ProviderRuntime {
   id: AgentProvider;
@@ -14,21 +15,21 @@ const PROVIDER_RUNTIME_TABLE: Record<AgentProvider, ProviderRuntime> = {
     skillInstallAgent: 'claude-code',
     globalSkillsDirName: '.claude/skills',
     supportsSkillsInstall: true,
-    primaryMemoryFileName: 'CLAUDE.md',
+    primaryMemoryFileName: getPrimaryMemoryFileName('claude'),
   },
   codex: {
     id: 'codex',
     skillInstallAgent: 'codex',
     globalSkillsDirName: '.agents/skills',
     supportsSkillsInstall: true,
-    primaryMemoryFileName: 'AGENTS.md',
+    primaryMemoryFileName: getPrimaryMemoryFileName('codex'),
   },
   gemini: {
     id: 'gemini',
     skillInstallAgent: 'gemini-cli',
     globalSkillsDirName: '.gemini/skills',
     supportsSkillsInstall: false,
-    primaryMemoryFileName: 'AGENTS.md',
+    primaryMemoryFileName: getPrimaryMemoryFileName('gemini'),
   },
 };
 

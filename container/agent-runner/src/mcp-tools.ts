@@ -14,6 +14,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
+import { KNOWN_RUNTIME_MEMORY_FILE_NAMES } from './runtime-memory-profile.js';
 
 /** Context required by MCP tools. Passed at construction time. */
 export interface McpContext {
@@ -55,6 +56,10 @@ const MEMORY_SKIP_DIRS = new Set([
 const MAX_MEMORY_FILE_SIZE = 512 * 1024; // 512KB per file
 const MAX_MEMORY_APPEND_SIZE = 16 * 1024; // 16KB per append
 const MEMORY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const PRIMARY_MEMORY_FILE_NAME_SET = new Set<string>(
+  KNOWN_RUNTIME_MEMORY_FILE_NAMES,
+);
+const PRIMARY_MEMORY_FILE_HINT = KNOWN_RUNTIME_MEMORY_FILE_NAMES.join(' / ');
 
 function collectMemoryFiles(baseDir: string, out: string[], maxDepth: number, depth = 0): void {
   if (depth > maxDepth || !fs.existsSync(baseDir)) return;
@@ -69,8 +74,7 @@ function collectMemoryFiles(baseDir: string, out: string[], maxDepth: number, de
         }
       } else if (entry.isFile()) {
         if (
-          entry.name === 'CLAUDE.md'
-          || entry.name === 'AGENTS.md'
+          PRIMARY_MEMORY_FILE_NAME_SET.has(entry.name)
           || MEMORY_EXTENSIONS.has(path.extname(entry.name))
         ) {
           out.push(fullPath);
@@ -474,7 +478,7 @@ Use the skills panel in the UI to find the skill ID (directory name, e.g. "memor
 
 \u4ec5\u7528\u4e8e\u660e\u786e\u53ea\u8ddf\u5f53\u5929/\u77ed\u671f\u6709\u5173\u7684\u4fe1\u606f\uff1a\u4eca\u65e5\u9879\u76ee\u8fdb\u5c55\u3001\u4e34\u65f6\u6280\u672f\u51b3\u7b56\u3001\u5f85\u529e\u4e8b\u9879\u3001\u4f1a\u8bae\u8981\u70b9\u7b49\u3002
 
-**\u91cd\u8981**\uff1a\u4e0b\u6b21\u5bf9\u8bdd\u4ecd\u53ef\u80fd\u7528\u5230\u7684\u4fe1\u606f\uff08\u7528\u6237\u8eab\u4efd\u3001\u504f\u597d\u3001\u5e38\u7528\u9879\u76ee\u3001\u7528\u6237\u8bf4\u201c\u8bb0\u4f4f\u201d\u7684\u5185\u5bb9\uff09\u5e94\u76f4\u63a5\u7528 Edit \u5de5\u5177\u7f16\u8f91 /workspace/global/CLAUDE.md\uff0c\u4e0d\u8981\u7528\u6b64\u5de5\u5177\u3002`,
+**\u91cd\u8981**\uff1a\u4e0b\u6b21\u5bf9\u8bdd\u4ecd\u53ef\u80fd\u7528\u5230\u7684\u4fe1\u606f\uff08\u7528\u6237\u8eab\u4efd\u3001\u504f\u597d\u3001\u5e38\u7528\u9879\u76ee\u3001\u7528\u6237\u8bf4\u201c\u8bb0\u4f4f\u201d\u7684\u5185\u5bb9\uff09\u5e94\u76f4\u63a5\u7528 Edit \u5de5\u5177\u7f16\u8f91 /workspace/global/\u4e3b\u8bb0\u5fc6\u6587\u4ef6\uff08${PRIMARY_MEMORY_FILE_HINT}\uff09\uff0c\u4e0d\u8981\u7528\u6b64\u5de5\u5177\u3002`,
       {
         content: z.string().describe('\u8981\u8ffd\u52a0\u7684\u8bb0\u5fc6\u5185\u5bb9'),
         date: z.string().optional().describe('\u76ee\u6807\u65e5\u671f\uff0c\u683c\u5f0f YYYY-MM-DD\uff08\u9ed8\u8ba4\uff1a\u4eca\u5929\uff09'),
@@ -527,7 +531,7 @@ Use the skills panel in the UI to find the skill ID (directory name, e.g. "memor
     // --- memory_search ---
     tool(
       'memory_search',
-      `\u5728\u5de5\u4f5c\u533a\u7684\u8bb0\u5fc6\u6587\u4ef6\u4e2d\u641c\u7d22\uff08CLAUDE.md\u3001memory/\u3001conversations/ \u53ca\u5176\u4ed6 .md/.txt \u6587\u4ef6\uff09\u3002
+      `\u5728\u5de5\u4f5c\u533a\u7684\u8bb0\u5fc6\u6587\u4ef6\u4e2d\u641c\u7d22\uff08${PRIMARY_MEMORY_FILE_HINT}\u3001memory/\u3001conversations/ \u53ca\u5176\u4ed6 .md/.txt \u6587\u4ef6\uff09\u3002
 \u8fd4\u56de\u6587\u4ef6\u8def\u5f84\u3001\u884c\u53f7\u548c\u4e0a\u4e0b\u6587\u7247\u6bb5\u3002\u8d85\u8fc7 512KB \u7684\u6587\u4ef6\u4f1a\u88ab\u8df3\u8fc7\u3002
 \u7528\u4e8e\u56de\u5fc6\u8fc7\u53bb\u7684\u51b3\u7b56\u3001\u504f\u597d\u3001\u9879\u76ee\u4e0a\u4e0b\u6587\u6216\u5bf9\u8bdd\u5386\u53f2\u3002`,
       {
@@ -586,7 +590,7 @@ Use the skills panel in the UI to find the skill ID (directory name, e.g. "memor
       'memory_get',
       `\u8bfb\u53d6\u8bb0\u5fc6\u6587\u4ef6\u6216\u6307\u5b9a\u884c\u8303\u56f4\u3002\u5728 memory_search \u4e4b\u540e\u4f7f\u7528\u4ee5\u83b7\u53d6\u5b8c\u6574\u4e0a\u4e0b\u6587\u3002`,
       {
-        file: z.string().describe('\u76f8\u5bf9\u8def\u5f84\uff0c\u53ef\u5e26 :\u884c\u53f7\uff08\u5982 "CLAUDE.md:12"\u3001"[global] CLAUDE.md:8" \u6216 "[memory] 2026-01-15.md"\uff09'),
+        file: z.string().describe(`\u76f8\u5bf9\u8def\u5f84\uff0c\u53ef\u5e26 :\u884c\u53f7\uff08\u5982 "${KNOWN_RUNTIME_MEMORY_FILE_NAMES[0]}:12"\u3001"[global] ${KNOWN_RUNTIME_MEMORY_FILE_NAMES[0]}:8" \u6216 "[memory] 2026-01-15.md"\uff09`),
         from_line: z.number().optional().describe('\u8d77\u59cb\u884c\u53f7\uff08\u4ece 1 \u5f00\u59cb\uff0c\u9ed8\u8ba4\uff1a1\uff09'),
         lines: z.number().optional().describe('\u8bfb\u53d6\u884c\u6570\uff08\u9ed8\u8ba4\uff1a\u5168\u90e8\uff0c\u4e0a\u9650\uff1a200\uff09'),
       },

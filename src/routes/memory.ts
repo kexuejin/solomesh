@@ -17,7 +17,8 @@ import { logger } from '../logger.js';
 import { GROUPS_DIR, DATA_DIR } from '../config.js';
 import type { AuthUser } from '../types.js';
 import {
-  getCompanionPrimaryMemoryFileName,
+  RUNTIME_PRIMARY_MEMORY_FILE_NAMES,
+  listCompanionPrimaryMemoryFileNames,
   isRuntimePrimaryMemoryFileName,
   listRuntimePrimaryMemoryFileNames,
 } from '../memory-file-alias.js';
@@ -154,7 +155,8 @@ function isUserOwnedFolder(
 function classifyMemorySource(
   relativePath: string,
 ): Pick<MemorySource, 'scope' | 'kind' | 'label' | 'ownerName'> {
-  const [primaryMemoryFileName = 'CLAUDE.md'] = getActivePrimaryMemoryFileNames();
+  const [primaryMemoryFileName = RUNTIME_PRIMARY_MEMORY_FILE_NAMES[0]] =
+    getActivePrimaryMemoryFileNames();
   const parts = relativePath.split('/');
   // data/groups/user-global/{userId}/{provider-memory-file}
   if (parts[0] === 'data' && parts[1] === 'groups' && parts[2] === 'user-global') {
@@ -259,16 +261,17 @@ function writeFileAtomically(filePath: string, content: string): void {
   fs.renameSync(tempPath, filePath);
 }
 
-function syncCompanionPrimaryMemoryFile(
+function syncCompanionPrimaryMemoryFiles(
   absolutePath: string,
   content: string,
 ): void {
   if (!isWithinRoot(absolutePath, GROUPS_DIR)) return;
   const fileName = path.basename(absolutePath);
   if (!isRuntimePrimaryMemoryFileName(fileName)) return;
-  const companionFileName = getCompanionPrimaryMemoryFileName(fileName);
-  const companionPath = path.join(path.dirname(absolutePath), companionFileName);
-  writeFileAtomically(companionPath, content);
+  for (const companionFileName of listCompanionPrimaryMemoryFileNames(fileName)) {
+    const companionPath = path.join(path.dirname(absolutePath), companionFileName);
+    writeFileAtomically(companionPath, content);
+  }
 }
 
 function writeMemoryFile(
@@ -289,7 +292,7 @@ function writeMemoryFile(
   }
 
   writeFileAtomically(absolutePath, content);
-  syncCompanionPrimaryMemoryFile(absolutePath, content);
+  syncCompanionPrimaryMemoryFiles(absolutePath, content);
 
   const stat = fs.statSync(absolutePath);
   return {
@@ -600,7 +603,8 @@ memoryRoutes.put('/file', authMiddleware, async (c) => {
 memoryRoutes.get('/global', authMiddleware, (c) => {
   try {
     const user = c.get('user') as AuthUser;
-    const [primaryMemoryFileName = 'CLAUDE.md'] = getActivePrimaryMemoryFileNames();
+    const [primaryMemoryFileName = RUNTIME_PRIMARY_MEMORY_FILE_NAMES[0]] =
+      getActivePrimaryMemoryFileNames();
     const userGlobalPath = `data/groups/user-global/${user.id}/${primaryMemoryFileName}`;
     return c.json(readMemoryFile(userGlobalPath, user));
   } catch (err) {
@@ -627,7 +631,8 @@ memoryRoutes.put('/global', authMiddleware, async (c) => {
 
   try {
     const user = c.get('user') as AuthUser;
-    const [primaryMemoryFileName = 'CLAUDE.md'] = getActivePrimaryMemoryFileNames();
+    const [primaryMemoryFileName = RUNTIME_PRIMARY_MEMORY_FILE_NAMES[0]] =
+      getActivePrimaryMemoryFileNames();
     const userGlobalPath = `data/groups/user-global/${user.id}/${primaryMemoryFileName}`;
     return c.json(
       writeMemoryFile(userGlobalPath, validation.data.content, user),
