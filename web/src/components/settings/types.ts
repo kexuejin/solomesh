@@ -1,17 +1,23 @@
 export interface RuntimeConfigPublic {
-  agentRuntime: 'claude' | 'codex';
+  agentRuntime: 'claude' | 'codex' | 'gemini';
   anthropicBaseUrl: string;
   codexBaseUrl: string;
   codexModel: string;
+  geminiBaseUrl: string;
+  geminiModel: string;
+  geminiAuthMode: 'api_key' | 'oauth';
   updatedAt: string | null;
   hasAnthropicAuthToken: boolean;
   hasAnthropicApiKey: boolean;
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
+  hasGeminiApiKey: boolean;
+  hasGeminiOAuthCredentials: boolean;
   anthropicAuthTokenMasked: string | null;
   anthropicApiKeyMasked: string | null;
   claudeCodeOauthTokenMasked: string | null;
   codexApiKeyMasked: string | null;
+  geminiApiKeyMasked: string | null;
   hasRuntimeOAuthCredentials: boolean;
   claudeOAuthCredentialsExpiresAt: number | null;
   claudeOAuthCredentialsAccessTokenMasked: string | null;
@@ -100,9 +106,9 @@ export interface WorkflowStageDependencyDef {
 export interface WorkflowStageDef {
   id: string;
   name: string;
-  defaultProvider: 'claude' | 'codex';
+  defaultProvider: 'claude' | 'codex' | 'gemini';
   strictProvider?: boolean;
-  fallbackProviders?: Array<'claude' | 'codex'>;
+  fallbackProviders?: Array<'claude' | 'codex' | 'gemini'>;
   goal: string;
   requiredOutputHints: string[];
   doneKeywords: string[];

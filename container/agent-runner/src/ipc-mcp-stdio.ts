@@ -414,13 +414,25 @@ Use the skills panel in the UI to find the skill ID (directory name, e.g. "memor
 const WORKSPACE_GROUP = process.env.SOLOMESH_WORKSPACE_GROUP || '/workspace/group';
 const WORKSPACE_GLOBAL = process.env.SOLOMESH_WORKSPACE_GLOBAL || '/workspace/global';
 const WORKSPACE_MEMORY = process.env.SOLOMESH_WORKSPACE_MEMORY || '/workspace/memory';
-const AGENT_PROVIDER_ID = process.env.AGENT_RUNTIME === 'codex' ? 'codex' : 'claude';
+const AGENT_PROVIDER_ID =
+  process.env.AGENT_RUNTIME === 'codex'
+    ? 'codex'
+    : process.env.AGENT_RUNTIME === 'gemini'
+      ? 'gemini'
+      : 'claude';
 const PRIMARY_MEMORY_FILE_NAME =
   process.env.SOLOMESH_PRIMARY_MEMORY_FILE_NAME ||
-  (AGENT_PROVIDER_ID === 'codex' ? 'AGENTS.md' : 'CLAUDE.md');
+  (AGENT_PROVIDER_ID === 'claude' ? 'CLAUDE.md' : 'AGENTS.md');
 const MEMORY_EXTENSIONS = new Set(['.md', '.txt']);
 const MEMORY_SUBDIRS = new Set(['memory', 'conversations']);
-const MEMORY_SKIP_DIRS = new Set(['logs', '.claude', 'node_modules', '.git']);
+const MEMORY_SKIP_DIRS = new Set([
+  'logs',
+  '.claude',
+  '.codex',
+  '.gemini',
+  'node_modules',
+  '.git',
+]);
 const MAX_MEMORY_FILE_SIZE = 512 * 1024; // 512KB per file
 const MAX_MEMORY_APPEND_SIZE = 16 * 1024; // 16KB per append
 const MEMORY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

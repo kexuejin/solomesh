@@ -23,6 +23,13 @@ const PROVIDER_RUNTIME_TABLE: Record<AgentProvider, ProviderRuntime> = {
     supportsSkillsInstall: true,
     primaryMemoryFileName: 'AGENTS.md',
   },
+  gemini: {
+    id: 'gemini',
+    skillInstallAgent: 'gemini-cli',
+    globalSkillsDirName: '.gemini/skills',
+    supportsSkillsInstall: false,
+    primaryMemoryFileName: 'AGENTS.md',
+  },
 };
 
 export function getProviderRuntime(provider: AgentProvider): ProviderRuntime {

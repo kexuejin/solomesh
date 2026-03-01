@@ -8,6 +8,7 @@ import path from 'path';
 import { deleteSession, getJidsByFolder, storeMessageDirect, ensureChatExists } from './db.js';
 import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
+import { listSessionCleanupPlan } from './session-cleanup.js';
 import type { NewMessage } from './types.js';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -21,17 +22,17 @@ export interface CommandDeps {
 // ─── Session file cleanup (mirrors groups.ts clearSessionJsonlFiles) ────
 
 function clearSessionFiles(folder: string): void {
-  const claudeDir = path.join(DATA_DIR, 'sessions', folder, '.claude');
-  if (!fs.existsSync(claudeDir)) return;
-
-  const keep = new Set(['settings.json']);
-  const entries = fs.readdirSync(claudeDir);
-  for (const entry of entries) {
-    if (keep.has(entry)) continue;
-    try {
-      fs.rmSync(path.join(claudeDir, entry), { recursive: true, force: true });
-    } catch (err) {
-      logger.warn({ entry, folder, err }, 'Failed to remove session file, skipping');
+  const sessionRoot = path.join(DATA_DIR, 'sessions', folder);
+  for (const target of listSessionCleanupPlan(sessionRoot)) {
+    if (!fs.existsSync(target.dir)) continue;
+    const entries = fs.readdirSync(target.dir);
+    for (const entry of entries) {
+      if (target.preserve.has(entry)) continue;
+      try {
+        fs.rmSync(path.join(target.dir, entry), { recursive: true, force: true });
+      } catch (err) {
+        logger.warn({ entry, folder, err }, 'Failed to remove session file, skipping');
+      }
     }
   }
 }

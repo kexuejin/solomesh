@@ -1,4 +1,4 @@
-export type AgentRuntimeId = 'claude' | 'codex';
+export type AgentRuntimeId = 'claude' | 'codex' | 'gemini';
 
 export interface RuntimeCapabilities {
   supportsImages: boolean;
@@ -52,6 +52,22 @@ export const DEFAULT_RUNTIME_DEFINITIONS: RuntimeDefinition[] = [
       supportsTaskNotificationSynthesis: false,
     },
   },
+  {
+    id: 'gemini',
+    label: 'Gemini CLI',
+    description: 'Google Gemini CLI runtime with MCP integration.',
+    capabilities: {
+      supportsImages: false,
+      supportsMemoryFlush: false,
+      supportsCustomBaseUrl: false,
+      supportsOAuthLogin: false,
+      supportsOfficialAuth: false,
+      supportsThirdPartyGateway: false,
+      supportsModelOverride: true,
+      supportsNativeThinkingStream: false,
+      supportsTaskNotificationSynthesis: false,
+    },
+  },
 ];
 
 function isBooleanRecord(input: unknown): input is Record<string, boolean> {
@@ -60,7 +76,7 @@ function isBooleanRecord(input: unknown): input is Record<string, boolean> {
 }
 
 export function isAgentRuntimeId(value: unknown): value is AgentRuntimeId {
-  return value === 'claude' || value === 'codex';
+  return value === 'claude' || value === 'codex' || value === 'gemini';
 }
 
 interface RuntimeDefinitionLike {

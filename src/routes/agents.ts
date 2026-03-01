@@ -115,8 +115,17 @@ router.post('/:jid/agents', authMiddleware, async (c) => {
     agentId,
     '.codex',
   );
+  const agentGeminiSessionDir = path.join(
+    DATA_DIR,
+    'sessions',
+    group.folder,
+    'agents',
+    agentId,
+    '.gemini',
+  );
   fs.mkdirSync(agentClaudeSessionDir, { recursive: true });
   fs.mkdirSync(agentCodexSessionDir, { recursive: true });
+  fs.mkdirSync(agentGeminiSessionDir, { recursive: true });
 
   // Create virtual chat record for this agent's messages
   const virtualChatJid = `${jid}#agent:${agentId}`;

@@ -1,4 +1,4 @@
-export const AGENT_PROVIDER_IDS = ['claude', 'codex'] as const;
+export const AGENT_PROVIDER_IDS = ['claude', 'codex', 'gemini'] as const;
 
 export type AgentProvider = (typeof AGENT_PROVIDER_IDS)[number];
 
@@ -27,6 +27,8 @@ export interface AgentProviderConfigSnapshot {
   claudeCodeOauthToken?: string | null;
   claudeOAuthCredentials?: unknown;
   codexApiKey?: string | null;
+  geminiApiKey?: string | null;
+  geminiAuthMode?: 'api_key' | 'oauth' | null;
 }
 
 const PROVIDER_DEFINITIONS: Record<AgentProvider, AgentProviderDefinition> = {
@@ -62,10 +64,28 @@ const PROVIDER_DEFINITIONS: Record<AgentProvider, AgentProviderDefinition> = {
       supportsTaskNotificationSynthesis: false,
     },
   },
+  gemini: {
+    id: 'gemini',
+    label: 'Gemini CLI',
+    description: 'Google Gemini CLI runtime with MCP integration.',
+    capabilities: {
+      supportsImages: false,
+      supportsMemoryFlush: false,
+      supportsCustomBaseUrl: false,
+      supportsOAuthLogin: false,
+      supportsOfficialAuth: false,
+      supportsThirdPartyGateway: false,
+      supportsModelOverride: true,
+      supportsNativeThinkingStream: false,
+      supportsTaskNotificationSynthesis: false,
+    },
+  },
 };
 
 export function normalizeAgentProvider(input: unknown): AgentProvider {
-  return input === 'codex' ? 'codex' : 'claude';
+  if (input === 'codex') return 'codex';
+  if (input === 'gemini') return 'gemini';
+  return 'claude';
 }
 
 export function getAgentProviderDefinition(
@@ -89,6 +109,9 @@ export function isAgentProviderConfigured(
   switch (provider) {
     case 'codex':
       return hasValue(config.codexApiKey);
+    case 'gemini':
+      if (config.geminiAuthMode === 'oauth') return true;
+      return hasValue(config.geminiApiKey);
     case 'claude': {
       const officialConfigured =
         hasValue(config.claudeCodeOauthToken) || !!config.claudeOAuthCredentials;
@@ -107,5 +130,6 @@ export function getAgentProviderConfiguredMap(
   return {
     claude: isAgentProviderConfigured('claude', config),
     codex: isAgentProviderConfigured('codex', config),
+    gemini: isAgentProviderConfigured('gemini', config),
   };
 }

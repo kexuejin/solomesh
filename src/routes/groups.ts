@@ -198,7 +198,7 @@ function loadChatProviderSelections(): Record<string, AgentProvider> {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const normalized: Record<string, AgentProvider> = {};
     for (const [chatJid, value] of Object.entries(parsed)) {
-      if (value === 'claude' || value === 'codex') {
+      if (value === 'claude' || value === 'codex' || value === 'gemini') {
         normalized[chatJid] = value;
       }
     }
@@ -214,7 +214,9 @@ function loadChatWorkflowStates(): Record<string, WorkflowSessionState> {
 }
 
 function normalizeAgentProvider(value: unknown): AgentProvider | null {
-  return value === 'claude' || value === 'codex' ? value : null;
+  return value === 'claude' || value === 'codex' || value === 'gemini'
+    ? value
+    : null;
 }
 
 function buildGroupsPayload(user: AuthUser): Record<string, GroupPayloadItem> {
@@ -1429,6 +1431,12 @@ groupRoutes.put('/:jid/env', authMiddleware, async (c) => {
     updated.codexBaseUrl = data.codexBaseUrl;
   if (data.codexModel !== undefined)
     updated.codexModel = data.codexModel;
+  if (data.geminiBaseUrl !== undefined)
+    updated.geminiBaseUrl = data.geminiBaseUrl;
+  if (data.geminiModel !== undefined)
+    updated.geminiModel = data.geminiModel;
+  if (data.geminiAuthMode !== undefined)
+    updated.geminiAuthMode = data.geminiAuthMode;
   if (data.anthropicAuthToken !== undefined)
     updated.anthropicAuthToken = data.anthropicAuthToken;
   if (data.anthropicApiKey !== undefined)
@@ -1437,6 +1445,8 @@ groupRoutes.put('/:jid/env', authMiddleware, async (c) => {
     updated.claudeCodeOauthToken = data.claudeCodeOauthToken;
   if (data.codexApiKey !== undefined)
     updated.codexApiKey = data.codexApiKey;
+  if (data.geminiApiKey !== undefined)
+    updated.geminiApiKey = data.geminiApiKey;
   if (data.customEnv !== undefined) updated.customEnv = data.customEnv;
 
   try {

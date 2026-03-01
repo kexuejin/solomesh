@@ -24,11 +24,11 @@ test('auth setupStatus payload uses runtime naming', () => {
 test('web auth store setupStatus type uses runtime naming', () => {
   const authStore = read('web/src/stores/auth.ts');
 
-  assert.ok(authStore.includes("agentRuntime?: 'claude' | 'codex';"));
+  assert.ok(authStore.includes("agentRuntime?: 'claude' | 'codex' | 'gemini';"));
   assert.ok(authStore.includes('activeRuntimeConfigured?: boolean;'));
-  assert.ok(authStore.includes("configuredRuntimes?: Partial<Record<'claude' | 'codex', boolean>>;"));
+  assert.ok(authStore.includes("configuredRuntimes?: Partial<Record<'claude' | 'codex' | 'gemini', boolean>>;"));
 
-  assert.ok(!authStore.includes("agentProvider?: 'claude' | 'codex';"));
+  assert.ok(!authStore.includes("agentProvider?: 'claude' | 'codex' | 'gemini';"));
   assert.ok(!authStore.includes('providerConfigured?: boolean;'));
   assert.ok(!authStore.includes('claudeConfigured: boolean;'));
   assert.ok(!authStore.includes('codexConfigured?: boolean;'));

@@ -16,14 +16,14 @@ export interface GroupInfo {
   custom_cwd?: string;
   created_by?: string;
   selected_skills?: string[] | null;
-  effective_provider?: 'claude' | 'codex';
+  effective_provider?: 'claude' | 'codex' | 'gemini';
   workflow_status?: 'idle' | 'running' | 'paused' | 'completed' | 'cancelled';
   workflow_template_id?: string | null;
   workflow_stage_id?: string | null;
   workflow_stage_name?: string | null;
-  workflow_stage_provider?: 'claude' | 'codex' | null;
-  workflow_stage_default_provider?: 'claude' | 'codex' | null;
-  workflow_stage_fallback_from_provider?: 'claude' | 'codex' | null;
+  workflow_stage_provider?: 'claude' | 'codex' | 'gemini' | null;
+  workflow_stage_default_provider?: 'claude' | 'codex' | 'gemini' | null;
+  workflow_stage_fallback_from_provider?: 'claude' | 'codex' | 'gemini' | null;
   workflow_stage_index?: number | null;
   workflow_stage_total?: number | null;
   workflow_blocked_by?: string | null;

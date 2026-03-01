@@ -39,9 +39,9 @@ export interface AppearanceConfig {
 
 export interface SetupStatus {
   needsSetup: boolean;
-  agentRuntime?: 'claude' | 'codex';
+  agentRuntime?: 'claude' | 'codex' | 'gemini';
   activeRuntimeConfigured?: boolean;
-  configuredRuntimes?: Partial<Record<'claude' | 'codex', boolean>>;
+  configuredRuntimes?: Partial<Record<'claude' | 'codex' | 'gemini', boolean>>;
   feishuConfigured: boolean;
 }
 

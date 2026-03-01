@@ -12,3 +12,8 @@ test('codex includes codex skills path', () => {
   const targets = resolveContainerSkillTargets('codex');
   assert.ok(targets.includes('/home/node/.agents/skills'));
 });
+
+test('gemini includes gemini skills path', () => {
+  const targets = resolveContainerSkillTargets('gemini');
+  assert.deepEqual(targets, ['/home/node/.gemini/skills']);
+});

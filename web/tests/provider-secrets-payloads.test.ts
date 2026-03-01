@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildCodexSecretsPayload,
+  buildGeminiSecretsPayload,
   hasSecretPayloadChanges,
   buildOfficialOauthSecretsPayload,
   buildOfficialSetupTokenSecretsPayload,
@@ -48,6 +49,31 @@ test('codex payload only updates codex key when edited', () => {
 
   assert.deepEqual(payload, {
     codexApiKey: 'sk-123',
+  });
+});
+
+test('gemini api_key payload only updates gemini key when edited', () => {
+  const payload = buildGeminiSecretsPayload({
+    geminiAuthMode: 'api_key',
+    geminiApiKeyDirty: true,
+    geminiApiKey: 'gm-123',
+  });
+
+  assert.deepEqual(payload, {
+    geminiApiKey: 'gm-123',
+  });
+});
+
+test('gemini oauth payload clears stored api key', () => {
+  const payload = buildGeminiSecretsPayload({
+    geminiAuthMode: 'oauth',
+    geminiApiKeyDirty: false,
+    geminiApiKey: '',
+    hasGeminiApiKey: true,
+  });
+
+  assert.deepEqual(payload, {
+    clearGeminiApiKey: true,
   });
 });
 

@@ -24,7 +24,7 @@ export interface Message {
   timestamp: string;
   is_from_me: boolean;
   attachments?: string;
-  provider?: 'claude' | 'codex' | null;
+  provider?: 'claude' | 'codex' | 'gemini' | null;
 }
 
 export interface QueuedOutgoingMessage {
@@ -147,7 +147,9 @@ function shouldWaitForReplyFromLatestMessage(
   return true;
 }
 
-function getDirectiveProvider(content: string): 'claude' | 'codex' | null {
+function getDirectiveProvider(
+  content: string,
+): 'claude' | 'codex' | 'gemini' | null {
   return parseProviderDirectiveInput(content).provider;
 }
 
@@ -228,7 +230,7 @@ interface ChatState {
   agentMessages: Record<string, Message[]>;          // agentId → messages
   agentWaiting: Record<string, boolean>;             // agentId → waiting for reply
   agentHasMore: Record<string, boolean>;             // agentId → has more messages
-  agentCurrentProvider: Record<string, 'claude' | 'codex'>; // agentId → current provider
+  agentCurrentProvider: Record<string, 'claude' | 'codex' | 'gemini'>; // agentId → current provider
   loadGroups: () => Promise<void>;
   selectGroup: (jid: string) => void;
   loadMessages: (jid: string, loadMore?: boolean) => Promise<void>;

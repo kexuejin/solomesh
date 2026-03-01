@@ -18,3 +18,11 @@ test('codex runtime mapping', () => {
   assert.equal(rt.supportsSkillsInstall, true);
   assert.equal(rt.primaryMemoryFileName, 'AGENTS.md');
 });
+
+test('gemini runtime mapping', () => {
+  const rt = getProviderRuntime('gemini');
+  assert.equal(rt.skillInstallAgent, 'gemini-cli');
+  assert.equal(rt.globalSkillsDirName, '.gemini/skills');
+  assert.equal(rt.supportsSkillsInstall, false);
+  assert.equal(rt.primaryMemoryFileName, 'AGENTS.md');
+});

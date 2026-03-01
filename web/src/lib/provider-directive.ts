@@ -1,7 +1,7 @@
-export type ProviderId = 'claude' | 'codex';
+export type ProviderId = 'claude' | 'codex' | 'gemini';
 
 const PROVIDER_DIRECTIVE_RE =
-  /^\s*@(?<provider>codex|claude)\b(?:\s+|[,:：-]\s*)?/i;
+  /^\s*@(?<provider>codex|claude|gemini)\b(?:\s+|[,:：-]\s*)?/i;
 
 export interface ProviderDirectiveInputResult {
   provider: ProviderId | null;
@@ -25,7 +25,7 @@ export function parseProviderDirectiveInput(
 
   const providerRaw = match.groups?.provider?.toLowerCase();
   const provider: ProviderId | null =
-    providerRaw === 'claude' || providerRaw === 'codex'
+    providerRaw === 'claude' || providerRaw === 'codex' || providerRaw === 'gemini'
       ? providerRaw
       : null;
   const stripped = content.slice(match[0].length).trimStart();
@@ -47,7 +47,7 @@ export function getProviderMentionSuggestions(input: {
   currentProvider?: ProviderId | null;
 }): ProviderId[] {
   const q = input.query.trim().toLowerCase();
-  const providers: ProviderId[] = ['claude', 'codex'];
+  const providers: ProviderId[] = ['claude', 'codex', 'gemini'];
   return providers.filter((provider) => {
     if (input.currentProvider && provider === input.currentProvider) {
       return false;

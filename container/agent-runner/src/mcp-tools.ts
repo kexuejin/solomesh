@@ -44,7 +44,14 @@ function writeIpcFile(dir: string, data: object): string {
 // --- Memory helpers ---
 const MEMORY_EXTENSIONS = new Set(['.md', '.txt']);
 const MEMORY_SUBDIRS = new Set(['memory', 'conversations']);
-const MEMORY_SKIP_DIRS = new Set(['logs', '.claude', 'node_modules', '.git']);
+const MEMORY_SKIP_DIRS = new Set([
+  'logs',
+  '.claude',
+  '.codex',
+  '.gemini',
+  'node_modules',
+  '.git',
+]);
 const MAX_MEMORY_FILE_SIZE = 512 * 1024; // 512KB per file
 const MAX_MEMORY_APPEND_SIZE = 16 * 1024; // 16KB per append
 const MEMORY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,7 +68,11 @@ function collectMemoryFiles(baseDir: string, out: string[], maxDepth: number, de
           collectMemoryFiles(fullPath, out, maxDepth, depth + 1);
         }
       } else if (entry.isFile()) {
-        if (entry.name === 'CLAUDE.md' || MEMORY_EXTENSIONS.has(path.extname(entry.name))) {
+        if (
+          entry.name === 'CLAUDE.md'
+          || entry.name === 'AGENTS.md'
+          || MEMORY_EXTENSIONS.has(path.extname(entry.name))
+        ) {
           out.push(fullPath);
         }
       }

@@ -18,6 +18,7 @@ import {
   buildSkillsInstallArgs,
   getGlobalSkillsDirForProvider,
 } from '../skills-provider.js';
+import { getProviderRuntime } from '../provider-runtime.js';
 import { parseSkillsSearchOutput } from '../skills-search-parser.js';
 
 const execFileAsync = promisify(execFile);
@@ -61,7 +62,10 @@ async function resolveInstallProvider(requested?: unknown): Promise<AgentProvide
   if (isAgentProvider(requested)) return normalizeAgentProvider(requested);
   try {
     const runtimeConfig = await import('../runtime-config.js');
-    return normalizeAgentProvider(runtimeConfig.getRuntimeProviderConfig().agentRuntime);
+    const normalized = normalizeAgentProvider(runtimeConfig.getRuntimeProviderConfig().agentRuntime);
+    return getProviderRuntime(normalized).supportsSkillsInstall
+      ? normalized
+      : 'claude';
   } catch {
     return 'claude';
   }
@@ -590,6 +594,12 @@ async function installSkillForUser(
     return { success: false, error: 'Invalid package name format' };
   }
   const installProvider = provider || (await resolveInstallProvider());
+  if (!getProviderRuntime(installProvider).supportsSkillsInstall) {
+    return {
+      success: false,
+      error: `${installProvider} runtime does not support skills install`,
+    };
+  }
 
   return withSkillInstallLock(async () => {
     const globalDir = getGlobalSkillsDirForProvider(installProvider);
@@ -653,11 +663,17 @@ skillsRoutes.post(
       return c.json({ error: 'package field must be string' }, 400);
     }
     if (body.agentRuntime !== undefined && !isAgentProvider(body.agentRuntime)) {
-      return c.json({ error: 'agentRuntime must be \"claude\" or \"codex\"' }, 400);
+      return c.json({ error: 'agentRuntime must be "claude", "codex", or "gemini"' }, 400);
     }
 
     const pkg = body.package.trim();
     const provider = await resolveInstallProvider(body.agentRuntime);
+    if (!getProviderRuntime(provider).supportsSkillsInstall) {
+      return c.json(
+        { error: `${provider} runtime does not support skills install` },
+        400,
+      );
+    }
     const result = await installSkillForUser(authUser.id, pkg, provider);
 
     if (!result.success) {

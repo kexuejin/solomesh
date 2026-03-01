@@ -18,6 +18,7 @@ import {
 } from '../api/runtime-endpoints';
 import {
   buildCodexSecretsPayload,
+  buildGeminiSecretsPayload,
   buildOfficialOauthSecretsPayload,
   buildOfficialSetupTokenSecretsPayload,
   buildThirdPartySecretsPayload,
@@ -25,6 +26,7 @@ import {
 import { useAuthStore } from '../stores/auth';
 
 type ClaudeAccessMode = 'official' | 'third_party';
+type GeminiAccessMode = 'api_key' | 'oauth';
 type EngineMode = AgentRuntimeId;
 
 interface EnvRow {
@@ -42,6 +44,9 @@ const RESERVED_ENV_KEYS = new Set([
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
   'CODEX_MODEL',
+  'GEMINI_API_KEY',
+  'GOOGLE_GEMINI_BASE_URL',
+  'GEMINI_MODEL',
 ]);
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -110,6 +115,10 @@ export function SetupProvidersPage() {
   const [codexApiKey, setCodexApiKey] = useState('');
   const [codexBaseUrl, setCodexBaseUrl] = useState('');
   const [codexModel, setCodexModel] = useState('gpt-5-codex');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [geminiBaseUrl, setGeminiBaseUrl] = useState('');
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-pro');
+  const [geminiAccessMode, setGeminiAccessMode] = useState<GeminiAccessMode>('api_key');
 
   useEffect(() => {
     if (user === null && initialized === true) {
@@ -175,6 +184,10 @@ export function SetupProvidersPage() {
     () => runtimeOptions.find((item) => item.id === 'codex') ?? null,
     [runtimeOptions],
   );
+  const geminiRuntime = useMemo(
+    () => runtimeOptions.find((item) => item.id === 'gemini') ?? null,
+    [runtimeOptions],
+  );
   const supportsOAuthLogin = currentRuntime.capabilities.supportsOAuthLogin;
   const supportsOfficialAuth = currentRuntime.capabilities.supportsOfficialAuth;
   const supportsThirdPartyGateway =
@@ -190,12 +203,16 @@ export function SetupProvidersPage() {
   const runtimeDraftReady =
     engineMode === 'codex'
       ? !!codexApiKey.trim()
+      : engineMode === 'gemini'
+        ? (geminiAccessMode === 'oauth' ? true : !!geminiApiKey.trim())
       : effectiveClaudeAccessMode === 'third_party'
         ? !!(baseUrl.trim() && authToken.trim())
         : oauthDone || !!officialToken.trim();
   const claudeOfficialDraftReady = oauthDone || !!officialToken.trim();
   const claudeThirdPartyDraftReady = !!(baseUrl.trim() && authToken.trim());
   const codexDraftReady = !!codexApiKey.trim();
+  const geminiDraftReady =
+    geminiAccessMode === 'oauth' ? true : !!geminiApiKey.trim();
 
   const addCustomEnvRow = () => setCustomEnvRows((rows) => [...rows, { key: '', value: '' }]);
   const removeCustomEnvRow = (idx: number) =>
@@ -254,10 +271,16 @@ export function SetupProvidersPage() {
 
     const hasCustomEnvInput = customEnvRows.some((row) => row.key.trim() || row.value.trim());
     const codexModelValue = codexModel.trim();
+    const geminiModelValue = geminiModel.trim();
     const codexTouched =
       !!codexApiKey.trim() ||
       !!codexBaseUrl.trim() ||
       (!!codexModelValue && codexModelValue !== 'gpt-5-codex');
+    const geminiTouched =
+      !!geminiApiKey.trim() ||
+      !!geminiBaseUrl.trim() ||
+      (!!geminiModelValue && geminiModelValue !== 'gemini-2.5-pro') ||
+      geminiAccessMode !== 'api_key';
 
     const wantsClaude =
       !!claudeRuntime &&
@@ -271,6 +294,9 @@ export function SetupProvidersPage() {
     const wantsCodex =
       !!codexRuntime &&
       (engineMode === 'codex' || codexTouched);
+    const wantsGemini =
+      !!geminiRuntime &&
+      (engineMode === 'gemini' || geminiTouched);
 
     let customEnv: Record<string, string> = {};
     if (wantsClaude) {
@@ -301,8 +327,12 @@ export function SetupProvidersPage() {
       setError(`${codexRuntime?.label ?? 'Codex'} 必须填写 CODEX_API_KEY`);
       return;
     }
+    if (wantsGemini && geminiAccessMode === 'api_key' && !geminiApiKey.trim()) {
+      setError(`${geminiRuntime?.label ?? 'Gemini CLI'} 必须填写 GEMINI_API_KEY`);
+      return;
+    }
 
-    if (!wantsClaude && !wantsCodex) {
+    if (!wantsClaude && !wantsCodex && !wantsGemini) {
       setError('请至少配置一个 Runtime 的凭据后再继续');
       return;
     }
@@ -392,6 +422,23 @@ export function SetupProvidersPage() {
           buildCodexSecretsPayload({
             codexApiKeyDirty: true,
             codexApiKey: codexApiKey.trim(),
+          }),
+        );
+      }
+
+      if (wantsGemini) {
+        await api.put(getRuntimeConfigEndpoint(), {
+          geminiBaseUrl: geminiBaseUrl.trim(),
+          geminiModel: geminiModelValue || 'gemini-2.5-pro',
+          geminiAuthMode: geminiAccessMode,
+        });
+        await api.put(
+          getRuntimeSecretsEndpoint(),
+          buildGeminiSecretsPayload({
+            geminiAuthMode: geminiAccessMode,
+            geminiApiKeyDirty: true,
+            geminiApiKey: geminiApiKey.trim(),
+            hasGeminiApiKey: false,
           }),
         );
       }
@@ -528,7 +575,7 @@ export function SetupProvidersPage() {
             </div>
 
             <div className="text-xs text-muted-foreground">
-              可先切换到 Claude/Codex 分别填写凭据，本页保存时会将已填写项一起提交，不会互相清空。
+              可先切换到 Claude/Codex/Gemini 分别填写凭据，本页保存时会将已填写项一起提交，不会互相清空。
             </div>
 
             {supportsOfficialAuth || supportsThirdPartyGateway ? (
@@ -774,36 +821,113 @@ export function SetupProvidersPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">{currentRuntime.label} 凭据</h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {currentRuntime.label} 使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可完成初始化。
+                      {engineMode === 'gemini'
+                        ? `${currentRuntime.label} 使用 Gemini CLI。可切换 Google 官方 或 API Key 模式。`
+                        : `${currentRuntime.label} 使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可完成初始化。`}
                     </p>
                   </div>
                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-                    codexDraftReady
+                    (engineMode === 'gemini' ? geminiDraftReady : codexDraftReady)
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                       : 'border-border/70 bg-card/75 text-muted-foreground'
                   }`}>
-                    {codexDraftReady ? '已填写' : '待填写'}
+                    {(engineMode === 'gemini' ? geminiDraftReady : codexDraftReady) ? '已填写' : '待填写'}
                   </span>
                 </div>
 
                 <div className="surface-card-soft flex items-center gap-2 border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs text-muted-foreground">
                   <Server className="w-4 h-4 text-primary" />
-                  可选项包含 OPENAI_BASE_URL 与 CODEX_MODEL；留空时会使用默认值。
+                  {engineMode === 'gemini'
+                    ? (geminiAccessMode === 'oauth'
+                      ? 'Google 官方模式不需要 GEMINI_API_KEY，需在执行环境完成 gemini login。'
+                      : '可选项包含 GOOGLE_GEMINI_BASE_URL 与 GEMINI_MODEL；留空时会使用默认值。')
+                    : '可选项包含 OPENAI_BASE_URL 与 CODEX_MODEL；留空时会使用默认值。'}
                 </div>
 
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="rounded-lg bg-muted/10 p-3">
-                    <label className="block text-sm font-medium text-foreground/80 mb-1">CODEX_API_KEY（必填）</label>
-                    <Input
-                      type="password"
-                      value={codexApiKey}
-                      onChange={(e) => setCodexApiKey(e.target.value)}
-                      placeholder="输入 Codex API Key"
-                      className="h-10 rounded-xl border-border/75 bg-card/95"
+                {engineMode === 'gemini' && (
+                  <div className="inline-flex rounded-xl border border-border/70 bg-muted/60 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setGeminiAccessMode('oauth')}
                       disabled={saving}
-                    />
+                      className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+                        geminiAccessMode === 'oauth'
+                          ? 'bg-card text-brand-700 shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Google 官方
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGeminiAccessMode('api_key')}
+                      disabled={saving}
+                      className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+                        geminiAccessMode === 'api_key'
+                          ? 'bg-card text-brand-700 shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      API Key
+                    </button>
                   </div>
-                  {currentRuntime.capabilities.supportsCustomBaseUrl && (
+                )}
+
+                {engineMode === 'gemini' && geminiAccessMode === 'oauth' && (
+                  <div className="surface-card-soft rounded-xl space-y-3 border border-brand-200 bg-brand-50/70 p-4">
+                    <div className="text-sm font-medium text-foreground/90">Google 官方（推荐）</div>
+                    <div className="text-xs text-muted-foreground">
+                      使用 <code className="rounded bg-muted px-1">gemini login</code> 后，初始化流程只需保存模式与模型即可。
+                    </div>
+                    <div className="rounded-lg bg-muted/15 p-3 text-sm text-foreground/80">
+                      <div className="font-medium mb-2">快速检查</div>
+                      <ol className="list-decimal ml-5 space-y-1 text-xs">
+                        <li>在目标机器执行 <code>gemini login</code> 并完成授权。</li>
+                        <li>保持当前模式为 Google 官方，点击页面底部保存。</li>
+                        <li>系统会自动尝试默认登录目录，无需手动配置路径。</li>
+                      </ol>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-3">
+                  {(engineMode !== 'gemini' || geminiAccessMode === 'api_key') && (
+                    <div className="rounded-lg bg-muted/10 p-3">
+                      <label className="block text-sm font-medium text-foreground/80 mb-1">
+                        {engineMode === 'gemini' ? 'GEMINI_API_KEY（必填）' : 'CODEX_API_KEY（必填）'}
+                      </label>
+                      <Input
+                        type="password"
+                        value={engineMode === 'gemini' ? geminiApiKey : codexApiKey}
+                        onChange={(e) => {
+                          if (engineMode === 'gemini') {
+                            setGeminiApiKey(e.target.value);
+                          } else {
+                            setCodexApiKey(e.target.value);
+                          }
+                        }}
+                        placeholder={engineMode === 'gemini' ? '输入 Gemini API Key' : '输入 Codex API Key'}
+                        className="h-10 rounded-xl border-border/75 bg-card/95"
+                        disabled={saving}
+                      />
+                    </div>
+                  )}
+                  {engineMode === 'gemini' && (
+                    <div className="rounded-lg bg-muted/10 p-3">
+                      <label className="block text-sm font-medium text-foreground/80 mb-1">
+                        GOOGLE_GEMINI_BASE_URL（可选）
+                      </label>
+                      <Input
+                        type="text"
+                        value={geminiBaseUrl}
+                        onChange={(e) => setGeminiBaseUrl(e.target.value)}
+                        placeholder="https://generativelanguage.googleapis.com"
+                        className="h-10 rounded-xl border-border/75 bg-card/95"
+                        disabled={saving}
+                      />
+                    </div>
+                  )}
+                  {engineMode !== 'gemini' && currentRuntime.capabilities.supportsCustomBaseUrl && (
                     <div className="rounded-lg bg-muted/10 p-3">
                       <label className="block text-sm font-medium text-foreground/80 mb-1">OPENAI_BASE_URL（可选）</label>
                       <Input
@@ -818,12 +942,20 @@ export function SetupProvidersPage() {
                   )}
                   {supportsModelOverride && (
                     <div className="rounded-lg bg-muted/10 p-3">
-                      <label className="block text-sm font-medium text-foreground/80 mb-1">CODEX_MODEL（可选）</label>
+                      <label className="block text-sm font-medium text-foreground/80 mb-1">
+                        {engineMode === 'gemini' ? 'GEMINI_MODEL（可选）' : 'CODEX_MODEL（可选）'}
+                      </label>
                       <Input
                         type="text"
-                        value={codexModel}
-                        onChange={(e) => setCodexModel(e.target.value)}
-                        placeholder="gpt-5-codex"
+                        value={engineMode === 'gemini' ? geminiModel : codexModel}
+                        onChange={(e) => {
+                          if (engineMode === 'gemini') {
+                            setGeminiModel(e.target.value);
+                          } else {
+                            setCodexModel(e.target.value);
+                          }
+                        }}
+                        placeholder={engineMode === 'gemini' ? 'gemini-2.5-pro' : 'gpt-5-codex'}
                         className="h-10 rounded-xl border-border/75 bg-card/95"
                         disabled={saving}
                       />

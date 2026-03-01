@@ -6,6 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
+  AGENT_PROVIDER_IDS,
   isAgentProviderConfigured,
   normalizeAgentProvider,
   type AgentProvider,
@@ -57,6 +58,7 @@ const SKILL_PACKAGE_RE = /^[\w-]+\/[\w.-]+(?:@[\w.-]+)?$/;
 const WORKFLOW_TEMPLATE_GENERATE_TIMEOUT_MS = 8 * 60 * 1000;
 const WORKFLOW_DEPENDENCY_ON_MISSING_VALUES = ['auto_fix', 'guide_user', 'fallback', 'fail'] as const;
 const WORKFLOW_DEPENDENCY_TYPE_VALUES = ['provider', 'skill', 'channel', 'mcp'] as const;
+const WORKFLOW_TEMPLATE_PROVIDER_VALUES = ['auto', ...AGENT_PROVIDER_IDS] as const;
 
 const WorkflowStageDependencySchema = z.object({
   type: z.enum(WORKFLOW_DEPENDENCY_TYPE_VALUES),
@@ -75,9 +77,9 @@ const WorkflowStageSchema = z.object({
     .regex(TEMPLATE_ID_RE)
     .transform((value) => value.toLowerCase()),
   name: z.string().trim().min(1).max(80),
-  defaultProvider: z.enum(['claude', 'codex']),
+  defaultProvider: z.enum(AGENT_PROVIDER_IDS),
   strictProvider: z.boolean().optional(),
-  fallbackProviders: z.array(z.enum(['claude', 'codex'])).max(2).optional(),
+  fallbackProviders: z.array(z.enum(AGENT_PROVIDER_IDS)).max(3).optional(),
   goal: z.string().trim().max(4000).optional().default(''),
   requiredOutputHints: z.array(z.string().trim().min(1).max(200)).max(24).default([]),
   doneKeywords: z.array(z.string().trim().min(1).max(200)).max(24).default([]),
@@ -104,7 +106,7 @@ const WorkflowTemplateWriteSchema = z.object({
 const PublishWorkflowTemplateSchema = z.object({
   chatJid: z.string().trim().min(1).max(200).optional(),
   autoInstallMissingSkills: z.boolean().optional().default(false),
-  provider: z.enum(['auto', 'claude', 'codex']).optional().default('auto'),
+  provider: z.enum(WORKFLOW_TEMPLATE_PROVIDER_VALUES).optional().default('auto'),
   packagesBySkillRef: z.record(z.string(), z.string().trim().max(256)).optional(),
 });
 
@@ -122,14 +124,14 @@ const GenerateWorkflowTemplateSchema = z.object({
     .regex(TEMPLATE_ID_RE)
     .transform((value) => value.toLowerCase())
     .optional(),
-  provider: z.enum(['auto', 'claude', 'codex']).optional().default('auto'),
+  provider: z.enum(WORKFLOW_TEMPLATE_PROVIDER_VALUES).optional().default('auto'),
   chatJid: z.string().trim().min(1).max(200).optional(),
 });
 
 const OptimizeWorkflowTemplateSchema = z.object({
   instruction: z.string().trim().min(4).max(4000),
   template: WorkflowTemplateWriteSchema,
-  provider: z.enum(['auto', 'claude', 'codex']).optional().default('auto'),
+  provider: z.enum(WORKFLOW_TEMPLATE_PROVIDER_VALUES).optional().default('auto'),
   chatJid: z.string().trim().min(1).max(200).optional(),
 });
 
@@ -151,7 +153,7 @@ function parseStageId(value: string): string | null {
 }
 
 function normalizeProvider(value: unknown): AgentProvider {
-  return value === 'codex' ? 'codex' : 'claude';
+  return normalizeAgentProvider(value);
 }
 
 function normalizeSkillRef(value: string): string {
@@ -588,7 +590,7 @@ function buildWorkflowTemplateGeneratePrompt(options: {
     '你是 Workflow 模板生成助手。',
     '请根据“用户想法”生成一个可执行的 workflow 模板 JSON。',
     '必须包含字段：id、name、description、stages、recommendedTriggers。',
-    '约束：provider 只能是 claude 或 codex，阶段数量 2-8。',
+    '约束：provider 只能是 claude、codex 或 gemini，阶段数量 2-8。',
     'name 需简洁明确（1-20字优先），description 需说明适用场景和目标。',
     '每个阶段建议包含：goal、requiredOutputHints、doneKeywords。',
     '若阶段依赖外部能力（如 skill/mcp/channel/provider），请在 dependencies 中声明：',
@@ -613,7 +615,7 @@ function buildWorkflowTemplateOptimizePrompt(options: {
   return [
     '你是 Workflow 模板优化助手。',
     '请严格基于“当前模板 JSON”和“优化目标”输出完整的 workflow 模板 JSON。',
-    `硬约束：template.id 必须保持为 ${templateId}，provider 只允许 claude 或 codex。`,
+    `硬约束：template.id 必须保持为 ${templateId}，provider 只允许 claude、codex 或 gemini。`,
     '请尽量做最小必要改动，不要删除无关阶段。',
     '若阶段依赖外部能力（如 skill/mcp/channel/provider），请在 dependencies 中声明：',
     '[{ "type":"skill|mcp|channel|provider", "ref":"xxx", "required":true, "onMissing":"guide_user|auto_fix|fallback|fail" }]',

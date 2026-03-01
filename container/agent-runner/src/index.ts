@@ -17,11 +17,20 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'node:child_process';
+import {
+  isGeminiMissingAuthError,
+  normalizeGeminiAuthMode,
+  resolveGeminiApiKey,
+  resolveGeminiCliHomeCandidates,
+} from './gemini-auth.js';
 
-type AgentProviderId = 'claude' | 'codex';
+type AgentProviderId = 'claude' | 'codex' | 'gemini';
 
 function normalizeAgentProvider(input: unknown): AgentProviderId {
-  return input === 'codex' ? 'codex' : 'claude';
+  if (input === 'codex') return 'codex';
+  if (input === 'gemini') return 'gemini';
+  return 'claude';
 }
 
 function parseBooleanEnv(
@@ -47,10 +56,20 @@ const WORKSPACE_IPC = process.env.SOLOMESH_WORKSPACE_IPC || '/workspace/ipc';
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'opus';
 const AGENT_PROVIDER_ID = normalizeAgentProvider(process.env.AGENT_RUNTIME);
 const CODEX_MODEL = process.env.CODEX_MODEL || 'gpt-5-codex';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
+const AGENT_RUNNER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PRIMARY_MEMORY_FILE_NAME =
   process.env.SOLOMESH_PRIMARY_MEMORY_FILE_NAME ||
-  (AGENT_PROVIDER_ID === 'codex' ? 'AGENTS.md' : 'CLAUDE.md');
+  (AGENT_PROVIDER_ID === 'claude' ? 'CLAUDE.md' : 'AGENTS.md');
 const RUNTIME_PRIMARY_MEMORY_FILE_NAMES = ['CLAUDE.md', 'AGENTS.md'] as const;
+
+function resolveGeminiCliPath(): string {
+  const envBin = process.env.GEMINI_CLI_BIN?.trim();
+  if (envBin) return envBin;
+  const localBin = path.join(AGENT_RUNNER_DIR, 'node_modules', '.bin', 'gemini');
+  if (fs.existsSync(localBin)) return localBin;
+  return 'gemini';
+}
 
 interface ContainerInput {
   prompt: string;
@@ -2018,6 +2037,216 @@ async function runCodexQuery(
   }
 }
 
+async function runGeminiQuery(
+  prompt: string,
+  sessionId: string | undefined,
+  _mcpServerPath: string,
+  _containerInput: ContainerInput,
+  memoryRecall: string,
+  _resumeAt?: string,
+  emitOutput = true,
+  _allowedTools: string[] = DEFAULT_ALLOWED_TOOLS,
+  _disallowedTools?: string[],
+  images?: Array<{ data: string; mimeType?: string }>,
+): Promise<QueryRunResult> {
+  const emit = (output: ContainerOutput): void => {
+    if (emitOutput) writeOutput(output);
+  };
+
+  if (images && images.length > 0) {
+    emit({
+      status: 'success',
+      result: '⚠️ Gemini CLI 当前不支持该入口的图片输入，已忽略本次图片附件。',
+      newSessionId: sessionId,
+    });
+  }
+
+  const args = ['-p', `${prompt}\n${memoryRecall}`.trim(), '--output-format', 'text'];
+  if (GEMINI_MODEL.trim()) {
+    args.push('-m', GEMINI_MODEL.trim());
+  }
+  if (sessionId) {
+    args.push('--resume', 'latest');
+  }
+
+  const newSessionId = sessionId || 'latest';
+  const envSource = process.env as Record<string, string | undefined>;
+  const authMode = normalizeGeminiAuthMode(envSource.GEMINI_AUTH_MODE);
+  if (authMode === 'api_key' && !resolveGeminiApiKey(envSource)) {
+    throw new Error(
+      'Gemini API Key 模式未检测到 GEMINI_API_KEY。请在设置中填写 API Key，或切换到 Google 官方模式并执行 gemini login。',
+    );
+  }
+
+  const resolvedCliHomes = resolveGeminiCliHomeCandidates(envSource);
+  const cliHomeCandidates =
+    authMode === 'oauth'
+      ? resolvedCliHomes
+      : [resolvedCliHomes[0]];
+
+  for (let idx = 0; idx < cliHomeCandidates.length; idx++) {
+    const cliHome = cliHomeCandidates[idx];
+    const attempt = await runGeminiCliOnce(args, {
+      ...(process.env as Record<string, string>),
+      GEMINI_CLI_HOME: cliHome,
+    });
+
+    if (attempt.closedDuringQuery || attempt.interruptedDuringQuery) {
+      return {
+        newSessionId,
+        closedDuringQuery: attempt.closedDuringQuery,
+        interruptedDuringQuery: attempt.interruptedDuringQuery,
+      };
+    }
+
+    const trimmed = attempt.stdout.trim();
+    const errorMessage = attempt.stderr.trim();
+    const interactiveAuthPrompt =
+      authMode === 'oauth'
+      && /Please visit the following URL to authorize the application|Enter the authorization code/i.test(
+        `${trimmed}\n${errorMessage}`,
+      );
+
+    if (interactiveAuthPrompt) {
+      const hasFallbackCandidate = idx < cliHomeCandidates.length - 1;
+      if (hasFallbackCandidate) {
+        log(
+          `Gemini oauth prompt detected under ${cliHome}, retrying fallback home ${cliHomeCandidates[idx + 1]}`,
+        );
+        continue;
+      }
+      throw new Error(
+        'Gemini 官方模式未检测到可用登录凭据。请在设置页重新执行“一键登录 Google”。',
+      );
+    }
+
+    if (!trimmed && errorMessage) {
+      if (isContextOverflowError(errorMessage)) {
+        return {
+          newSessionId,
+          closedDuringQuery: false,
+          interruptedDuringQuery: false,
+          contextOverflow: true,
+        };
+      }
+
+      const hasFallbackCandidate = idx < cliHomeCandidates.length - 1;
+      if (
+        authMode === 'oauth'
+        && hasFallbackCandidate
+        && isGeminiMissingAuthError(errorMessage)
+      ) {
+        log(
+          `Gemini auth not found under ${cliHome}, retrying fallback home ${cliHomeCandidates[idx + 1]}`,
+        );
+        continue;
+      }
+
+      if (authMode === 'oauth' && isGeminiMissingAuthError(errorMessage)) {
+        throw new Error(
+          'Gemini 官方模式未检测到登录凭据。请先在设置页点击“一键登录 Google”，或在运行环境执行 gemini login。',
+        );
+      }
+      throw new Error(errorMessage);
+    }
+
+    emit({
+      status: 'success',
+      result: trimmed || null,
+      newSessionId,
+    });
+    return { newSessionId, closedDuringQuery: false, interruptedDuringQuery: false };
+  }
+
+  throw new Error(
+    'Gemini 官方模式未检测到登录凭据。请先在设置页点击“一键登录 Google”，或在运行环境执行 gemini login。',
+  );
+}
+
+interface GeminiCliRunResult {
+  stdout: string;
+  stderr: string;
+  closedDuringQuery: boolean;
+  interruptedDuringQuery: boolean;
+}
+
+async function runGeminiCliOnce(
+  args: string[],
+  env: Record<string, string>,
+): Promise<GeminiCliRunResult> {
+  let closedDuringQuery = false;
+  let interruptedDuringQuery = false;
+  let stdout = '';
+  let stderr = '';
+  let forceStoppedByTerminalError = false;
+
+  await new Promise<void>((resolve) => {
+    const child = spawn(resolveGeminiCliPath(), args, {
+      cwd: WORKSPACE_GROUP,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let ipcPolling = true;
+    const pollSignals = (): void => {
+      if (!ipcPolling) return;
+      if (shouldClose()) {
+        closedDuringQuery = true;
+        ipcPolling = false;
+        child.kill('SIGTERM');
+        return;
+      }
+      if (shouldInterrupt()) {
+        interruptedDuringQuery = true;
+        ipcPolling = false;
+        child.kill('SIGTERM');
+        return;
+      }
+      setTimeout(pollSignals, IPC_POLL_MS);
+    };
+    setTimeout(pollSignals, IPC_POLL_MS);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString();
+      stderr += text;
+
+      // Gemini CLI may retry quota/pool failures for several minutes.
+      // Cut short on known terminal signal so caller can surface error quickly.
+      if (!forceStoppedByTerminalError && /Token pool is empty/i.test(text)) {
+        forceStoppedByTerminalError = true;
+        ipcPolling = false;
+        try {
+          child.kill('SIGTERM');
+        } catch {
+          // ignore
+        }
+      }
+    });
+
+    child.on('error', (err) => {
+      ipcPolling = false;
+      stderr += err instanceof Error ? err.message : String(err);
+      resolve();
+    });
+
+    child.on('close', () => {
+      ipcPolling = false;
+      resolve();
+    });
+  });
+
+  return {
+    stdout,
+    stderr,
+    closedDuringQuery,
+    interruptedDuringQuery,
+  };
+}
+
 const AGENT_PROVIDERS: Record<AgentProviderId, AgentProviderRuntime> = {
   claude: {
     id: 'claude',
@@ -2034,6 +2263,14 @@ const AGENT_PROVIDERS: Record<AgentProviderId, AgentProviderRuntime> = {
       supportsMemoryFlush: false,
     },
     run: runCodexQuery,
+  },
+  gemini: {
+    id: 'gemini',
+    label: 'Gemini CLI',
+    capabilities: {
+      supportsMemoryFlush: false,
+    },
+    run: runGeminiQuery,
   },
 };
 

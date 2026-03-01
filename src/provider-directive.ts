@@ -1,7 +1,7 @@
 import type { AgentProvider } from './agent-providers.js';
 import type { NewMessage } from './types.js';
 
-const PROVIDER_DIRECTIVE_RE = /^\s*@(?<provider>codex|claude)\b(?:\s+|[,:：-]\s*)?/i;
+const PROVIDER_DIRECTIVE_RE = /^\s*@(?<provider>codex|claude|gemini)\b(?:\s+|[,:：-]\s*)?/i;
 
 export interface ProviderDirectiveParseResult {
   provider: AgentProvider | null;
@@ -30,7 +30,7 @@ export function parseProviderDirective(content: string): ProviderDirectiveParseR
 
   const providerRaw = match.groups?.provider?.toLowerCase();
   const provider: AgentProvider | null =
-    providerRaw === 'codex' || providerRaw === 'claude'
+    providerRaw === 'codex' || providerRaw === 'claude' || providerRaw === 'gemini'
       ? providerRaw
       : null;
   const stripped = content.slice(match[0].length).trimStart();

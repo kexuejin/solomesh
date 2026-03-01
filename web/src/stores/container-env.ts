@@ -7,14 +7,19 @@ export interface ContainerEnvPublicConfig {
   anthropicBaseUrl: string;
   codexBaseUrl: string;
   codexModel: string;
+  geminiBaseUrl: string;
+  geminiModel: string;
+  geminiAuthMode: 'api_key' | 'oauth';
   anthropicAuthTokenMasked: string | null;
   anthropicApiKeyMasked: string | null;
   claudeCodeOauthTokenMasked: string | null;
   codexApiKeyMasked: string | null;
+  geminiApiKeyMasked: string | null;
   hasAnthropicAuthToken: boolean;
   hasAnthropicApiKey: boolean;
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
+  hasGeminiApiKey: boolean;
   customEnv: Record<string, string>;
 }
 
@@ -30,10 +35,14 @@ interface ContainerEnvState {
     anthropicBaseUrl?: string;
     codexBaseUrl?: string;
     codexModel?: string;
+    geminiBaseUrl?: string;
+    geminiModel?: string;
+    geminiAuthMode?: 'api_key' | 'oauth';
     anthropicAuthToken?: string;
     anthropicApiKey?: string;
     claudeCodeOauthToken?: string;
     codexApiKey?: string;
+    geminiApiKey?: string;
     customEnv?: Record<string, string>;
   }) => Promise<boolean>;
 }

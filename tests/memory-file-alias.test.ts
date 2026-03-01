@@ -12,3 +12,7 @@ test('returns CLAUDE.md for claude provider', () => {
 test('returns AGENTS.md for codex provider', () => {
   assert.equal(getPrimaryMemoryFileName('codex'), 'AGENTS.md');
 });
+
+test('returns AGENTS.md for gemini provider', () => {
+  assert.equal(getPrimaryMemoryFileName('gemini'), 'AGENTS.md');
+});

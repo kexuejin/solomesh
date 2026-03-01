@@ -14,6 +14,7 @@ import { useFileStore } from '../../stores/files';
 import { api } from '../../api/client';
 import type { ProviderId } from '@/lib/provider-directive';
 import { getProviderMentionSuggestions } from '@/lib/provider-directive';
+import { getMessageProviderLabel } from '@/lib/message-provider';
 import {
   getWorkflowCommandSuggestions,
   type WorkflowCommandSuggestion,
@@ -753,7 +754,7 @@ export function MessageInput({
                   >
                     @{provider}
                     <span className="ml-2 text-[11px] text-muted-foreground">
-                      切换到 {provider === 'codex' ? 'Codex' : 'Claude'}
+                      切换到 {getMessageProviderLabel(provider) ?? provider}
                     </span>
                   </button>
                 ))}

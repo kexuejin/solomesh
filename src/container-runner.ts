@@ -18,11 +18,13 @@ import { loadMountAllowlist, validateAdditionalMounts } from './mount-security.j
 import {
   buildContainerEnvLines,
   type AgentProvider,
+  getGeminiOAuthCredentials,
   getRuntimeProviderConfig,
   getContainerEnvConfig,
   mergeRuntimeEnvConfig,
   shellQuoteEnvLines,
   writeCredentialsFile,
+  writeGeminiOAuthFile,
 } from './runtime-config.js';
 import { RegisteredGroup, StreamEvent } from './types.js';
 
@@ -63,10 +65,14 @@ interface VolumeMount {
 
 const CLAUDE_SKILLS_TARGET = '/home/node/.claude/skills';
 const CODEX_SKILLS_TARGET = '/home/node/.agents/skills';
+const GEMINI_SKILLS_TARGET = '/home/node/.gemini/skills';
 
 export function resolveContainerSkillTargets(provider: AgentProvider): string[] {
   if (provider === 'codex') {
     return [CODEX_SKILLS_TARGET, CLAUDE_SKILLS_TARGET];
+  }
+  if (provider === 'gemini') {
+    return [GEMINI_SKILLS_TARGET];
   }
   return [CLAUDE_SKILLS_TARGET];
 }
@@ -146,6 +152,10 @@ function buildVolumeMounts(
     ? path.join(DATA_DIR, 'sessions', group.folder, 'agents', agentId, '.codex')
     : path.join(DATA_DIR, 'sessions', group.folder, '.codex');
   fs.mkdirSync(groupCodexDir, { recursive: true });
+  const groupGeminiDir = agentId
+    ? path.join(DATA_DIR, 'sessions', group.folder, 'agents', agentId, '.gemini')
+    : path.join(DATA_DIR, 'sessions', group.folder, '.gemini');
+  fs.mkdirSync(groupGeminiDir, { recursive: true });
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
   if (!fs.existsSync(settingsFile)) {
     fs.writeFileSync(
@@ -179,6 +189,12 @@ function buildVolumeMounts(
   mounts.push({
     hostPath: groupCodexDir,
     containerPath: '/home/node/.codex',
+    readonly: false,
+  });
+
+  mounts.push({
+    hostPath: groupGeminiDir,
+    containerPath: '/home/node/.gemini',
     readonly: false,
   });
 
@@ -287,6 +303,16 @@ function buildVolumeMounts(
       writeCredentialsFile(groupSessionsDir, mergedConfig);
     } catch (err) {
       logger.warn({ group: group.name, err }, 'Failed to write .credentials.json');
+    }
+  }
+  if (mergedConfig.geminiAuthMode === 'oauth') {
+    try {
+      const geminiOAuthCredentials = getGeminiOAuthCredentials();
+      if (geminiOAuthCredentials) {
+        writeGeminiOAuthFile(groupGeminiDir, geminiOAuthCredentials);
+      }
+    } catch (err) {
+      logger.warn({ group: group.name, err }, 'Failed to write Gemini oauth_creds.json');
     }
   }
 
@@ -995,6 +1021,10 @@ export async function runHostAgent(
     ? path.join(DATA_DIR, 'sessions', group.folder, 'agents', input.agentId, '.codex')
     : path.join(DATA_DIR, 'sessions', group.folder, '.codex');
   fs.mkdirSync(groupCodexDir, { recursive: true });
+  const groupGeminiDir = input.agentId
+    ? path.join(DATA_DIR, 'sessions', group.folder, 'agents', input.agentId, '.gemini')
+    : path.join(DATA_DIR, 'sessions', group.folder, '.gemini');
+  fs.mkdirSync(groupGeminiDir, { recursive: true });
 
   // 3. 写入 settings.json
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
@@ -1096,6 +1126,16 @@ export async function runHostAgent(
       logger.warn({ folder: group.folder, err }, 'Failed to write .credentials.json for host agent');
     }
   }
+  if (mergedConfig.geminiAuthMode === 'oauth') {
+    try {
+      const geminiOAuthCredentials = getGeminiOAuthCredentials();
+      if (geminiOAuthCredentials) {
+        writeGeminiOAuthFile(groupGeminiDir, geminiOAuthCredentials);
+      }
+    } catch (err) {
+      logger.warn({ folder: group.folder, err }, 'Failed to write Gemini oauth_creds.json for host agent');
+    }
+  }
 
   // 路径映射
   hostEnv['SOLOMESH_WORKSPACE_GROUP'] = groupDir;
@@ -1114,6 +1154,7 @@ export async function runHostAgent(
   hostEnv['SOLOMESH_WORKSPACE_IPC'] = groupIpcDir;
   hostEnv['CLAUDE_CONFIG_DIR'] = groupSessionsDir;
   hostEnv['CODEX_HOME'] = groupCodexDir;
+  hostEnv['GEMINI_CLI_HOME'] = path.dirname(groupGeminiDir);
   // 让 SDK 捕获 CLI 的 stderr 输出，便于排查启动失败
   hostEnv['DEBUG_CLAUDE_AGENT_SDK'] = '1';
   // CLI 禁止 root 用户使用 --dangerously-skip-permissions，
@@ -1134,6 +1175,8 @@ export async function runHostAgent(
   const requiredDeps = ['@modelcontextprotocol/sdk'];
   if (mergedConfig.agentRuntime === 'codex') {
     requiredDeps.push('@openai/codex-sdk');
+  } else if (mergedConfig.agentRuntime === 'gemini') {
+    requiredDeps.push('@google/gemini-cli');
   } else {
     requiredDeps.push('@anthropic-ai/claude-agent-sdk');
   }
@@ -1485,9 +1528,12 @@ export async function runHostAgent(
         const missingPackageMatch = stderr.match(
           /Cannot find package '([^']+)' imported from/u,
         );
+        const agentErrorMatch = stderr.match(
+          /\[agent-runner\]\s+Agent error:\s*([^\n]+)/u,
+        );
         const userFacingError = missingPackageMatch
           ? `宿主机模式启动失败：缺少依赖 ${missingPackageMatch[1]}。请先执行：${setupInstallHint}`
-          : null;
+          : agentErrorMatch?.[1]?.trim() || null;
         logger.error(
           {
             group: group.name,
@@ -1502,10 +1548,11 @@ export async function runHostAgent(
         );
 
         const finalizeError = () => {
+          const fallbackErrorText = userFacingError || stderr.slice(-200);
           resolveOnce({
             status: 'error',
             result: userFacingError,
-            error: `Host agent exited with ${exitLabel}: ${stderr.slice(-200)}`,
+            error: `Host agent exited with ${exitLabel}: ${fallbackErrorText}`,
           });
         };
 

@@ -44,8 +44,11 @@ function parseBool(value: string): boolean {
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
-function parseProvider(value: string): 'claude' | 'codex' {
-  return value.trim().toLowerCase() === 'codex' ? 'codex' : 'claude';
+function parseProvider(value: string): 'claude' | 'codex' | 'gemini' {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'codex') return 'codex';
+  if (normalized === 'gemini') return 'gemini';
+  return 'claude';
 }
 
 function formatList(values: string[] | undefined): string {

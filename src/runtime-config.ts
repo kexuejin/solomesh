@@ -29,6 +29,10 @@ const PROVIDER_CUSTOM_ENV_FILE = path.join(
   RUNTIME_CONFIG_DIR,
   'runtime-custom-env.json',
 );
+const GEMINI_OAUTH_FILE = path.join(
+  RUNTIME_CONFIG_DIR,
+  'gemini-oauth.json',
+);
 const FEISHU_CONFIG_FILE = path.join(RUNTIME_CONFIG_DIR, 'feishu-provider.json');
 const TELEGRAM_CONFIG_FILE = path.join(RUNTIME_CONFIG_DIR, 'telegram-provider.json');
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -43,6 +47,11 @@ const RESERVED_PROVIDER_ENV_KEYS = new Set([
   'OPENAI_BASE_URL',
   'CODEX_MODEL',
   'CODEX_HOME',
+  'GEMINI_API_KEY',
+  'GOOGLE_GEMINI_BASE_URL',
+  'GEMINI_MODEL',
+  'GEMINI_AUTH_MODE',
+  'GEMINI_CLI_HOME',
   'SOLOMESH_PRIMARY_MEMORY_FILE_NAME',
   'SOLOMESH_RUNTIME_LABEL',
   'SOLOMESH_CAP_SUPPORTS_MEMORY_FLUSH',
@@ -94,6 +103,7 @@ const DANGEROUS_ENV_VARS = new Set([
   'SOLOMESH_WORKSPACE_IPC',
   'CLAUDE_CONFIG_DIR',
   'CODEX_HOME',
+  'GEMINI_CLI_HOME',
 ]);
 const MAX_CUSTOM_ENV_ENTRIES = 50;
 
@@ -104,6 +114,16 @@ export interface RuntimeOAuthCredentials {
   scopes: string[];
 }
 
+export interface GeminiOAuthCredentials {
+  accessToken: string;
+  refreshToken: string;
+  expiryDate: number | null;
+  tokenType: string;
+  scope: string;
+}
+
+export type GeminiAuthMode = 'api_key' | 'oauth';
+
 export type { AgentProvider } from './agent-providers.js';
 
 export interface RuntimeProviderConfig {
@@ -111,10 +131,14 @@ export interface RuntimeProviderConfig {
   anthropicBaseUrl: string;
   codexBaseUrl: string;
   codexModel: string;
+  geminiBaseUrl: string;
+  geminiModel: string;
+  geminiAuthMode: GeminiAuthMode;
   anthropicAuthToken: string;
   anthropicApiKey: string;
   claudeCodeOauthToken: string;
   codexApiKey: string;
+  geminiApiKey: string;
   claudeOAuthCredentials: RuntimeOAuthCredentials | null;
   updatedAt: string | null;
 }
@@ -124,15 +148,21 @@ export interface RuntimeProviderPublicConfig {
   anthropicBaseUrl: string;
   codexBaseUrl: string;
   codexModel: string;
+  geminiBaseUrl: string;
+  geminiModel: string;
+  geminiAuthMode: GeminiAuthMode;
   updatedAt: string | null;
   hasAnthropicAuthToken: boolean;
   hasAnthropicApiKey: boolean;
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
+  hasGeminiApiKey: boolean;
+  hasGeminiOAuthCredentials: boolean;
   anthropicAuthTokenMasked: string | null;
   anthropicApiKeyMasked: string | null;
   claudeCodeOauthTokenMasked: string | null;
   codexApiKeyMasked: string | null;
+  geminiApiKeyMasked: string | null;
   hasRuntimeOAuthCredentials: boolean;
   claudeOAuthCredentialsExpiresAt: number | null;
   claudeOAuthCredentialsAccessTokenMasked: string | null;
@@ -177,6 +207,7 @@ interface SecretPayload {
   anthropicApiKey: string;
   claudeCodeOauthToken: string;
   codexApiKey: string;
+  geminiApiKey: string;
   claudeOAuthCredentials?: RuntimeOAuthCredentials | null;
 }
 
@@ -215,6 +246,9 @@ interface StoredRuntimeProviderConfigV3 {
   anthropicBaseUrl: string;
   codexBaseUrl: string;
   codexModel: string;
+  geminiBaseUrl?: string;
+  geminiModel: string;
+  geminiAuthMode?: GeminiAuthMode;
   updatedAt: string;
   secrets: EncryptedSecrets;
 }
@@ -295,6 +329,28 @@ function normalizeCodexBaseUrl(input: unknown): string {
   return parsed.toString().replace(/\/+$/, '');
 }
 
+function normalizeGeminiBaseUrl(input: unknown): string {
+  if (typeof input !== 'string') {
+    throw new Error('Invalid field: geminiBaseUrl');
+  }
+  const value = input.trim();
+  if (!value) return '';
+  if (value.length > MAX_FIELD_LENGTH) {
+    throw new Error('Field too long: geminiBaseUrl');
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('Invalid field: geminiBaseUrl');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Invalid field: geminiBaseUrl');
+  }
+  return parsed.toString().replace(/\/+$/, '');
+}
+
 function normalizeCodexModel(input: unknown): string {
   if (typeof input !== 'string') {
     throw new Error('Invalid field: codexModel');
@@ -305,6 +361,29 @@ function normalizeCodexModel(input: unknown): string {
     throw new Error('Field too long: codexModel');
   }
   return value;
+}
+
+function normalizeGeminiModel(input: unknown): string {
+  if (typeof input !== 'string') {
+    throw new Error('Invalid field: geminiModel');
+  }
+  const value = input.trim();
+  if (!value) return '';
+  if (value.length > MAX_FIELD_LENGTH) {
+    throw new Error('Field too long: geminiModel');
+  }
+  return value;
+}
+
+function normalizeGeminiAuthMode(input: unknown): GeminiAuthMode {
+  if (typeof input !== 'string') {
+    throw new Error('Invalid field: geminiAuthMode');
+  }
+  const value = input.trim().toLowerCase();
+  if (value === 'api_key' || value === 'oauth') {
+    return value;
+  }
+  throw new Error('Invalid field: geminiAuthMode');
 }
 
 function normalizeFeishuAppId(input: unknown): string {
@@ -356,6 +435,9 @@ function normalizeConfig(
     anthropicBaseUrl: normalizeBaseUrl(input.anthropicBaseUrl),
     codexBaseUrl: normalizeCodexBaseUrl(input.codexBaseUrl),
     codexModel: normalizeCodexModel(input.codexModel),
+    geminiBaseUrl: normalizeGeminiBaseUrl(input.geminiBaseUrl),
+    geminiModel: normalizeGeminiModel(input.geminiModel),
+    geminiAuthMode: normalizeGeminiAuthMode(input.geminiAuthMode),
     anthropicAuthToken: normalizeSecret(
       input.anthropicAuthToken,
       'anthropicAuthToken',
@@ -366,6 +448,7 @@ function normalizeConfig(
       'claudeCodeOauthToken',
     ),
     codexApiKey: normalizeSecret(input.codexApiKey, 'codexApiKey'),
+    geminiApiKey: normalizeSecret(input.geminiApiKey, 'geminiApiKey'),
     claudeOAuthCredentials: input.claudeOAuthCredentials ?? null,
   };
 }
@@ -443,6 +526,7 @@ function decryptSecrets(secrets: EncryptedSecrets): SecretPayload {
       'claudeCodeOauthToken',
     ),
     codexApiKey: normalizeSecret(parsed.codexApiKey ?? '', 'codexApiKey'),
+    geminiApiKey: normalizeSecret(parsed.geminiApiKey ?? '', 'geminiApiKey'),
   };
   // Restore OAuth credentials if present
   if (parsed.claudeOAuthCredentials && typeof parsed.claudeOAuthCredentials === 'object') {
@@ -508,10 +592,14 @@ function readStoredConfig(): RuntimeProviderConfig | null {
         anthropicBaseUrl: v3.anthropicBaseUrl,
         codexBaseUrl: v3.codexBaseUrl ?? '',
         codexModel: v3.codexModel ?? '',
+        geminiBaseUrl: v3.geminiBaseUrl ?? '',
+        geminiModel: v3.geminiModel ?? '',
+        geminiAuthMode: v3.geminiAuthMode ?? 'api_key',
         anthropicAuthToken: secrets.anthropicAuthToken,
         anthropicApiKey: secrets.anthropicApiKey,
         claudeCodeOauthToken: secrets.claudeCodeOauthToken,
         codexApiKey: secrets.codexApiKey,
+        geminiApiKey: secrets.geminiApiKey,
         claudeOAuthCredentials: secrets.claudeOAuthCredentials ?? null,
       },
       v3.updatedAt || null,
@@ -526,7 +614,7 @@ function readStoredConfig(): RuntimeProviderConfig | null {
 }
 
 function defaultsFromEnv(): RuntimeProviderConfig {
-  const raw = {
+  const raw: Omit<RuntimeProviderConfig, 'updatedAt'> = {
     agentRuntime: normalizeAgentProvider(
       process.env.AGENT_RUNTIME ||
         'claude',
@@ -534,10 +622,18 @@ function defaultsFromEnv(): RuntimeProviderConfig {
     anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || '',
     codexBaseUrl: process.env.OPENAI_BASE_URL || '',
     codexModel: process.env.CODEX_MODEL || '',
+    geminiBaseUrl:
+      process.env.GOOGLE_GEMINI_BASE_URL ||
+      process.env.GEMINI_NEXT_GEN_API_BASE_URL ||
+      '',
+    geminiModel: process.env.GEMINI_MODEL || '',
+    geminiAuthMode:
+      process.env.GEMINI_AUTH_MODE === 'oauth' ? 'oauth' : 'api_key',
     anthropicAuthToken: process.env.ANTHROPIC_AUTH_TOKEN || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     claudeCodeOauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN || '',
     codexApiKey: process.env.CODEX_API_KEY || process.env.OPENAI_API_KEY || '',
+    geminiApiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
     claudeOAuthCredentials: null,
   };
 
@@ -545,14 +641,23 @@ function defaultsFromEnv(): RuntimeProviderConfig {
     return buildConfig(raw, null);
   } catch {
     return {
-      agentRuntime: raw.agentRuntime === 'codex' ? 'codex' : 'claude',
+      agentRuntime:
+        raw.agentRuntime === 'codex'
+          ? 'codex'
+          : raw.agentRuntime === 'gemini'
+            ? 'gemini'
+            : 'claude',
       anthropicBaseUrl: '',
       codexBaseUrl: raw.codexBaseUrl.trim(),
       codexModel: raw.codexModel.trim(),
+      geminiBaseUrl: raw.geminiBaseUrl.trim(),
+      geminiModel: raw.geminiModel.trim(),
+      geminiAuthMode: raw.geminiAuthMode === 'oauth' ? 'oauth' : 'api_key',
       anthropicAuthToken: raw.anthropicAuthToken.trim(),
       anthropicApiKey: raw.anthropicApiKey.trim(),
       claudeCodeOauthToken: raw.claudeCodeOauthToken.trim(),
       codexApiKey: raw.codexApiKey.trim(),
+      geminiApiKey: raw.geminiApiKey.trim(),
       claudeOAuthCredentials: null,
       updatedAt: null,
     };
@@ -813,6 +918,102 @@ export function saveGlobalRuntimeCustomEnv(
   return sanitized;
 }
 
+interface StoredGeminiOAuthCredentialsV1 {
+  version: 1;
+  updatedAt: string;
+  credentials: GeminiOAuthCredentials;
+}
+
+function normalizeGeminiOAuthCredentials(
+  input: GeminiOAuthCredentials,
+): GeminiOAuthCredentials {
+  if (!input || typeof input !== 'object') {
+    throw new Error('Invalid gemini oauth credentials');
+  }
+  const accessToken = typeof input.accessToken === 'string'
+    ? input.accessToken.trim()
+    : '';
+  const refreshToken = typeof input.refreshToken === 'string'
+    ? input.refreshToken.trim()
+    : '';
+  const tokenType = typeof input.tokenType === 'string'
+    ? input.tokenType.trim()
+    : 'Bearer';
+  const scope = typeof input.scope === 'string'
+    ? input.scope.trim()
+    : '';
+  const expiryDate = typeof input.expiryDate === 'number' && Number.isFinite(input.expiryDate)
+    ? input.expiryDate
+    : null;
+
+  if (!accessToken) throw new Error('Invalid gemini oauth credentials: accessToken');
+  if (!refreshToken) throw new Error('Invalid gemini oauth credentials: refreshToken');
+  if (accessToken.length > MAX_FIELD_LENGTH * 4) {
+    throw new Error('Field too long: geminiOAuth.accessToken');
+  }
+  if (refreshToken.length > MAX_FIELD_LENGTH * 4) {
+    throw new Error('Field too long: geminiOAuth.refreshToken');
+  }
+  if (tokenType.length > MAX_FIELD_LENGTH) {
+    throw new Error('Field too long: geminiOAuth.tokenType');
+  }
+  if (scope.length > MAX_FIELD_LENGTH * 8) {
+    throw new Error('Field too long: geminiOAuth.scope');
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+    expiryDate,
+    tokenType: tokenType || 'Bearer',
+    scope,
+  };
+}
+
+export function getGeminiOAuthCredentials(): GeminiOAuthCredentials | null {
+  try {
+    if (!fs.existsSync(GEMINI_OAUTH_FILE)) return null;
+    const raw = JSON.parse(fs.readFileSync(GEMINI_OAUTH_FILE, 'utf-8')) as {
+      version?: number;
+      credentials?: GeminiOAuthCredentials;
+    };
+    if (raw.version !== 1 || !raw.credentials) return null;
+    return normalizeGeminiOAuthCredentials(raw.credentials);
+  } catch (err) {
+    logger.warn({ err }, 'Failed to read Gemini OAuth credentials');
+    return null;
+  }
+}
+
+export function saveGeminiOAuthCredentials(
+  credentials: GeminiOAuthCredentials,
+): GeminiOAuthCredentials {
+  const normalized = normalizeGeminiOAuthCredentials(credentials);
+  const payload: StoredGeminiOAuthCredentialsV1 = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    credentials: normalized,
+  };
+  fs.mkdirSync(RUNTIME_CONFIG_DIR, { recursive: true });
+  const tmp = `${GEMINI_OAUTH_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  fs.renameSync(tmp, GEMINI_OAUTH_FILE);
+  return normalized;
+}
+
+export function clearGeminiOAuthCredentials(): void {
+  try {
+    if (fs.existsSync(GEMINI_OAUTH_FILE)) {
+      fs.unlinkSync(GEMINI_OAUTH_FILE);
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to clear Gemini OAuth credentials');
+  }
+}
+
 function maskSecret(value: string): string | null {
   if (!value) return null;
   if (value.length <= 8)
@@ -823,20 +1024,27 @@ function maskSecret(value: string): string | null {
 export function toPublicRuntimeProviderConfig(
   config: RuntimeProviderConfig,
 ): RuntimeProviderPublicConfig {
+  const geminiOAuthCredentials = getGeminiOAuthCredentials();
   return {
     agentRuntime: config.agentRuntime,
     anthropicBaseUrl: config.anthropicBaseUrl,
     codexBaseUrl: config.codexBaseUrl,
     codexModel: config.codexModel,
+    geminiBaseUrl: config.geminiBaseUrl,
+    geminiModel: config.geminiModel,
+    geminiAuthMode: config.geminiAuthMode,
     updatedAt: config.updatedAt,
     hasAnthropicAuthToken: !!config.anthropicAuthToken,
     hasAnthropicApiKey: !!config.anthropicApiKey,
     hasClaudeCodeOauthToken: !!config.claudeCodeOauthToken,
     hasCodexApiKey: !!config.codexApiKey,
+    hasGeminiApiKey: !!config.geminiApiKey,
+    hasGeminiOAuthCredentials: !!geminiOAuthCredentials,
     anthropicAuthTokenMasked: maskSecret(config.anthropicAuthToken),
     anthropicApiKeyMasked: maskSecret(config.anthropicApiKey),
     claudeCodeOauthTokenMasked: maskSecret(config.claudeCodeOauthToken),
     codexApiKeyMasked: maskSecret(config.codexApiKey),
+    geminiApiKeyMasked: maskSecret(config.geminiApiKey),
     hasRuntimeOAuthCredentials: !!config.claudeOAuthCredentials,
     claudeOAuthCredentialsExpiresAt: config.claudeOAuthCredentials?.expiresAt ?? null,
     claudeOAuthCredentialsAccessTokenMasked: config.claudeOAuthCredentials
@@ -886,6 +1094,17 @@ export function validateRuntimeProviderConfig(
     }
   }
 
+  if (config.geminiBaseUrl) {
+    try {
+      const parsed = new URL(config.geminiBaseUrl);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        errors.push('GOOGLE_GEMINI_BASE_URL 必须是 http 或 https 地址');
+      }
+    } catch {
+      errors.push('GOOGLE_GEMINI_BASE_URL 格式不正确');
+    }
+  }
+
   return errors;
 }
 
@@ -914,12 +1133,16 @@ export function saveRuntimeProviderConfig(
     anthropicBaseUrl: normalized.anthropicBaseUrl,
     codexBaseUrl: normalized.codexBaseUrl,
     codexModel: normalized.codexModel,
+    geminiBaseUrl: normalized.geminiBaseUrl,
+    geminiModel: normalized.geminiModel,
+    geminiAuthMode: normalized.geminiAuthMode,
     updatedAt: normalized.updatedAt || new Date().toISOString(),
     secrets: encryptSecrets({
       anthropicAuthToken: normalized.anthropicAuthToken,
       anthropicApiKey: normalized.anthropicApiKey,
       claudeCodeOauthToken: normalized.claudeCodeOauthToken,
       codexApiKey: normalized.codexApiKey,
+      geminiApiKey: normalized.geminiApiKey,
       claudeOAuthCredentials: normalized.claudeOAuthCredentials,
     }),
   };
@@ -990,6 +1213,21 @@ export function buildRuntimeEnvLines(config: RuntimeProviderConfig): string[] {
     if (config.codexModel) {
       lines.push(`CODEX_MODEL=${sanitizeEnvValue(config.codexModel)}`);
     }
+  } else if (config.agentRuntime === 'gemini') {
+    lines.push(
+      `GEMINI_AUTH_MODE=${sanitizeEnvValue(config.geminiAuthMode)}`,
+    );
+    if (config.geminiAuthMode === 'api_key' && config.geminiApiKey) {
+      lines.push(`GEMINI_API_KEY=${sanitizeEnvValue(config.geminiApiKey)}`);
+    }
+    if (config.geminiBaseUrl) {
+      lines.push(
+        `GOOGLE_GEMINI_BASE_URL=${sanitizeEnvValue(config.geminiBaseUrl)}`,
+      );
+    }
+    if (config.geminiModel) {
+      lines.push(`GEMINI_MODEL=${sanitizeEnvValue(config.geminiModel)}`);
+    }
   } else {
     // When full OAuth credentials exist, authentication is handled by .credentials.json file.
     // Otherwise use CLAUDE_CODE_OAUTH_TOKEN for single-token mode.
@@ -1056,10 +1294,14 @@ export interface ContainerEnvConfig {
   anthropicBaseUrl?: string;
   codexBaseUrl?: string;
   codexModel?: string;
+  geminiBaseUrl?: string;
+  geminiModel?: string;
+  geminiAuthMode?: GeminiAuthMode;
   anthropicAuthToken?: string;
   anthropicApiKey?: string;
   claudeCodeOauthToken?: string;
   codexApiKey?: string;
+  geminiApiKey?: string;
   claudeOAuthCredentials?: RuntimeOAuthCredentials | null;
   /** Arbitrary extra env vars injected into the container */
   customEnv?: Record<string, string>;
@@ -1070,14 +1312,19 @@ export interface ContainerEnvPublicConfig {
   anthropicBaseUrl: string;
   codexBaseUrl: string;
   codexModel: string;
+  geminiBaseUrl: string;
+  geminiModel: string;
+  geminiAuthMode: GeminiAuthMode;
   anthropicAuthTokenMasked: string | null;
   anthropicApiKeyMasked: string | null;
   claudeCodeOauthTokenMasked: string | null;
   codexApiKeyMasked: string | null;
+  geminiApiKeyMasked: string | null;
   hasAnthropicAuthToken: boolean;
   hasAnthropicApiKey: boolean;
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
+  hasGeminiApiKey: boolean;
   customEnv: Record<string, string>;
 }
 
@@ -1119,6 +1366,15 @@ export function saveContainerEnvConfig(
     sanitized.codexBaseUrl = sanitizeEnvValue(sanitized.codexBaseUrl);
   if (sanitized.codexModel)
     sanitized.codexModel = sanitizeEnvValue(sanitized.codexModel);
+  if (sanitized.geminiBaseUrl)
+    sanitized.geminiBaseUrl = sanitizeEnvValue(sanitized.geminiBaseUrl);
+  if (sanitized.geminiModel)
+    sanitized.geminiModel = sanitizeEnvValue(sanitized.geminiModel);
+  if (sanitized.geminiAuthMode !== undefined) {
+    sanitized.geminiAuthMode = normalizeGeminiAuthMode(
+      sanitized.geminiAuthMode,
+    );
+  }
   if (sanitized.anthropicAuthToken)
     sanitized.anthropicAuthToken = sanitizeEnvValue(
       sanitized.anthropicAuthToken,
@@ -1131,6 +1387,8 @@ export function saveContainerEnvConfig(
     );
   if (sanitized.codexApiKey)
     sanitized.codexApiKey = sanitizeEnvValue(sanitized.codexApiKey);
+  if (sanitized.geminiApiKey)
+    sanitized.geminiApiKey = sanitizeEnvValue(sanitized.geminiApiKey);
   if (sanitized.customEnv) {
     const cleanEnv: Record<string, string> = {};
     for (const [k, v] of Object.entries(sanitized.customEnv)) {
@@ -1170,14 +1428,20 @@ export function toPublicContainerEnvConfig(
     anthropicBaseUrl: config.anthropicBaseUrl || '',
     codexBaseUrl: config.codexBaseUrl || '',
     codexModel: config.codexModel || '',
+    geminiBaseUrl: config.geminiBaseUrl || '',
+    geminiModel: config.geminiModel || '',
+    geminiAuthMode:
+      config.geminiAuthMode === 'oauth' ? 'oauth' : 'api_key',
     hasAnthropicAuthToken: !!config.anthropicAuthToken,
     hasAnthropicApiKey: !!config.anthropicApiKey,
     hasClaudeCodeOauthToken: !!config.claudeCodeOauthToken,
     hasCodexApiKey: !!config.codexApiKey,
+    hasGeminiApiKey: !!config.geminiApiKey,
     anthropicAuthTokenMasked: maskSecret(config.anthropicAuthToken || ''),
     anthropicApiKeyMasked: maskSecret(config.anthropicApiKey || ''),
     claudeCodeOauthTokenMasked: maskSecret(config.claudeCodeOauthToken || ''),
     codexApiKeyMasked: maskSecret(config.codexApiKey || ''),
+    geminiApiKeyMasked: maskSecret(config.geminiApiKey || ''),
     customEnv: config.customEnv || {},
   };
 }
@@ -1197,12 +1461,16 @@ export function mergeRuntimeEnvConfig(
     anthropicBaseUrl: override.anthropicBaseUrl || global.anthropicBaseUrl,
     codexBaseUrl: override.codexBaseUrl || global.codexBaseUrl,
     codexModel: override.codexModel || global.codexModel,
+    geminiBaseUrl: override.geminiBaseUrl || global.geminiBaseUrl,
+    geminiModel: override.geminiModel || global.geminiModel,
+    geminiAuthMode: override.geminiAuthMode || global.geminiAuthMode,
     anthropicAuthToken:
       override.anthropicAuthToken || global.anthropicAuthToken,
     anthropicApiKey: override.anthropicApiKey || global.anthropicApiKey,
     claudeCodeOauthToken:
       override.claudeCodeOauthToken || global.claudeCodeOauthToken,
     codexApiKey: override.codexApiKey || global.codexApiKey,
+    geminiApiKey: override.geminiApiKey || global.geminiApiKey,
     claudeOAuthCredentials:
       override.claudeOAuthCredentials ?? global.claudeOAuthCredentials,
     updatedAt: global.updatedAt,
@@ -1320,6 +1588,8 @@ export function buildContainerEnvLines(
 
 const OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 const OAUTH_TOKEN_URL = 'https://api.anthropic.com/v1/oauth/token';
+const GEMINI_OAUTH_CREDENTIALS_FILE = 'oauth_creds.json';
+const GEMINI_SETTINGS_FILE = 'settings.json';
 
 /**
  * Write .credentials.json to a Claude session directory.
@@ -1395,6 +1665,141 @@ export function updateAllSessionCredentials(config: RuntimeProviderConfig): void
     } catch (err) {
       logger.warn({ err }, 'Failed to write host ~/.claude/.credentials.json');
     }
+  }
+}
+
+export function writeGeminiOAuthFile(
+  geminiDir: string,
+  credentials: GeminiOAuthCredentials,
+): void {
+  const normalized = normalizeGeminiOAuthCredentials(credentials);
+  fs.mkdirSync(geminiDir, { recursive: true });
+  const filePath = path.join(geminiDir, GEMINI_OAUTH_CREDENTIALS_FILE);
+  const payload = {
+    access_token: normalized.accessToken,
+    refresh_token: normalized.refreshToken,
+    expiry_date: normalized.expiryDate ?? undefined,
+    token_type: normalized.tokenType || 'Bearer',
+    scope: normalized.scope || undefined,
+  };
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  fs.renameSync(tmp, filePath);
+  upsertGeminiAuthType(geminiDir, 'oauth-personal');
+}
+
+function clearGeminiOAuthFile(geminiDir: string): void {
+  try {
+    const filePath = path.join(geminiDir, GEMINI_OAUTH_CREDENTIALS_FILE);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {
+    // best effort
+  }
+}
+
+function upsertGeminiAuthType(
+  geminiDir: string,
+  authType: 'oauth-personal' | 'gemini-api-key',
+): void {
+  try {
+    fs.mkdirSync(geminiDir, { recursive: true });
+    const settingsPath = path.join(geminiDir, GEMINI_SETTINGS_FILE);
+    let parsed: Record<string, unknown> = {};
+    if (fs.existsSync(settingsPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as unknown;
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          parsed = raw as Record<string, unknown>;
+        }
+      } catch {
+        // If existing settings is malformed, overwrite with minimal valid structure.
+      }
+    }
+
+    const security =
+      parsed.security && typeof parsed.security === 'object' && !Array.isArray(parsed.security)
+        ? { ...(parsed.security as Record<string, unknown>) }
+        : {};
+    const auth =
+      security.auth && typeof security.auth === 'object' && !Array.isArray(security.auth)
+        ? { ...(security.auth as Record<string, unknown>) }
+        : {};
+    auth.selectedType = authType;
+    security.auth = auth;
+
+    const next = { ...parsed, security };
+    const tmp = `${settingsPath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', {
+      encoding: 'utf-8',
+      mode: 0o600,
+    });
+    fs.renameSync(tmp, settingsPath);
+  } catch (err) {
+    logger.warn({ err }, 'Failed to update Gemini settings auth type');
+  }
+}
+
+export function updateAllGeminiSessionCredentials(
+  credentials: GeminiOAuthCredentials | null,
+): void {
+  const sessionsDir = path.join(DATA_DIR, 'sessions');
+  try {
+    if (fs.existsSync(sessionsDir)) {
+      for (const folder of fs.readdirSync(sessionsDir)) {
+        const geminiDir = path.join(sessionsDir, folder, '.gemini');
+        if (fs.existsSync(geminiDir) && fs.statSync(geminiDir).isDirectory()) {
+          try {
+            if (credentials) {
+              writeGeminiOAuthFile(geminiDir, credentials);
+            } else {
+              clearGeminiOAuthFile(geminiDir);
+              upsertGeminiAuthType(geminiDir, 'gemini-api-key');
+            }
+          } catch (err) {
+            logger.warn({ err, folder }, 'Failed to write Gemini OAuth creds for session');
+          }
+        }
+
+        const agentsDir = path.join(sessionsDir, folder, 'agents');
+        if (fs.existsSync(agentsDir) && fs.statSync(agentsDir).isDirectory()) {
+          for (const agentId of fs.readdirSync(agentsDir)) {
+            const agentGeminiDir = path.join(agentsDir, agentId, '.gemini');
+            if (fs.existsSync(agentGeminiDir) && fs.statSync(agentGeminiDir).isDirectory()) {
+              try {
+                if (credentials) {
+                  writeGeminiOAuthFile(agentGeminiDir, credentials);
+                } else {
+                  clearGeminiOAuthFile(agentGeminiDir);
+                  upsertGeminiAuthType(agentGeminiDir, 'gemini-api-key');
+                }
+              } catch (err) {
+                logger.warn(
+                  { err, folder, agentId },
+                  'Failed to write Gemini OAuth creds for agent session',
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to update Gemini OAuth credentials for sessions');
+  }
+
+  const homeGeminiDir = path.join(process.env.HOME || '/root', '.gemini');
+  try {
+    if (credentials) {
+      writeGeminiOAuthFile(homeGeminiDir, credentials);
+    } else {
+      clearGeminiOAuthFile(homeGeminiDir);
+      upsertGeminiAuthType(homeGeminiDir, 'gemini-api-key');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to update host ~/.gemini/oauth_creds.json');
   }
 }
 

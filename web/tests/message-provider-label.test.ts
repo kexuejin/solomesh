@@ -6,6 +6,7 @@ import { getMessageProviderLabel } from '../src/lib/message-provider.ts';
 test('maps provider ids to UI labels', () => {
   assert.equal(getMessageProviderLabel('claude'), 'Claude');
   assert.equal(getMessageProviderLabel('codex'), 'Codex');
+  assert.equal(getMessageProviderLabel('gemini'), 'Gemini');
 });
 
 test('returns null for unknown provider ids', () => {

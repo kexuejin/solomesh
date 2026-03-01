@@ -152,6 +152,7 @@ import {
 } from './im-channel-runtime-config.js';
 import { checkWorkflowSkillDependencies } from './skills-registry.js';
 import {
+  AGENT_PROVIDER_IDS,
   isAgentProviderConfigured,
   type AgentProvider,
 } from './agent-providers.js';
@@ -194,6 +195,7 @@ import {
   summarizeWorkflowTemplateChanges,
   type WorkflowTemplateEditIntent,
 } from './workflow-template-edit.js';
+import { decideAgentErrorRetry } from './agent-error-policy.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const execFileAsync = promisify(execFile);
@@ -374,7 +376,7 @@ function buildWorkflowTemplateEditPrompt(options: {
   return [
     '你是 Workflow 模板编辑助手。',
     '请严格基于“当前模板 JSON”和“改动目标”输出完整模板 JSON。',
-    `硬约束：template.id 必须保持为 ${templateId}，provider 只允许 claude/codex。`,
+    `硬约束：template.id 必须保持为 ${templateId}，provider 只允许 claude/codex/gemini。`,
     '不要调用任何工具，也不要输出解释。',
     '只输出如下标签包裹的 JSON：',
     '<workflow_template_json>',
@@ -615,10 +617,16 @@ function normalizeWorkflowFallbackProviders(value: unknown): AgentProvider[] {
   const providers: AgentProvider[] = [];
   const seen = new Set<AgentProvider>();
   for (const item of value) {
-    if (item !== 'claude' && item !== 'codex') continue;
-    if (seen.has(item)) continue;
-    seen.add(item);
-    providers.push(item);
+    if (
+      typeof item !== 'string'
+      || !(AGENT_PROVIDER_IDS as readonly string[]).includes(item)
+    ) {
+      continue;
+    }
+    const provider = item as AgentProvider;
+    if (seen.has(provider)) continue;
+    seen.add(provider);
+    providers.push(provider);
   }
   return providers;
 }
@@ -747,7 +755,7 @@ function reconcileWorkflowStageDependencies(chatJid: string): {
     const onMissing = dependency.onMissing ?? 'guide_user';
     const required = dependency.required !== false;
     if (dependency.type === 'provider') {
-      const validProvider = ref === 'claude' || ref === 'codex';
+      const validProvider = (AGENT_PROVIDER_IDS as readonly string[]).includes(ref);
       if (!validProvider || !providerAvailability[ref as AgentProvider]) {
         appendIssue({
           key: `provider:${ref}`,
@@ -879,6 +887,7 @@ function getWorkflowProviderAvailability(): Record<AgentProvider, boolean> {
   return {
     claude: isAgentProviderConfigured('claude', config),
     codex: isAgentProviderConfigured('codex', config),
+    gemini: isAgentProviderConfigured('gemini', config),
   };
 }
 
@@ -914,7 +923,8 @@ function reconcileWorkflowStageProviderAvailability(chatJid: string): {
   const primaryProvider = stage.defaultProvider;
   const strictProvider = stage.strictProvider === true;
   const configuredFallbacks = normalizeWorkflowFallbackProviders(stage.fallbackProviders);
-  const defaultFallback: AgentProvider = primaryProvider === 'claude' ? 'codex' : 'claude';
+  const defaultFallback: AgentProvider =
+    AGENT_PROVIDER_IDS.find((provider) => provider !== primaryProvider) ?? primaryProvider;
   const fallbackProviders = strictProvider
     ? []
     : (configuredFallbacks.length > 0 ? configuredFallbacks : [defaultFallback]);
@@ -1386,8 +1396,11 @@ function loadState(): void {
       : {};
     const normalized: Record<string, AgentProvider> = {};
     for (const [jid, raw] of Object.entries(parsed)) {
-      if (raw === 'claude' || raw === 'codex') {
-        normalized[jid] = raw;
+      if (
+        typeof raw === 'string'
+        && (AGENT_PROVIDER_IDS as readonly string[]).includes(raw)
+      ) {
+        normalized[jid] = raw as AgentProvider;
       }
     }
     chatProviderSelections = normalized;
@@ -1402,8 +1415,11 @@ function loadState(): void {
       : {};
     const normalized: Record<string, AgentProvider> = {};
     for (const [jid, raw] of Object.entries(parsed)) {
-      if (raw === 'claude' || raw === 'codex') {
-        normalized[jid] = raw;
+      if (
+        typeof raw === 'string'
+        && (AGENT_PROVIDER_IDS as readonly string[]).includes(raw)
+      ) {
+        normalized[jid] = raw as AgentProvider;
       }
     }
     chatProviderPendingHandoffFrom = normalized;
@@ -2238,6 +2254,23 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       logger.warn(
         { group: group.name, error: overflowMsg },
         'Context overflow detected, skipping retry',
+      );
+      commitCursor();
+      return true;
+    }
+
+    const retryDecision = decideAgentErrorRetry(effectiveProvider, errorDetail);
+    if (!retryDecision.shouldRetry) {
+      const userError = retryDecision.userFacingMessage || errorDetail;
+      sendSystemMessage(chatJid, 'agent_error', userError);
+      logger.warn(
+        {
+          group: group.name,
+          provider: effectiveProvider,
+          error: errorDetail,
+          userError,
+        },
+        'Terminal agent error detected, skipping retry',
       );
       commitCursor();
       return true;

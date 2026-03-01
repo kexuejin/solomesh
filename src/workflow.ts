@@ -1,4 +1,8 @@
-import type { AgentProvider } from './agent-providers.js';
+import {
+  AGENT_PROVIDER_IDS,
+  normalizeAgentProvider,
+  type AgentProvider,
+} from './agent-providers.js';
 
 export type WorkflowStatus =
   | 'idle'
@@ -465,13 +469,16 @@ function sanitizeWorkflowStage(value: unknown): WorkflowStageDef | null {
   if (!id) return null;
   const name = sanitizeString(item.name);
   if (!name) return null;
-  const defaultProvider: AgentProvider = item.defaultProvider === 'codex' ? 'codex' : 'claude';
+  const defaultProvider: AgentProvider = normalizeAgentProvider(item.defaultProvider);
   const fallbackProviders = (
     Array.isArray(item.fallbackProviders)
       ? item.fallbackProviders
       : []
   )
-    .filter((provider): provider is AgentProvider => provider === 'claude' || provider === 'codex')
+    .filter(
+      (provider): provider is AgentProvider =>
+        (AGENT_PROVIDER_IDS as readonly unknown[]).includes(provider),
+    )
     .filter((provider, index, array) => array.indexOf(provider) === index);
   const strictProvider = item.strictProvider === true;
   const goal = sanitizeString(item.goal);

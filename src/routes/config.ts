@@ -45,9 +45,14 @@ import {
   saveRegistrationConfig,
   getAppearanceConfig,
   saveAppearanceConfig,
+  clearGeminiOAuthCredentials,
+  getGeminiOAuthCredentials,
+  saveGeminiOAuthCredentials,
   updateAllSessionCredentials,
+  updateAllGeminiSessionCredentials,
 } from '../runtime-config.js';
 import type {
+  GeminiOAuthCredentials,
   RuntimeOAuthCredentials,
   FeishuProviderPublicConfig,
   TelegramProviderPublicConfig,
@@ -272,6 +277,18 @@ const putProviderConfigHandler = async (c: any) => {
       next.codexModel = validation.data.codexModel;
       changedFields.push('codexModel');
     }
+    if (typeof validation.data.geminiBaseUrl === 'string') {
+      next.geminiBaseUrl = validation.data.geminiBaseUrl;
+      changedFields.push('geminiBaseUrl');
+    }
+    if (typeof validation.data.geminiModel === 'string') {
+      next.geminiModel = validation.data.geminiModel;
+      changedFields.push('geminiModel');
+    }
+    if (typeof validation.data.geminiAuthMode === 'string') {
+      next.geminiAuthMode = validation.data.geminiAuthMode;
+      changedFields.push('geminiAuthMode');
+    }
 
     if (changedFields.length === 0) {
       return c.json({ error: 'No config changes provided' }, 400);
@@ -282,12 +299,20 @@ const putProviderConfigHandler = async (c: any) => {
       anthropicBaseUrl: next.anthropicBaseUrl,
       codexBaseUrl: next.codexBaseUrl,
       codexModel: next.codexModel,
+      geminiBaseUrl: next.geminiBaseUrl,
+      geminiModel: next.geminiModel,
+      geminiAuthMode: next.geminiAuthMode,
       anthropicAuthToken: next.anthropicAuthToken,
       anthropicApiKey: next.anthropicApiKey,
       claudeCodeOauthToken: next.claudeCodeOauthToken,
       codexApiKey: next.codexApiKey,
+      geminiApiKey: next.geminiApiKey,
       claudeOAuthCredentials: next.claudeOAuthCredentials,
     });
+    if (typeof validation.data.geminiAuthMode === 'string' && validation.data.geminiAuthMode === 'api_key') {
+      clearGeminiOAuthCredentials();
+      updateAllGeminiSessionCredentials(null);
+    }
     appendRuntimeConfigAudit(actor, 'update_config', changedFields);
     return c.json(toPublicRuntimeProviderConfig(saved));
   } catch (err) {
@@ -333,6 +358,7 @@ const putProviderSecretsHandler = async (c: any) => {
 
   const next = { ...current };
   const changedFields: string[] = [];
+  let pendingGeminiOAuthCredentials: GeminiOAuthCredentials | null = null;
 
   if (typeof validation.data.anthropicAuthToken === 'string') {
     next.anthropicAuthToken = validation.data.anthropicAuthToken;
@@ -366,6 +392,34 @@ const putProviderSecretsHandler = async (c: any) => {
     changedFields.push('codexApiKey:clear');
   }
 
+  if (typeof validation.data.geminiApiKey === 'string') {
+    next.geminiApiKey = validation.data.geminiApiKey;
+    changedFields.push('geminiApiKey:set');
+  } else if (validation.data.clearGeminiApiKey === true) {
+    next.geminiApiKey = '';
+    changedFields.push('geminiApiKey:clear');
+  }
+
+  if (validation.data.geminiOAuthCredentials) {
+    pendingGeminiOAuthCredentials = {
+      accessToken: validation.data.geminiOAuthCredentials.accessToken,
+      refreshToken: validation.data.geminiOAuthCredentials.refreshToken,
+      expiryDate:
+        typeof validation.data.geminiOAuthCredentials.expiryDate === 'number'
+          ? validation.data.geminiOAuthCredentials.expiryDate
+          : null,
+      tokenType: validation.data.geminiOAuthCredentials.tokenType || 'Bearer',
+      scope: validation.data.geminiOAuthCredentials.scope || '',
+    };
+    next.geminiAuthMode = 'oauth';
+    next.geminiApiKey = '';
+    changedFields.push('geminiOAuthCredentials:set');
+    changedFields.push('geminiApiKey:clear');
+    changedFields.push('geminiAuthMode');
+  } else if (validation.data.clearGeminiOAuthCredentials === true) {
+    changedFields.push('geminiOAuthCredentials:clear');
+  }
+
   if (validation.data.claudeOAuthCredentials) {
     next.claudeOAuthCredentials = validation.data.claudeOAuthCredentials;
     // When setting full credentials, clear the single-token field
@@ -386,16 +440,29 @@ const putProviderSecretsHandler = async (c: any) => {
       anthropicBaseUrl: next.anthropicBaseUrl,
       codexBaseUrl: next.codexBaseUrl,
       codexModel: next.codexModel,
+      geminiBaseUrl: next.geminiBaseUrl,
+      geminiModel: next.geminiModel,
+      geminiAuthMode: next.geminiAuthMode,
       anthropicAuthToken: next.anthropicAuthToken,
       anthropicApiKey: next.anthropicApiKey,
       claudeCodeOauthToken: next.claudeCodeOauthToken,
       codexApiKey: next.codexApiKey,
+      geminiApiKey: next.geminiApiKey,
       claudeOAuthCredentials: next.claudeOAuthCredentials,
     });
 
     // Update .credentials.json in all session directories when credentials change
     if (validation.data.claudeOAuthCredentials) {
       updateAllSessionCredentials(saved);
+    }
+    if (pendingGeminiOAuthCredentials) {
+      const savedGeminiCredentials = saveGeminiOAuthCredentials(
+        pendingGeminiOAuthCredentials,
+      );
+      updateAllGeminiSessionCredentials(savedGeminiCredentials);
+    } else if (validation.data.clearGeminiOAuthCredentials === true) {
+      clearGeminiOAuthCredentials();
+      updateAllGeminiSessionCredentials(null);
     }
 
     appendRuntimeConfigAudit(actor, 'update_secrets', changedFields);
@@ -475,18 +542,33 @@ const OAUTH_SCOPES = 'org:create_api_key user:profile user:inference';
 const OAUTH_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize';
 const OAUTH_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
 const OAUTH_FLOW_TTL = 10 * 60 * 1000; // 10 minutes
+const GEMINI_OAUTH_CLIENT_ID =
+  '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com';
+const GEMINI_OAUTH_CLIENT_SECRET = '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';
+const GEMINI_OAUTH_REDIRECT_URI = 'https://codeassist.google.com/authcode';
+const GEMINI_OAUTH_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GEMINI_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GEMINI_OAUTH_SCOPES = [
+  'https://www.googleapis.com/auth/cloud-platform',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+].join(' ');
 
 interface OAuthFlow {
   codeVerifier: string;
   expiresAt: number;
 }
 const oauthFlows = new Map<string, OAuthFlow>();
+const geminiOauthFlows = new Map<string, OAuthFlow>();
 
 // Periodic cleanup of expired flows
 setInterval(() => {
   const now = Date.now();
   for (const [key, flow] of oauthFlows) {
     if (flow.expiresAt < now) oauthFlows.delete(key);
+  }
+  for (const [key, flow] of geminiOauthFlows) {
+    if (flow.expiresAt < now) geminiOauthFlows.delete(key);
   }
 }, 60_000);
 
@@ -604,11 +686,15 @@ configRoutes.post(
         anthropicBaseUrl: current.anthropicBaseUrl,
         codexBaseUrl: current.codexBaseUrl,
         codexModel: current.codexModel,
+        geminiBaseUrl: current.geminiBaseUrl,
+        geminiModel: current.geminiModel,
+        geminiAuthMode: current.geminiAuthMode,
         anthropicAuthToken: '',
         anthropicApiKey: '',
         // When we have full credentials, clear the single-token field
         claudeCodeOauthToken: oauthCredentials ? '' : tokenData.access_token,
         codexApiKey: current.codexApiKey,
+        geminiApiKey: current.geminiApiKey,
         claudeOAuthCredentials: oauthCredentials,
       });
 
@@ -626,6 +712,149 @@ configRoutes.post(
       return c.json(toPublicRuntimeProviderConfig(saved));
     } catch (err) {
       logger.error({ err }, 'OAuth token exchange error');
+      const message = err instanceof Error ? err.message : 'OAuth token exchange failed';
+      return c.json({ error: message }, 500);
+    }
+  },
+);
+
+configRoutes.post(
+  '/runtime/gemini/oauth/start',
+  authMiddleware,
+  systemConfigMiddleware,
+  (c) => {
+    const state = randomBytes(32).toString('hex');
+    const codeVerifier = randomBytes(32).toString('base64url');
+    const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
+
+    geminiOauthFlows.set(state, {
+      codeVerifier,
+      expiresAt: Date.now() + OAUTH_FLOW_TTL,
+    });
+
+    const params = new URLSearchParams({
+      client_id: GEMINI_OAUTH_CLIENT_ID,
+      redirect_uri: GEMINI_OAUTH_REDIRECT_URI,
+      response_type: 'code',
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: GEMINI_OAUTH_SCOPES,
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    });
+
+    return c.json({
+      authorizeUrl: `${GEMINI_OAUTH_AUTHORIZE_URL}?${params.toString()}`,
+      state,
+    });
+  },
+);
+
+configRoutes.post(
+  '/runtime/gemini/oauth/callback',
+  authMiddleware,
+  systemConfigMiddleware,
+  async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { state, code } = body as { state?: string; code?: string };
+    if (!state || !code) {
+      return c.json({ error: 'Missing state or code' }, 400);
+    }
+
+    const cleanedCode = code.trim().split('#')[0]?.split('&')[0] ?? code.trim();
+    const flow = geminiOauthFlows.get(state);
+    if (!flow) {
+      return c.json({ error: 'Invalid or expired OAuth state' }, 400);
+    }
+    if (flow.expiresAt < Date.now()) {
+      geminiOauthFlows.delete(state);
+      return c.json({ error: 'OAuth flow expired' }, 400);
+    }
+    geminiOauthFlows.delete(state);
+
+    try {
+      const tokenBody = new URLSearchParams({
+        client_id: GEMINI_OAUTH_CLIENT_ID,
+        client_secret: GEMINI_OAUTH_CLIENT_SECRET,
+        code: cleanedCode,
+        code_verifier: flow.codeVerifier,
+        redirect_uri: GEMINI_OAUTH_REDIRECT_URI,
+        grant_type: 'authorization_code',
+      });
+      const tokenResp = await fetch(GEMINI_OAUTH_TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json, text/plain, */*',
+        },
+        body: tokenBody.toString(),
+      });
+      if (!tokenResp.ok) {
+        const errText = await tokenResp.text().catch(() => '');
+        logger.warn(
+          { status: tokenResp.status, body: errText },
+          'Gemini OAuth token exchange failed',
+        );
+        return c.json({ error: `Token exchange failed: ${tokenResp.status}` }, 400);
+      }
+      const tokenData = (await tokenResp.json()) as {
+        access_token?: string;
+        refresh_token?: string;
+        expires_in?: number;
+        token_type?: string;
+        scope?: string;
+        [key: string]: unknown;
+      };
+      if (!tokenData.access_token) {
+        return c.json({ error: 'No access_token in response' }, 400);
+      }
+      const existingGeminiCredentials = getGeminiOAuthCredentials();
+      const refreshToken =
+        tokenData.refresh_token || existingGeminiCredentials?.refreshToken || '';
+      if (!refreshToken) {
+        return c.json({
+          error: 'No refresh_token in response, please retry authorization',
+        }, 400);
+      }
+
+      const geminiOAuthCredentials: GeminiOAuthCredentials = {
+        accessToken: tokenData.access_token,
+        refreshToken,
+        expiryDate: tokenData.expires_in
+          ? Date.now() + tokenData.expires_in * 1000
+          : null,
+        tokenType: tokenData.token_type || 'Bearer',
+        scope: tokenData.scope || '',
+      };
+      const savedOAuthCredentials = saveGeminiOAuthCredentials(geminiOAuthCredentials);
+      updateAllGeminiSessionCredentials(savedOAuthCredentials);
+
+      const actor = (c.get('user') as AuthUser).username;
+      const current = getRuntimeProviderConfig();
+      const saved = saveRuntimeProviderConfig({
+        agentRuntime: current.agentRuntime,
+        anthropicBaseUrl: current.anthropicBaseUrl,
+        codexBaseUrl: current.codexBaseUrl,
+        codexModel: current.codexModel,
+        geminiBaseUrl: current.geminiBaseUrl,
+        geminiModel: current.geminiModel,
+        geminiAuthMode: 'oauth',
+        anthropicAuthToken: current.anthropicAuthToken,
+        anthropicApiKey: current.anthropicApiKey,
+        claudeCodeOauthToken: current.claudeCodeOauthToken,
+        codexApiKey: current.codexApiKey,
+        geminiApiKey: '',
+        claudeOAuthCredentials: current.claudeOAuthCredentials,
+      });
+      appendRuntimeConfigAudit(actor, 'gemini_oauth_login', [
+        'geminiOAuthCredentials:set',
+        'geminiAuthMode',
+        'geminiApiKey:clear',
+      ]);
+      return c.json(toPublicRuntimeProviderConfig(saved));
+    } catch (err) {
+      logger.error({ err }, 'Gemini OAuth token exchange error');
       const message = err instanceof Error ? err.message : 'OAuth token exchange failed';
       return c.json({ error: message }, 500);
     }

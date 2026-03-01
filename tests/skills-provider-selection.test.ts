@@ -34,4 +34,5 @@ test('build install args for claude', () => {
 test('global skills dir follows provider runtime', () => {
   assert.equal(getGlobalSkillsDirForProvider('claude').endsWith('/.claude/skills'), true);
   assert.equal(getGlobalSkillsDirForProvider('codex').endsWith('/.agents/skills'), true);
+  assert.equal(getGlobalSkillsDirForProvider('gemini').endsWith('/.gemini/skills'), true);
 });

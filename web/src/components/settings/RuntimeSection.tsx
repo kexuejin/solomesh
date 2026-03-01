@@ -11,6 +11,7 @@ import {
   type AgentRuntimeId,
   type RuntimeDefinition,
 } from '../../runtime-definitions';
+import { resolveRuntimeTabAfterConfigLoad } from './runtime-tab-selection';
 import {
   getRuntimeApplyEndpoint,
   getRuntimeConfigEndpoint,
@@ -19,6 +20,7 @@ import {
 } from '../../api/runtime-endpoints';
 import {
   buildCodexSecretsPayload,
+  buildGeminiSecretsPayload,
   hasSecretPayloadChanges,
   buildOfficialOauthSecretsPayload,
   buildOfficialSetupTokenSecretsPayload,
@@ -35,6 +37,7 @@ import type {
 import { getErrorMessage } from './types';
 
 type ClaudeAccessMode = 'official' | 'third_party';
+type GeminiAccessMode = 'api_key' | 'oauth';
 type EngineMode = AgentRuntimeId;
 
 interface RuntimeSectionProps extends SettingsNotification {}
@@ -52,6 +55,10 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const [oauthState, setOauthState] = useState<string | null>(null);
   const [oauthCode, setOauthCode] = useState('');
   const [oauthExchanging, setOauthExchanging] = useState(false);
+  const [geminiOauthLoading, setGeminiOauthLoading] = useState(false);
+  const [geminiOauthState, setGeminiOauthState] = useState<string | null>(null);
+  const [geminiOauthCode, setGeminiOauthCode] = useState('');
+  const [geminiOauthExchanging, setGeminiOauthExchanging] = useState(false);
 
   const [baseUrl, setBaseUrl] = useState('');
   const [authToken, setAuthToken] = useState('');
@@ -62,12 +69,18 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const [codexApiKeyDirty, setCodexApiKeyDirty] = useState(false);
   const [codexBaseUrl, setCodexBaseUrl] = useState('');
   const [codexModel, setCodexModel] = useState('');
+  const [geminiBaseUrl, setGeminiBaseUrl] = useState('');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [geminiApiKeyDirty, setGeminiApiKeyDirty] = useState(false);
+  const [geminiModel, setGeminiModel] = useState('');
+  const [geminiAccessMode, setGeminiAccessMode] = useState<GeminiAccessMode>('api_key');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
 
-  const loadConfig = useCallback(async () => {
+  const loadConfig = useCallback(async (options?: { preserveCurrentTab?: boolean }) => {
+    const preserveCurrentTab = options?.preserveCurrentTab ?? true;
     setLoading(true);
     setError(null);
     try {
@@ -89,18 +102,27 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
       setRuntimeDefinitions(runtimeOptions);
       setConfig(configData);
-      setEngineMode(
-        runtimeOptions.some((item) => item.id === configData.agentRuntime)
-          ? configData.agentRuntime
-          : runtimeOptions[0].id,
+      const runtimeIds = runtimeOptions.map((item) => item.id);
+      setEngineMode((current) =>
+        resolveRuntimeTabAfterConfigLoad({
+          availableRuntimeIds: runtimeIds,
+          savedRuntime: configData.agentRuntime,
+          currentTab: current,
+          preserveCurrentTab,
+        }),
       );
       setBaseUrl(configData.anthropicBaseUrl || '');
       setCodexBaseUrl(configData.codexBaseUrl || '');
       setCodexModel(configData.codexModel || '');
+      setGeminiBaseUrl(configData.geminiBaseUrl || '');
+      setGeminiModel(configData.geminiModel || '');
+      setGeminiAccessMode(configData.geminiAuthMode || 'api_key');
       setAuthToken('');
       setAuthTokenDirty(false);
       setCodexApiKey('');
       setCodexApiKeyDirty(false);
+      setGeminiApiKey('');
+      setGeminiApiKeyDirty(false);
 
       const envRows = Object.entries(customEnvData.customEnv || {}).map(([key, value]) => ({ key, value }));
       setCustomEnvRows(envRows);
@@ -119,8 +141,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
     }
   }, [setError]);
 
-  useEffect(() => { loadConfig(); }, [loadConfig]);
-
+  useEffect(() => { void loadConfig({ preserveCurrentTab: false }); }, [loadConfig]);
   const runtimeOptions =
     runtimeDefinitions.length > 0
       ? runtimeDefinitions
@@ -155,9 +176,24 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const officialConfigured = !!(config?.hasClaudeCodeOauthToken || config?.hasRuntimeOAuthCredentials);
   const thirdPartyConfigured = !!(config?.hasAnthropicAuthToken || config?.anthropicBaseUrl);
   const codexConfigured = !!config?.hasCodexApiKey;
+  const geminiConfigured = !!config?.hasGeminiApiKey;
+  const geminiOAuthConfigured = !!config?.hasGeminiOAuthCredentials;
+  const isGeminiRuntime = engineMode === 'gemini';
+  const effectiveGeminiAccessMode: GeminiAccessMode = geminiAccessMode;
   const claudeOfficialDraftReady = officialConfigured || !!officialCode.trim();
   const claudeThirdPartyDraftReady = thirdPartyConfigured || (!!baseUrl.trim() && !!authToken.trim());
   const codexDraftReady = codexConfigured || !!codexApiKey.trim();
+  const geminiDraftReady =
+    effectiveGeminiAccessMode === 'oauth'
+      ? geminiOAuthConfigured
+      : geminiConfigured || !!geminiApiKey.trim();
+  const sdkRuntimeDraftReady = isGeminiRuntime ? geminiDraftReady : codexDraftReady;
+  useEffect(() => {
+    if (!isGeminiRuntime || effectiveGeminiAccessMode !== 'oauth') {
+      setGeminiOauthState(null);
+      setGeminiOauthCode('');
+    }
+  }, [isGeminiRuntime, effectiveGeminiAccessMode]);
 
   const handleSaveDefaultRuntime = async () => {
     setSaving(true);
@@ -283,6 +319,48 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
     }
   };
 
+  const handleGeminiOAuthStart = async () => {
+    setGeminiOauthLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const data = await api.post<{ authorizeUrl: string; state: string }>(
+        '/api/config/runtime/gemini/oauth/start',
+      );
+      setGeminiOauthState(data.state);
+      setGeminiOauthCode('');
+      window.open(data.authorizeUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Gemini OAuth 授权启动失败'));
+    } finally {
+      setGeminiOauthLoading(false);
+    }
+  };
+
+  const handleGeminiOAuthCallback = async () => {
+    if (!geminiOauthState || !geminiOauthCode.trim()) {
+      setError('请粘贴 Gemini 授权码');
+      return;
+    }
+    setGeminiOauthExchanging(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await api.post<RuntimeConfigPublic>('/api/config/runtime/gemini/oauth/callback', {
+        state: geminiOauthState,
+        code: geminiOauthCode.trim(),
+      });
+      setGeminiOauthState(null);
+      setGeminiOauthCode('');
+      setNotice('Gemini OAuth 登录成功');
+      await loadConfig();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Gemini OAuth 授权码换取失败'));
+    } finally {
+      setGeminiOauthExchanging(false);
+    }
+  };
+
   const handleSaveThirdParty = async () => {
     setSaving(true);
     setNotice(null);
@@ -322,10 +400,18 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
     }
   };
 
-  const handleSaveCodex = async () => {
-    const keyValue = codexApiKey.trim();
-    if (!codexApiKeyDirty && !config?.hasCodexApiKey && !keyValue) {
-      setError(`请填写 ${currentRuntime.label} 所需的 CODEX_API_KEY`);
+  const handleSaveSdkRuntime = async () => {
+    const isCodexRuntime = engineMode === 'codex';
+    const keyValue = isCodexRuntime ? codexApiKey.trim() : geminiApiKey.trim();
+    const keyDirty = isCodexRuntime ? codexApiKeyDirty : geminiApiKeyDirty;
+    const hasSavedKey = isCodexRuntime
+      ? !!config?.hasCodexApiKey
+      : !!config?.hasGeminiApiKey;
+    const keyName = isCodexRuntime ? 'CODEX_API_KEY' : 'GEMINI_API_KEY';
+    const requiresApiKey =
+      isCodexRuntime || effectiveGeminiAccessMode === 'api_key';
+    if (requiresApiKey && !keyDirty && !hasSavedKey && !keyValue) {
+      setError(`请填写 ${currentRuntime.label} 所需的 ${keyName}`);
       return;
     }
 
@@ -335,16 +421,29 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
     try {
       const providerSaved = await api.put<RuntimeConfigPublic>(
         getRuntimeConfigEndpoint(),
-        {
-          codexBaseUrl,
-          codexModel,
-        },
+        isCodexRuntime
+          ? {
+            codexBaseUrl,
+            codexModel,
+          }
+          : {
+            geminiBaseUrl: geminiBaseUrl.trim(),
+            geminiModel,
+            geminiAuthMode: effectiveGeminiAccessMode,
+          },
       );
 
-      const secretsPayload = buildCodexSecretsPayload({
-        codexApiKeyDirty,
-        codexApiKey: keyValue,
-      });
+      const secretsPayload = isCodexRuntime
+        ? buildCodexSecretsPayload({
+          codexApiKeyDirty: keyDirty,
+          codexApiKey: keyValue,
+        })
+        : buildGeminiSecretsPayload({
+          geminiAuthMode: effectiveGeminiAccessMode,
+          geminiApiKeyDirty: keyDirty,
+          geminiApiKey: keyValue,
+          hasGeminiApiKey: hasSavedKey,
+        });
 
       if (hasSecretPayloadChanges(secretsPayload)) {
         const saved = await api.put<RuntimeConfigPublic>(
@@ -358,13 +457,15 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
       setCodexApiKey('');
       setCodexApiKeyDirty(false);
+      setGeminiApiKey('');
+      setGeminiApiKeyDirty(false);
       await api.put<RuntimeCustomEnvResp>(getRuntimeCustomEnvEndpoint(), {
         customEnv: {},
       });
       setNotice(`${currentRuntime.label} 配置已保存`);
       await loadConfig();
     } catch (err) {
-      setError(getErrorMessage(err, '保存 Codex 配置失败'));
+      setError(getErrorMessage(err, `保存 ${currentRuntime.label} 配置失败`));
     } finally {
       setSaving(false);
     }
@@ -710,58 +811,193 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
             <div>
               <h3 className="text-sm font-semibold text-foreground">{currentRuntime.label} 凭据</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可保存。
+                {isGeminiRuntime
+                  ? '使用 Gemini CLI。可切换 Google 官方 或 API Key 模式；支持可选自定义网关地址。'
+                  : '使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可保存。'}
               </p>
             </div>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-              codexDraftReady
+              sdkRuntimeDraftReady
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 : 'border-border/70 bg-card/75 text-muted-foreground'
             }`}>
-              {codexDraftReady ? '已配置' : '未配置'}
+              {sdkRuntimeDraftReady ? '已配置' : '未配置'}
             </span>
           </div>
 
           <div className="rounded-lg space-y-4 bg-muted/15 p-4">
-            <div className="grid grid-cols-1 gap-4">
-              <div className="rounded-lg bg-muted/10 p-3">
-                <label className="mb-1 block text-xs font-medium text-foreground/80">
-                  CODEX_API_KEY {config?.hasCodexApiKey ? `(${config.codexApiKeyMasked})` : ''}
-                </label>
-                <Input
-                  type="password"
-                  value={codexApiKey}
-                  onChange={(e) => {
-                    setCodexApiKey(e.target.value);
-                    setCodexApiKeyDirty(true);
-                  }}
+            {isGeminiRuntime && (
+              <div className="inline-flex rounded-xl border border-border/70 bg-muted/60 p-1">
+                <button
+                  type="button"
                   disabled={controlsBusy}
-                  placeholder={config?.hasCodexApiKey ? '留空并保存可保持原值' : '输入 API Key'}
-                  className="h-10 rounded-xl border-border/75 bg-card/95"
-                />
+                  onClick={() => setGeminiAccessMode('oauth')}
+                  className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+                    effectiveGeminiAccessMode === 'oauth'
+                      ? 'bg-card text-brand-700 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Google 官方
+                </button>
+                <button
+                  type="button"
+                  disabled={controlsBusy}
+                  onClick={() => setGeminiAccessMode('api_key')}
+                  className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+                    effectiveGeminiAccessMode === 'api_key'
+                      ? 'bg-card text-brand-700 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  API Key
+                </button>
               </div>
-              {currentRuntime.capabilities.supportsCustomBaseUrl && (
+            )}
+
+            {isGeminiRuntime && effectiveGeminiAccessMode === 'oauth' && (
+              <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/70 p-4 space-y-3">
+                <div className="text-sm font-medium text-foreground/90">Google 官方（推荐）</div>
+                <div className="text-xs text-muted-foreground">
+                  Google 官方模式不使用 <code className="rounded bg-muted px-1">GEMINI_API_KEY</code>，可直接一键登录并保存到系统运行目录。
+                </div>
+                {geminiOAuthConfigured && (
+                  <div className="surface-card-soft rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    Google 官方登录已连接，可直接使用 Gemini CLI。
+                  </div>
+                )}
+
+                {!geminiOauthState ? (
+                  <Button
+                    onClick={handleGeminiOAuthStart}
+                    disabled={controlsBusy || geminiOauthLoading || geminiOauthExchanging}
+                    className="h-10 rounded-xl"
+                  >
+                    {geminiOauthLoading ? <Loader2 className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
+                    {geminiOauthLoading ? '打开授权中...' : '一键登录 Google'}
+                  </Button>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      授权窗口已打开，请完成 Google 授权后将页面返回的授权码粘贴到下方。
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        value={geminiOauthCode}
+                        onChange={(e) => setGeminiOauthCode(e.target.value)}
+                        disabled={controlsBusy || geminiOauthExchanging}
+                        placeholder="粘贴 Gemini 授权码"
+                        className="h-10 flex-1 rounded-xl border-border/75 bg-card/95"
+                      />
+                      <Button
+                        onClick={handleGeminiOAuthCallback}
+                        disabled={controlsBusy || geminiOauthExchanging || !geminiOauthCode.trim()}
+                        className="h-10 rounded-xl"
+                      >
+                        {geminiOauthExchanging && <Loader2 className="size-4 animate-spin" />}
+                        {geminiOauthExchanging ? '确认中...' : '确认'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={controlsBusy || geminiOauthExchanging}
+                        className="h-10 rounded-xl"
+                        onClick={() => { setGeminiOauthState(null); setGeminiOauthCode(''); }}
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-xs text-muted-foreground">
+                  无法打开浏览器时，也可在目标环境手动执行 <code className="rounded bg-muted px-1">gemini login</code> 作为兜底。
+                </div>
+                {config?.hasGeminiApiKey && (
+                  <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    当前已存在 API Key，保存 Google 官方模式后会自动清空已存的 Key。
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4">
+              {(!isGeminiRuntime || effectiveGeminiAccessMode === 'api_key') && (
                 <div className="rounded-lg bg-muted/10 p-3">
-                  <label className="mb-1 block text-xs font-medium text-foreground/80">OPENAI_BASE_URL</label>
+                  <label className="mb-1 block text-xs font-medium text-foreground/80">
+                    {isGeminiRuntime ? 'GEMINI_API_KEY' : 'CODEX_API_KEY'}{' '}
+                    {isGeminiRuntime
+                      ? (config?.hasGeminiApiKey ? `(${config.geminiApiKeyMasked})` : '')
+                      : (config?.hasCodexApiKey ? `(${config.codexApiKeyMasked})` : '')}
+                  </label>
                   <Input
-                    type="text"
-                    value={codexBaseUrl}
-                    onChange={(e) => setCodexBaseUrl(e.target.value)}
+                    type="password"
+                    value={isGeminiRuntime ? geminiApiKey : codexApiKey}
+                    onChange={(e) => {
+                      if (isGeminiRuntime) {
+                        setGeminiApiKey(e.target.value);
+                        setGeminiApiKeyDirty(true);
+                      } else {
+                        setCodexApiKey(e.target.value);
+                        setCodexApiKeyDirty(true);
+                      }
+                    }}
                     disabled={controlsBusy}
-                    placeholder="https://api.openai.com/v1"
+                    placeholder={
+                      (isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey)
+                        ? '留空并保存可保持原值'
+                        : '输入 API Key'
+                    }
                     className="h-10 rounded-xl border-border/75 bg-card/95"
                   />
                 </div>
               )}
-              {supportsModelOverride && (
+              {isGeminiRuntime ? (
                 <div className="rounded-lg bg-muted/10 p-3">
-                  <label className="mb-1 block text-xs font-medium text-foreground/80">CODEX_MODEL</label>
+                  <label className="mb-1 block text-xs font-medium text-foreground/80">
+                    GOOGLE_GEMINI_BASE_URL（可选）
+                  </label>
                   <Input
                     type="text"
-                    value={codexModel}
-                    onChange={(e) => setCodexModel(e.target.value)}
+                    value={geminiBaseUrl}
+                    onChange={(e) => setGeminiBaseUrl(e.target.value)}
                     disabled={controlsBusy}
-                    placeholder="gpt-5-codex"
+                    placeholder="https://generativelanguage.googleapis.com"
+                    className="h-10 rounded-xl border-border/75 bg-card/95"
+                  />
+                </div>
+              ) : (
+                currentRuntime.capabilities.supportsCustomBaseUrl && (
+                  <div className="rounded-lg bg-muted/10 p-3">
+                    <label className="mb-1 block text-xs font-medium text-foreground/80">OPENAI_BASE_URL</label>
+                    <Input
+                      type="text"
+                      value={codexBaseUrl}
+                      onChange={(e) => setCodexBaseUrl(e.target.value)}
+                      disabled={controlsBusy}
+                      placeholder="https://api.openai.com/v1"
+                      className="h-10 rounded-xl border-border/75 bg-card/95"
+                    />
+                  </div>
+                )
+              )}
+              {supportsModelOverride && (
+                <div className="rounded-lg bg-muted/10 p-3">
+                  <label className="mb-1 block text-xs font-medium text-foreground/80">
+                    {isGeminiRuntime ? 'GEMINI_MODEL' : 'CODEX_MODEL'}
+                  </label>
+                  <Input
+                    type="text"
+                    value={isGeminiRuntime ? geminiModel : codexModel}
+                    onChange={(e) => {
+                      if (isGeminiRuntime) {
+                        setGeminiModel(e.target.value);
+                      } else {
+                        setCodexModel(e.target.value);
+                      }
+                    }}
+                    disabled={controlsBusy}
+                    placeholder={isGeminiRuntime ? 'gemini-2.5-pro' : 'gpt-5-codex'}
                     className="h-10 rounded-xl border-border/75 bg-card/95"
                   />
                 </div>
@@ -769,19 +1005,30 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
             </div>
 
             <Button
-              onClick={handleSaveCodex}
-              disabled={controlsBusy || oauthExchanging || oauthLoading}
+              onClick={handleSaveSdkRuntime}
+              disabled={
+                controlsBusy ||
+                oauthExchanging ||
+                oauthLoading ||
+                geminiOauthExchanging ||
+                geminiOauthLoading
+              }
               className="h-10 rounded-xl"
             >
               {saving && <Loader2 className="size-4 animate-spin" />}
-              {saving ? '保存中...' : '保存 Codex 配置'}
+              {saving ? '保存中...' : `保存 ${currentRuntime.label} 配置`}
             </Button>
           </div>
         </div>
       )}
 
       <div className="surface-card-soft flex flex-wrap items-center gap-3 rounded-xl border border-border/70 p-3">
-        <Button variant="outline" onClick={loadConfig} disabled={controlsBusy} className="h-10 rounded-xl">
+        <Button
+          variant="outline"
+          onClick={() => void loadConfig({ preserveCurrentTab: true })}
+          disabled={controlsBusy}
+          className="h-10 rounded-xl"
+        >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           {loading ? '加载中...' : '重新加载'}
         </Button>

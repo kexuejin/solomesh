@@ -26,7 +26,7 @@ test('mention suggestions exclude current provider', () => {
       query: '',
       currentProvider: 'claude',
     }),
-    ['codex'],
+    ['codex', 'gemini'],
   );
   assert.deepEqual(
     getProviderMentionSuggestions({

@@ -36,13 +36,13 @@ interface ListResponse {
 }
 
 interface TemplateAiResponse {
-  provider: 'claude' | 'codex';
+  provider: 'claude' | 'codex' | 'gemini';
   templateId: string;
   template: WorkflowTemplate;
   markdown: string;
 }
 
-type AiGenerateProvider = 'auto' | 'claude' | 'codex';
+type AiGenerateProvider = 'auto' | 'claude' | 'codex' | 'gemini';
 type LifecycleFilter = 'all' | WorkflowTemplateRecordPublic['lifecycle'];
 type SaveDraftStrategy = 'auto' | 'overwrite' | 'new';
 type WorkflowPanelMode = 'detail' | 'edit';
@@ -1206,7 +1206,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
           <div className="surface-card-soft rounded-xl space-y-3 border border-brand-200 bg-brand-50/40 p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-medium text-foreground">AI 一键生成模板</div>
-              <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-700">Claude/Codex</span>
+              <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-700">Claude/Codex/Gemini</span>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <select
@@ -1217,6 +1217,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                 <option value="auto">自动选择 provider</option>
                 <option value="claude">Claude</option>
                 <option value="codex">Codex</option>
+                <option value="gemini">Gemini</option>
               </select>
               <Button
                 type="button"
@@ -1790,7 +1791,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                 )}
                 {editorMode === 'markdown' && (
                   <div className="mt-1 text-xs text-muted-foreground">
-                    支持格式：`- id: xxx`、`## Stage: stage-id`、`- provider: claude|codex`，列表字段用 `|` 分隔。
+                    支持格式：`- id: xxx`、`## Stage: stage-id`、`- provider: claude|codex|gemini`，列表字段用 `|` 分隔。
                   </div>
                 )}
               </div>

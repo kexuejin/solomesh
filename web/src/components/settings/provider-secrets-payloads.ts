@@ -53,6 +53,25 @@ export function buildCodexSecretsPayload(input: {
   return payload;
 }
 
+export function buildGeminiSecretsPayload(input: {
+  geminiAuthMode: 'api_key' | 'oauth';
+  geminiApiKeyDirty: boolean;
+  geminiApiKey: string;
+  hasGeminiApiKey?: boolean;
+}): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  if (input.geminiAuthMode === 'oauth') {
+    if (input.hasGeminiApiKey || input.geminiApiKeyDirty) {
+      payload.clearGeminiApiKey = true;
+    }
+    return payload;
+  }
+  if (input.geminiApiKeyDirty) {
+    payload.geminiApiKey = input.geminiApiKey;
+  }
+  return payload;
+}
+
 export function hasSecretPayloadChanges(
   payload: Record<string, unknown>,
 ): boolean {

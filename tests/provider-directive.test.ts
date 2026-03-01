@@ -14,6 +14,14 @@ test('parses codex directive at message start', () => {
   assert.equal(parsed.isDirectiveOnly, false);
 });
 
+test('parses gemini directive at message start', () => {
+  const parsed = parseProviderDirective('@gemini summarize this issue');
+  assert.equal(parsed.provider, 'gemini');
+  assert.equal(parsed.hasDirective, true);
+  assert.equal(parsed.contentForPrompt, 'summarize this issue');
+  assert.equal(parsed.isDirectiveOnly, false);
+});
+
 test('parses claude directive with punctuation', () => {
   const parsed = parseProviderDirective('  @claude: plan this task');
   assert.equal(parsed.provider, 'claude');
