@@ -18,6 +18,7 @@ import {
   writeTasksSnapshot,
 } from './container-runner.js';
 import {
+  countTodoEventsForSourceOnDate,
   getAllTasks,
   cleanupOldTaskRunLogs,
   getDueTasks,
@@ -28,6 +29,7 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { hasScriptCapacity, runScript } from './script-runner.js';
+import { ingestTodo, shouldIngestAutomationTodo } from './todo-core.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
 export interface SchedulerDependencies {
@@ -65,6 +67,61 @@ function computeNextRun(task: ScheduledTask): string | null {
   }
   // 'once' tasks have no next run
   return null;
+}
+
+function maybeIngestAutomationFailureTodo(
+  task: ScheduledTask,
+  runAtIso: string,
+  error: string | null,
+  result: string | null,
+): void {
+  if (!error) return;
+
+  const autoCreate = Boolean(task.todo_auto_create);
+  const rawQuota = Number(task.todo_daily_quota ?? 20);
+  const dailyQuota = Number.isFinite(rawQuota) ? Math.max(1, rawQuota) : 20;
+  const currentCount = countTodoEventsForSourceOnDate(
+    'automation',
+    task.id,
+    runAtIso.slice(0, 10),
+  );
+
+  if (
+    !shouldIngestAutomationTodo({
+      autoCreate,
+      dailyQuota,
+      currentCount,
+      hasError: true,
+    })
+  ) {
+    return;
+  }
+
+  try {
+    ingestTodo(
+      {
+        title: `Automation task failed: ${task.id}`,
+        description: error.slice(0, 4000),
+        priority: 'high',
+        source_type: 'automation',
+        source_id: task.id,
+        source_run_id: runAtIso,
+        trigger_mode: 'automation',
+        evidence: {
+          error,
+          result,
+          schedule_type: task.schedule_type,
+          schedule_value: task.schedule_value,
+        },
+      },
+      'system:scheduler',
+    );
+  } catch (ingestError) {
+    logger.warn(
+      { taskId: task.id, ingestError },
+      'Failed to ingest automation failure todo',
+    );
+  }
 }
 
 async function runTask(
@@ -225,15 +282,17 @@ async function runTask(
   }
 
   const durationMs = Date.now() - startTime;
+  const runAt = new Date().toISOString();
 
   logTaskRun({
     task_id: task.id,
-    run_at: new Date().toISOString(),
+    run_at: runAt,
     duration_ms: durationMs,
     status: error ? 'error' : 'success',
     result,
     error,
   });
+  maybeIngestAutomationFailureTodo(task, runAt, error, result);
 
   const nextRun = computeNextRun(task);
 
@@ -312,15 +371,17 @@ async function runScriptTask(
   }
 
   const durationMs = Date.now() - startTime;
+  const runAt = new Date().toISOString();
 
   logTaskRun({
     task_id: task.id,
-    run_at: new Date().toISOString(),
+    run_at: runAt,
     duration_ms: durationMs,
     status: error ? 'error' : 'success',
     result,
     error,
   });
+  maybeIngestAutomationFailureTodo(task, runAt, error, result);
 
   const nextRun = computeNextRun(task);
   const resultSummary = error

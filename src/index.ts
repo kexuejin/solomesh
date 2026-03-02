@@ -204,6 +204,7 @@ import {
   type WorkflowTemplateEditIntent,
 } from './workflow-template-edit.js';
 import { decideAgentErrorRetry } from './agent-error-policy.js';
+import { ingestTodo } from './todo-core.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const execFileAsync = promisify(execFile);
@@ -1329,6 +1330,41 @@ function maybeAdvanceWorkflowFromAssistantReply(
       sendSystemMessage(chatJid, 'workflow', formatWorkflowTransitionRejection(decision));
     }
     return;
+  }
+
+  const currentStage = getWorkflowStage(runningWorkflow);
+  const shouldIngestWorkflowTodo = currentStage?.todoIngest?.enabled !== false;
+  if (shouldIngestWorkflowTodo) {
+    try {
+      ingestTodo(
+        {
+          title: `Workflow stage completed: ${runningWorkflow.templateId}/${currentStage?.id ?? runningWorkflow.currentStageIndex}`,
+          description: assistantText.slice(0, 4000),
+          priority: currentStage?.todoIngest?.priority,
+          source_type: 'workflow',
+          source_id: `${runningWorkflow.templateId}:${currentStage?.id ?? runningWorkflow.currentStageIndex}`,
+          source_run_id: `${runningWorkflow.chatJid}:${runningWorkflow.startedAt}`,
+          trigger_mode: 'manual',
+          evidence: {
+            stageId: currentStage?.id ?? null,
+            stageReport,
+            confidence: decision.confidence,
+            provider: activeProvider,
+          },
+          metadata: {
+            chatJid,
+            stageIndex: runningWorkflow.currentStageIndex,
+            templateVersion: runningWorkflow.templateVersion,
+          },
+        },
+        'system:workflow',
+      );
+    } catch (error) {
+      logger.warn(
+        { chatJid, templateId: runningWorkflow.templateId, error },
+        'Workflow todo ingest failed',
+      );
+    }
   }
 
   const advanced = advanceWorkflowStage(runningWorkflow);

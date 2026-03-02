@@ -538,3 +538,42 @@ test('workflow stage provider policy fields are preserved', () => {
   assert.equal(record?.template.stages[0]?.strictProvider, undefined);
   assert.deepEqual(record?.template.stages[0]?.fallbackProviders, ['claude']);
 });
+
+test('workflow stage todo ingest policy is preserved', () => {
+  upsertWorkflowTemplateDraft({
+    scope: 'user',
+    ownerUserId: 'u-todo-ingest',
+    template: {
+      id: 'todo-ingest-policy-test',
+      name: 'Todo Ingest Policy Test',
+      description: '',
+      version: 1,
+      stages: [
+        {
+          id: 'review',
+          name: 'Review',
+          defaultProvider: 'codex',
+          goal: '',
+          requiredOutputHints: [],
+          doneKeywords: [],
+          todoIngest: {
+            enabled: true,
+            priority: 'high',
+          },
+        } as any,
+      ],
+      recommendedTriggers: [],
+    } as any,
+  });
+  const record = getWorkflowTemplateRecordByRef({
+    scope: 'user',
+    ownerUserId: 'u-todo-ingest',
+    templateId: 'todo-ingest-policy-test',
+    lifecycle: 'draft',
+  });
+  assert.ok(record);
+  assert.deepEqual((record?.template.stages[0] as any)?.todoIngest, {
+    enabled: true,
+    priority: 'high',
+  });
+});

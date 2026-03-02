@@ -52,3 +52,16 @@ test('TaskPatchSchema accepts execution_type and script_command fields', () => {
     assert.equal(parsed.data.script_command, 'npm -v');
   }
 });
+
+test('TaskPatchSchema accepts todo automation policy fields', () => {
+  const parsed = TaskPatchSchema.safeParse({
+    todo_auto_create: true,
+    todo_daily_quota: 10,
+  });
+
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.todo_auto_create, true);
+    assert.equal(parsed.data.todo_daily_quota, 10);
+  }
+});

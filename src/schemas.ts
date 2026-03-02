@@ -62,9 +62,57 @@ export const TaskPatchSchema = z.object({
   context_mode: z.enum(['group', 'isolated']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).nullable().optional(),
+  todo_auto_create: z.boolean().optional(),
+  todo_daily_quota: z.number().int().min(1).max(1000).nullable().optional(),
   status: z.enum(['active', 'paused']).optional(),
   next_run: z.string().optional(),
 });
+
+export const TODO_PRIORITY_VALUES = ['low', 'medium', 'high', 'critical'] as const;
+export const TODO_STATUS_VALUES = [
+  'open',
+  'in_progress',
+  'done',
+  'archived',
+] as const;
+export const TODO_SOURCE_TYPE_VALUES = [
+  'manual',
+  'automation',
+  'plugin',
+  'workflow',
+] as const;
+export const TODO_TRIGGER_MODE_VALUES = ['manual', 'automation'] as const;
+
+export const TodoPrioritySchema = z.enum(TODO_PRIORITY_VALUES);
+export const TodoStatusSchema = z.enum(TODO_STATUS_VALUES);
+export const TodoSourceTypeSchema = z.enum(TODO_SOURCE_TYPE_VALUES);
+export const TodoTriggerModeSchema = z.enum(TODO_TRIGGER_MODE_VALUES);
+
+export const TodoIngestSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    description: z.string().max(4000).optional(),
+    priority: TodoPrioritySchema.optional(),
+    source_type: TodoSourceTypeSchema,
+    source_id: z.string().min(1).max(200),
+    source_run_id: z.string().max(200).optional(),
+    trigger_mode: TodoTriggerModeSchema.optional(),
+    dedupe_key: z.string().max(256).optional(),
+    evidence: z.unknown().optional(),
+    metadata: z.record(z.string().max(200), z.unknown()).optional(),
+  })
+  .strict();
+
+export const TodoQuerySchema = z
+  .object({
+    status: TodoStatusSchema.optional(),
+    priority: TodoPrioritySchema.optional(),
+    source_type: TodoSourceTypeSchema.optional(),
+    trigger_mode: TodoTriggerModeSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(20),
+    cursor: z.string().max(200).optional(),
+  })
+  .strict();
 
 // 简单 cron 表达式验证：5 或 6 段，每段允许 * 和常见 cron 语法
 const CRON_REGEX = /^(\S+\s+){4,5}\S+$/;
@@ -78,6 +126,8 @@ export const TaskCreateSchema = z.object({
   context_mode: z.enum(['group', 'isolated']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).optional(),
+  todo_auto_create: z.boolean().optional(),
+  todo_daily_quota: z.number().int().min(1).max(1000).optional(),
 }).superRefine((data, ctx) => {
   const execType = data.execution_type || 'agent';
   if (execType === 'agent' && !data.prompt?.trim()) {

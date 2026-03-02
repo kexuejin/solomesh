@@ -20,6 +20,12 @@ import {
   ScheduledTask,
   SubAgent,
   TaskRunLog,
+  Todo,
+  TodoPriority,
+  TodoSourceEvent,
+  TodoSourceType,
+  TodoStatus,
+  TodoTriggerMode,
   User,
   UserPublic,
   UserStatus,
@@ -153,6 +159,8 @@ export function initDatabase(): void {
       context_mode TEXT DEFAULT 'isolated',
       execution_type TEXT DEFAULT 'agent',
       script_command TEXT,
+      todo_auto_create INTEGER NOT NULL DEFAULT 0,
+      todo_daily_quota INTEGER,
       next_run TEXT,
       last_run TEXT,
       last_result TEXT,
@@ -174,6 +182,41 @@ export function initDatabase(): void {
       FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
     );
     CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
+
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      priority TEXT,
+      dedupe_key TEXT NOT NULL,
+      occurrence_count INTEGER NOT NULL DEFAULT 1,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(dedupe_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_todos_status_priority_last_seen
+      ON todos(status, priority, last_seen_at);
+
+    CREATE TABLE IF NOT EXISTS todo_source_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      todo_id TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_run_id TEXT,
+      trigger_mode TEXT,
+      action TEXT NOT NULL,
+      evidence TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (todo_id) REFERENCES todos(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_todo_source_events_todo_created_at
+      ON todo_source_events(todo_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_todo_source_events_source_lookup
+      ON todo_source_events(source_type, source_id, created_at);
   `);
 
   // State tables (replacing JSON files)
@@ -338,6 +381,8 @@ export function initDatabase(): void {
   ensureColumn('scheduled_tasks', 'created_by', 'TEXT');
   ensureColumn('scheduled_tasks', 'execution_type', "TEXT DEFAULT 'agent'");
   ensureColumn('scheduled_tasks', 'script_command', 'TEXT');
+  ensureColumn('scheduled_tasks', 'todo_auto_create', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('scheduled_tasks', 'todo_daily_quota', 'INTEGER');
   ensureColumn('registered_groups', 'selected_skills', 'TEXT');
   ensureColumn('sessions', 'agent_id', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('agents', 'kind', "TEXT NOT NULL DEFAULT 'task'");
@@ -399,12 +444,39 @@ export function initDatabase(): void {
     'context_mode',
     'execution_type',
     'script_command',
+    'todo_auto_create',
+    'todo_daily_quota',
     'next_run',
     'last_run',
     'last_result',
     'status',
     'created_at',
     'created_by',
+  ]);
+  assertSchema('todos', [
+    'id',
+    'title',
+    'description',
+    'status',
+    'priority',
+    'dedupe_key',
+    'occurrence_count',
+    'first_seen_at',
+    'last_seen_at',
+    'created_by',
+    'created_at',
+    'updated_at',
+  ]);
+  assertSchema('todo_source_events', [
+    'id',
+    'todo_id',
+    'source_type',
+    'source_id',
+    'source_run_id',
+    'trigger_mode',
+    'action',
+    'evidence',
+    'created_at',
   ]);
   assertSchema(
     'registered_groups',
@@ -776,8 +848,12 @@ export function createTask(
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, execution_type, script_command, next_run, status, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (
+      id, group_folder, chat_jid, prompt, schedule_type, schedule_value,
+      context_mode, execution_type, script_command, todo_auto_create, todo_daily_quota,
+      next_run, status, created_at, created_by
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -789,6 +865,8 @@ export function createTask(
     task.context_mode || 'isolated',
     task.execution_type || 'agent',
     task.script_command ?? null,
+    task.todo_auto_create ? 1 : 0,
+    task.todo_daily_quota ?? null,
     task.next_run,
     task.status,
     task.created_at,
@@ -827,6 +905,8 @@ export function updateTask(
       | 'context_mode'
       | 'execution_type'
       | 'script_command'
+      | 'todo_auto_create'
+      | 'todo_daily_quota'
       | 'next_run'
       | 'status'
     >
@@ -858,6 +938,14 @@ export function updateTask(
   if (updates.script_command !== undefined) {
     fields.push('script_command = ?');
     values.push(updates.script_command);
+  }
+  if (updates.todo_auto_create !== undefined) {
+    fields.push('todo_auto_create = ?');
+    values.push(updates.todo_auto_create ? 1 : 0);
+  }
+  if (updates.todo_daily_quota !== undefined) {
+    fields.push('todo_daily_quota = ?');
+    values.push(updates.todo_daily_quota);
   }
   if (updates.next_run !== undefined) {
     fields.push('next_run = ?');
@@ -949,6 +1037,220 @@ export function cleanupOldTaskRunLogs(retentionDays = 30): number {
     `DELETE FROM task_run_logs WHERE run_at < ?`,
   ).run(cutoff);
   return result.changes;
+}
+
+export interface TodoListFilters {
+  status?: TodoStatus;
+  priority?: TodoPriority;
+  source_type?: TodoSourceType;
+  trigger_mode?: TodoTriggerMode;
+  limit?: number;
+  cursor?: string;
+}
+
+type TodoMergePatch = Pick<
+  Todo,
+  'occurrence_count' | 'last_seen_at' | 'priority' | 'updated_at'
+>;
+
+export function withTransaction<T>(fn: () => T): T {
+  const tx = db.transaction(fn);
+  return tx();
+}
+
+function parseTodoRow(row: Record<string, unknown>): Todo {
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    description:
+      typeof row.description === 'string' ? row.description : null,
+    status: row.status as TodoStatus,
+    priority:
+      row.priority === null || row.priority === undefined
+        ? null
+        : (row.priority as TodoPriority),
+    dedupe_key: String(row.dedupe_key),
+    occurrence_count: Number(row.occurrence_count ?? 1),
+    first_seen_at: String(row.first_seen_at),
+    last_seen_at: String(row.last_seen_at),
+    created_by:
+      typeof row.created_by === 'string' ? row.created_by : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+export function getTodoById(id: string): Todo | undefined {
+  const row = db.prepare('SELECT * FROM todos WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? parseTodoRow(row) : undefined;
+}
+
+export function getTodoByDedupeKey(dedupeKey: string): Todo | undefined {
+  const row = db
+    .prepare('SELECT * FROM todos WHERE dedupe_key = ?')
+    .get(dedupeKey) as Record<string, unknown> | undefined;
+  return row ? parseTodoRow(row) : undefined;
+}
+
+export function insertTodo(todo: Todo): void {
+  db.prepare(
+    `
+    INSERT INTO todos (
+      id, title, description, status, priority, dedupe_key, occurrence_count,
+      first_seen_at, last_seen_at, created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    todo.id,
+    todo.title,
+    todo.description,
+    todo.status,
+    todo.priority,
+    todo.dedupe_key,
+    todo.occurrence_count,
+    todo.first_seen_at,
+    todo.last_seen_at,
+    todo.created_by,
+    todo.created_at,
+    todo.updated_at,
+  );
+}
+
+export function updateTodoMerge(todoId: string, patch: TodoMergePatch): void {
+  db.prepare(
+    `
+    UPDATE todos
+    SET occurrence_count = ?, last_seen_at = ?, priority = ?, updated_at = ?
+    WHERE id = ?
+  `,
+  ).run(
+    patch.occurrence_count,
+    patch.last_seen_at,
+    patch.priority,
+    patch.updated_at,
+    todoId,
+  );
+}
+
+export function insertTodoSourceEvent(event: TodoSourceEvent): void {
+  db.prepare(
+    `
+    INSERT INTO todo_source_events (
+      todo_id, source_type, source_id, source_run_id, trigger_mode, action, evidence, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    event.todo_id,
+    event.source_type,
+    event.source_id,
+    event.source_run_id,
+    event.trigger_mode,
+    event.action,
+    event.evidence,
+    event.created_at,
+  );
+}
+
+export function listTodoSourceEvents(todoId: string): TodoSourceEvent[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT id, todo_id, source_type, source_id, source_run_id, trigger_mode, action, evidence, created_at
+      FROM todo_source_events
+      WHERE todo_id = ?
+      ORDER BY created_at DESC, id DESC
+    `,
+    )
+    .all(todoId) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    id: Number(row.id),
+    todo_id: String(row.todo_id),
+    source_type: row.source_type as TodoSourceType,
+    source_id: String(row.source_id),
+    source_run_id:
+      typeof row.source_run_id === 'string' ? row.source_run_id : null,
+    trigger_mode:
+      row.trigger_mode === null || row.trigger_mode === undefined
+        ? null
+        : (row.trigger_mode as TodoTriggerMode),
+    action: row.action as TodoSourceEvent['action'],
+    evidence: typeof row.evidence === 'string' ? row.evidence : null,
+    created_at: String(row.created_at),
+  }));
+}
+
+export function listTodos(filters: TodoListFilters = {}): Todo[] {
+  const clauses: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (filters.status) {
+    clauses.push('t.status = ?');
+    params.push(filters.status);
+  }
+  if (filters.priority) {
+    clauses.push('t.priority = ?');
+    params.push(filters.priority);
+  }
+  if (filters.source_type) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.source_type = ?)',
+    );
+    params.push(filters.source_type);
+  }
+  if (filters.trigger_mode) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.trigger_mode = ?)',
+    );
+    params.push(filters.trigger_mode);
+  }
+  if (filters.cursor) {
+    const cursor = filters.cursor.trim();
+    const dividerIdx = cursor.lastIndexOf('|');
+    if (dividerIdx > 0) {
+      const cursorTs = cursor.slice(0, dividerIdx);
+      const cursorId = cursor.slice(dividerIdx + 1);
+      if (cursorTs && cursorId) {
+        clauses.push('(t.last_seen_at < ? OR (t.last_seen_at = ? AND t.id < ?))');
+        params.push(cursorTs, cursorTs, cursorId);
+      }
+    }
+  }
+
+  const limit = Math.max(1, Math.min(filters.limit ?? 20, 200));
+  const rows = db
+    .prepare(
+      `
+      SELECT t.*
+      FROM todos t
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY t.last_seen_at DESC, t.id DESC
+      LIMIT ?
+    `,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+
+  return rows.map(parseTodoRow);
+}
+
+export function countTodoEventsForSourceOnDate(
+  sourceType: TodoSourceType,
+  sourceId: string,
+  isoDate: string,
+): number {
+  const likePattern = `${isoDate}%`;
+  const row = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+      FROM todo_source_events
+      WHERE source_type = ? AND source_id = ? AND created_at LIKE ?
+    `,
+    )
+    .get(sourceType, sourceId, likePattern) as { total?: number } | undefined;
+  return Number(row?.total ?? 0);
 }
 
 // --- Router state accessors ---

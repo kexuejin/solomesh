@@ -15,6 +15,7 @@ export type WorkflowTemplateScope = 'global' | 'user';
 export type WorkflowTemplateLifecycle = 'draft' | 'published' | 'archived';
 export type WorkflowStageDependencyType = 'provider' | 'skill' | 'channel' | 'mcp';
 export type WorkflowStageDependencyOnMissing = 'auto_fix' | 'guide_user' | 'fallback' | 'fail';
+export type WorkflowStageTodoIngestPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export interface WorkflowStageDependencyDef {
   type: WorkflowStageDependencyType;
@@ -35,6 +36,10 @@ export interface WorkflowStageDef {
   doneKeywords: string[];
   skillRefs?: string[];
   dependencies?: WorkflowStageDependencyDef[];
+  todoIngest?: {
+    enabled: boolean;
+    priority?: WorkflowStageTodoIngestPriority;
+  };
 }
 
 export interface WorkflowTemplate {
@@ -169,6 +174,12 @@ const WORKFLOW_STAGE_DEPENDENCY_ON_MISSING: WorkflowStageDependencyOnMissing[] =
   'guide_user',
   'fallback',
   'fail',
+];
+const WORKFLOW_STAGE_TODO_INGEST_PRIORITIES: WorkflowStageTodoIngestPriority[] = [
+  'low',
+  'medium',
+  'high',
+  'critical',
 ];
 
 export const WORKFLOW_RECOMMENDATION_TTL_MS = 20 * 60 * 1000;
@@ -346,6 +357,9 @@ function cloneWorkflowStage(stage: WorkflowStageDef): WorkflowStageDef {
   if (Array.isArray(stage.dependencies)) {
     cloned.dependencies = stage.dependencies.map((dependency) => ({ ...dependency }));
   }
+  if (stage.todoIngest) {
+    cloned.todoIngest = { ...stage.todoIngest };
+  }
   return cloned;
 }
 
@@ -462,6 +476,28 @@ function sanitizeWorkflowStageDependencies(value: unknown): WorkflowStageDepende
   return dependencies;
 }
 
+function normalizeWorkflowStageTodoIngestPriority(
+  value: unknown,
+): WorkflowStageTodoIngestPriority | null {
+  if (WORKFLOW_STAGE_TODO_INGEST_PRIORITIES.includes(value as WorkflowStageTodoIngestPriority)) {
+    return value as WorkflowStageTodoIngestPriority;
+  }
+  return null;
+}
+
+function sanitizeWorkflowStageTodoIngest(
+  value: unknown,
+): WorkflowStageDef['todoIngest'] | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Record<string, unknown>;
+  const enabled = item.enabled !== false;
+  const priority = normalizeWorkflowStageTodoIngestPriority(item.priority);
+  return {
+    enabled,
+    ...(priority ? { priority } : {}),
+  };
+}
+
 function sanitizeWorkflowStage(value: unknown): WorkflowStageDef | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
@@ -484,6 +520,7 @@ function sanitizeWorkflowStage(value: unknown): WorkflowStageDef | null {
   const goal = sanitizeString(item.goal);
   const skillRefs = sanitizeStringArray(item.skillRefs);
   const dependencies = sanitizeWorkflowStageDependencies(item.dependencies);
+  const todoIngest = sanitizeWorkflowStageTodoIngest(item.todoIngest);
   return {
     id,
     name,
@@ -495,6 +532,7 @@ function sanitizeWorkflowStage(value: unknown): WorkflowStageDef | null {
     doneKeywords: sanitizeStringArray(item.doneKeywords),
     ...(skillRefs.length > 0 ? { skillRefs } : {}),
     ...(dependencies.length > 0 ? { dependencies } : {}),
+    ...(todoIngest ? { todoIngest } : {}),
   };
 }
 

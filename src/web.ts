@@ -49,6 +49,7 @@ import browseRoutes from './routes/browse.js';
 import agentRoutes from './routes/agents.js';
 import mcpServersRoutes from './routes/mcp-servers.js';
 import workflowsRoutes from './routes/workflows.js';
+import todosRoutes from './routes/todos.js';
 
 // Database and types (only for handleWebUserMessage and broadcast)
 import {
@@ -186,6 +187,7 @@ app.route('/api/tasks', tasksRoutes);
 app.route('/api/skills', skillsRoutes);
 app.route('/api/mcp-servers', mcpServersRoutes);
 app.route('/api/workflows', workflowsRoutes);
+app.route('/api/todos', todosRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/browse', browseRoutes);
 app.route('/api/groups', agentRoutes); // Agent routes under /api/groups/:jid/agents

@@ -57,6 +57,8 @@ tasksRoutes.post('/', authMiddleware, async (c) => {
     context_mode,
     execution_type,
     script_command,
+    todo_auto_create,
+    todo_daily_quota,
   } = validation.data;
   const group = getRegisteredGroup(chat_jid);
   if (!group) return c.json({ error: 'Group not found' }, 404);
@@ -108,6 +110,8 @@ tasksRoutes.post('/', authMiddleware, async (c) => {
     context_mode: context_mode || 'isolated',
     execution_type: execType,
     script_command: script_command ?? null,
+    todo_auto_create: todo_auto_create ?? false,
+    todo_daily_quota: todo_daily_quota ?? null,
     next_run: nextRun,
     status: 'active',
     created_at: now,

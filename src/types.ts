@@ -119,6 +119,8 @@ export interface ScheduledTask {
   prompt: string;
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
+  todo_auto_create?: boolean;
+  todo_daily_quota?: number | null;
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
@@ -137,6 +139,39 @@ export interface TaskRunLog {
   status: 'success' | 'error';
   result: string | null;
   error: string | null;
+}
+
+export type TodoPriority = 'low' | 'medium' | 'high' | 'critical';
+export type TodoStatus = 'open' | 'in_progress' | 'done' | 'archived';
+export type TodoSourceType = 'manual' | 'automation' | 'plugin' | 'workflow';
+export type TodoTriggerMode = 'manual' | 'automation';
+export type TodoIngestAction = 'created' | 'merged' | 'ignored';
+
+export interface Todo {
+  id: string;
+  title: string;
+  description: string | null;
+  status: TodoStatus;
+  priority: TodoPriority | null;
+  dedupe_key: string;
+  occurrence_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TodoSourceEvent {
+  id?: number;
+  todo_id: string;
+  source_type: TodoSourceType;
+  source_id: string;
+  source_run_id: string | null;
+  trigger_mode: TodoTriggerMode | null;
+  action: TodoIngestAction;
+  evidence: string | null;
+  created_at: string;
 }
 
 // --- Auth types ---
