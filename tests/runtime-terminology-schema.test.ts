@@ -12,6 +12,22 @@ test('accepts agentRuntime/modelProvider/model fields', () => {
   assert.equal(result.success, true);
 });
 
+test('accepts canonical gemini runtime id', () => {
+  const result = RuntimeModelSelectionSchema.safeParse({
+    agentRuntime: 'gemini',
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.agentRuntime, 'gemini');
+});
+
+test('rejects legacy gemini-cli runtime id', () => {
+  const result = RuntimeModelSelectionSchema.safeParse({
+    agentRuntime: 'gemini-cli',
+  });
+  assert.equal(result.success, false);
+});
+
 test('rejects ambiguous legacy field agentProvider', () => {
   const result = RuntimeModelSelectionSchema.safeParse({
     agentProvider: 'codex',
@@ -31,4 +47,3 @@ test('rejects unknown extra fields', () => {
   });
   assert.equal(result.success, false);
 });
-

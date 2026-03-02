@@ -211,18 +211,22 @@ export const zhCN = {
         none: '未配置',
       },
       generic: {
-        geminiDescription: '{{label}} 使用 Gemini CLI。可切换 Google 官方 或 API Key 模式；支持可选自定义网关地址。',
+        geminiDescription:
+          '{{label}} 当前为 Gemini SDK 直连（API Key）模式。',
         codexDescription: '{{label}} 使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可保存。',
       },
       gemini: {
         oauthDescription:
-          'Google 官方模式不使用 GEMINI_API_KEY，可直接一键登录并保存到系统运行目录。',
-        oauthConnected: 'Google 官方登录已连接，可直接使用 Gemini CLI。',
-        oneClickLogin: '一键登录 Google',
-        oauthWindowOpened: '授权窗口已打开，请完成 Google 授权后将页面返回的授权码粘贴到下方。',
-        oauthCodePlaceholder: '粘贴 Gemini 授权码',
-        fallbackHint: '无法打开浏览器时，也可在目标环境手动执行 gemini login 作为兜底。',
-        clearApiKeyHint: '当前已存在 API Key，保存 Google 官方模式后会自动清空已存的 Key。',
+          '当前仅支持 API Key 模式，请填写 GEMINI_API_KEY。',
+        apiKeyDescription:
+          'API Key 模式会直接使用 Gemini SDK；可选配置 GOOGLE_GEMINI_BASE_URL 以接入代理网关。',
+        oauthConnected: 'Gemini API Key 已配置。',
+        oneClickLogin: 'Google 登录（暂不可用）',
+        oauthWindowOpened: '当前版本不支持 Gemini OAuth 登录流程。',
+        oauthCodePlaceholder: '当前版本不支持 Gemini OAuth 授权码',
+        fallbackHint: '请在设置中填写 GEMINI_API_KEY 作为唯一登录方式。',
+        baseUrlApiKeyOnly: 'GOOGLE_GEMINI_BASE_URL 仅在 API Key（Gemini SDK）模式下生效。',
+        clearApiKeyHint: '当前已存在 API Key，保存后将继续使用该 Key。',
       },
       notice: {
         defaultRuntimeUpdated: '默认 Runtime 已更新为 {{label}}',
@@ -1076,14 +1080,19 @@ export const zhCN = {
       description: '覆盖全局 Runtime 配置，仅对当前工作区生效。留空则使用全局配置。保存后工作区将自动重建。',
       runtimeTitle: '{{label}} 凭据覆盖',
       anthropicDescription: '覆盖当前工作区的 Claude 凭据；未填写项会自动继承全局配置。',
-      geminiDescription: '覆盖当前工作区 Gemini 凭据；支持 Google 官方 与 API Key 两种模式。',
+      geminiDescription:
+        '覆盖当前工作区 Gemini 凭据；当前仅支持 API Key（Gemini SDK）模式。',
       codexDescription: '覆盖当前工作区 Codex 凭据；仅覆盖你填写的字段。',
       configured: '已配置',
       notConfigured: '未配置',
       geminiOfficial: 'Google 官方',
+      geminiApiKeyTab: 'API Key',
       geminiOfficialRecommended: 'Google 官方（推荐）',
       geminiOfficialHint:
-        '先在执行环境完成 gemini login，再保存当前模式。Google 官方模式不会使用 GEMINI_API_KEY，系统会自动读取默认登录目录。',
+        'Gemini 当前仅支持 API Key 模式。请填写 GEMINI_API_KEY 后保存。',
+      geminiApiKeyHint:
+        'API Key 模式会直接使用 Gemini SDK；可选配置 GOOGLE_GEMINI_BASE_URL 接入代理网关。',
+      geminiBaseUrlApiKeyOnly: 'GOOGLE_GEMINI_BASE_URL 仅在 API Key（Gemini SDK）模式下生效。',
       currentSource: '当前来源：',
       apiKeyDegraded: '检测到已保存的 Key 值无效，系统已自动回退到其他可用来源。',
       placeholderOverrideKeep: '已设置，输入新值覆盖；留空保持原值',
@@ -1829,12 +1838,15 @@ export const zhCN = {
       },
       generic: {
         title: '{{label}} 凭据',
-        geminiDescription: '{{label}} 使用 Gemini CLI。可切换 Google 官方 或 API Key 模式。',
+        geminiDescription:
+          '{{label}} 当前仅支持 API Key（Gemini SDK）模式。',
         codexDescription:
           '{{label}} 使用 OpenAI 兼容网关。至少填写 CODEX_API_KEY 即可完成初始化。',
         geminiOauthHint:
-          'Google 官方模式不需要 GEMINI_API_KEY，需在执行环境完成 gemini login。',
-        geminiApiHint: '可选项包含 GOOGLE_GEMINI_BASE_URL 与 GEMINI_MODEL；留空时会使用默认值。',
+          '当前版本不支持 Gemini OAuth/CLI 登录，请填写 GEMINI_API_KEY。',
+        geminiApiHint:
+          'API Key 模式走 Gemini SDK 直连；可选项包含 GOOGLE_GEMINI_BASE_URL 与 GEMINI_MODEL。',
+        geminiBaseUrlApiKeyOnly: 'GOOGLE_GEMINI_BASE_URL 仅在 API Key（Gemini SDK）模式下生效。',
         codexHint: '可选项包含 OPENAI_BASE_URL 与 CODEX_MODEL；留空时会使用默认值。',
         geminiApiKeyLabel: 'GEMINI_API_KEY（必填）',
         codexApiKeyLabel: 'CODEX_API_KEY（必填）',
@@ -1853,9 +1865,9 @@ export const zhCN = {
         tabOfficial: 'Google 官方',
         tabApiKey: 'API Key',
         officialTitle: 'Google 官方（推荐）',
-        officialDescription: '使用 gemini login 后，初始化流程只需保存模式与模型即可。',
+        officialDescription: '当前版本不支持 Gemini OAuth/CLI 登录。',
         quickCheckTitle: '快速检查',
-        quickCheck1: '在目标机器执行 gemini login 并完成授权。',
+        quickCheck1: '在设置页填写 GEMINI_API_KEY。',
         quickCheck2: '保持当前模式为 Google 官方，点击页面底部保存。',
         quickCheck3: '系统会自动尝试默认登录目录，无需手动配置路径。',
       },
@@ -2491,21 +2503,25 @@ export const en = {
       },
       generic: {
         geminiDescription:
-          '{{label}} uses Gemini CLI. You can switch between Google official mode and API Key mode, with optional custom gateway URL.',
+          '{{label}} currently uses direct Gemini SDK (API Key mode only).',
         codexDescription: '{{label}} uses an OpenAI-compatible gateway. Filling CODEX_API_KEY is enough to save.',
       },
       gemini: {
         oauthDescription:
-          'Google official mode does not use GEMINI_API_KEY. You can one-click login and save to runtime directory.',
-        oauthConnected: 'Google official login is connected and ready for Gemini CLI.',
-        oneClickLogin: 'One-click Google Login',
+          'Only API Key mode is supported now. Please provide GEMINI_API_KEY.',
+        apiKeyDescription:
+          'API Key mode uses direct Gemini SDK. You can optionally configure GOOGLE_GEMINI_BASE_URL for proxy gateways.',
+        oauthConnected: 'Gemini API Key is configured.',
+        oneClickLogin: 'Google Login (Unavailable)',
         oauthWindowOpened:
-          'Authorization window opened. Complete Google authorization and paste the returned code below.',
-        oauthCodePlaceholder: 'Paste Gemini authorization code',
+          'Gemini OAuth login flow is not available in this version.',
+        oauthCodePlaceholder: 'Gemini OAuth code is not supported in this version',
         fallbackHint:
-          'If browser opening fails, run gemini login manually in target environment as fallback.',
+          'Use GEMINI_API_KEY in settings as the only supported auth method.',
+        baseUrlApiKeyOnly:
+          'GOOGLE_GEMINI_BASE_URL only applies in API Key mode (Gemini SDK).',
         clearApiKeyHint:
-          'An API Key already exists. Saving Google official mode will clear the stored key automatically.',
+          'An API Key already exists and will continue to be used after saving.',
       },
       notice: {
         defaultRuntimeUpdated: 'Default runtime updated to {{label}}',
@@ -3372,14 +3388,19 @@ export const en = {
       runtimeTitle: '{{label}} Credential Overrides',
       anthropicDescription: 'Override Claude credentials for this workspace; blank fields inherit global settings.',
       geminiDescription:
-        'Override Gemini credentials for this workspace; supports Google official and API Key modes.',
+        'Override Gemini credentials for this workspace; API Key (Gemini SDK) is the only supported mode.',
       codexDescription: 'Override Codex credentials for this workspace; only provided fields are overridden.',
       configured: 'Configured',
       notConfigured: 'Not configured',
       geminiOfficial: 'Google Official',
+      geminiApiKeyTab: 'API Key',
       geminiOfficialRecommended: 'Google Official (Recommended)',
       geminiOfficialHint:
-        'Run gemini login in the execution environment first, then save current mode. Google official mode does not use GEMINI_API_KEY and reads default login directories automatically.',
+        'Gemini supports API Key mode only. Fill GEMINI_API_KEY and save.',
+      geminiApiKeyHint:
+        'API Key mode uses direct Gemini SDK. You can optionally configure GOOGLE_GEMINI_BASE_URL for proxy gateways.',
+      geminiBaseUrlApiKeyOnly:
+        'GOOGLE_GEMINI_BASE_URL only applies in API Key mode (Gemini SDK).',
       currentSource: 'Current source: ',
       apiKeyDegraded: 'Saved key is invalid. The system has automatically fallen back to another available source.',
       placeholderOverrideKeep: 'Configured. Enter a new value to override; leave empty to keep current value',
@@ -4132,13 +4153,16 @@ export const en = {
       },
       generic: {
         title: '{{label}} Credentials',
-        geminiDescription: '{{label}} uses Gemini CLI. You can switch between Google official mode and API Key mode.',
+        geminiDescription:
+          '{{label}} currently supports API Key mode (direct Gemini SDK) only.',
         codexDescription:
           '{{label}} uses an OpenAI-compatible gateway. Filling CODEX_API_KEY is enough to complete initialization.',
         geminiOauthHint:
-          'Google official mode does not require GEMINI_API_KEY. Complete gemini login in the execution environment.',
+          'Gemini OAuth/CLI login is not supported in this version. Use GEMINI_API_KEY.',
         geminiApiHint:
-          'Optional fields include GOOGLE_GEMINI_BASE_URL and GEMINI_MODEL. Defaults are used when empty.',
+          'API Key mode uses direct Gemini SDK. Optional fields include GOOGLE_GEMINI_BASE_URL and GEMINI_MODEL.',
+        geminiBaseUrlApiKeyOnly:
+          'GOOGLE_GEMINI_BASE_URL only applies in API Key mode (Gemini SDK).',
         codexHint:
           'Optional fields include OPENAI_BASE_URL and CODEX_MODEL. Defaults are used when empty.',
         geminiApiKeyLabel: 'GEMINI_API_KEY (Required)',
@@ -4158,9 +4182,9 @@ export const en = {
         tabOfficial: 'Google Official',
         tabApiKey: 'API Key',
         officialTitle: 'Google Official (Recommended)',
-        officialDescription: 'After gemini login, setup only needs to save auth mode and model.',
+        officialDescription: 'Gemini OAuth/CLI login is unavailable in this version.',
         quickCheckTitle: 'Quick Checklist',
-        quickCheck1: 'Run gemini login on the target machine and complete authorization.',
+        quickCheck1: 'Provide GEMINI_API_KEY in setup.',
         quickCheck2: 'Keep mode as Google Official and click save at the bottom.',
         quickCheck3: 'The system will try default login directories automatically; no manual path config needed.',
       },

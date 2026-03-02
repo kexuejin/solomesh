@@ -40,7 +40,7 @@ export type AgentRuntimeId =
   | 'claude-code'
   | 'codex'
   | 'opencode'
-  | 'gemini-cli';
+  | 'gemini';
 
 export type ModelProviderId =
   | 'anthropic'

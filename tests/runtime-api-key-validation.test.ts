@@ -245,7 +245,7 @@ test('getRuntimeApiKeyAutoRepairPatch repairs url-like codex key from env fallba
   );
 });
 
-test('getRuntimeApiKeyAutoRepairPatch does not repair gemini key in oauth mode', async () => {
+test('getRuntimeApiKeyAutoRepairPatch repairs gemini key even when legacy oauth mode is set', async () => {
   const config = createBaseConfig();
   config.agentRuntime = 'gemini';
   config.geminiAuthMode = 'oauth';
@@ -259,11 +259,71 @@ test('getRuntimeApiKeyAutoRepairPatch does not repair gemini key in oauth mode',
       const { changedFields, nextConfig } = getRuntimeApiKeyAutoRepairPatch(
         config,
       );
-      assert.equal(changedFields.length, 0);
-      assert.equal(
-        nextConfig.geminiApiKey,
-        'https://generativelanguage.googleapis.com',
-      );
+      assert.deepEqual(changedFields, ['geminiApiKey:auto_repair_from_env']);
+      assert.equal(nextConfig.geminiApiKey, 'gm-valid-001');
     },
   );
+});
+
+test('buildRuntimeEnvLines normalizes legacy gemini oauth mode to api_key behavior', () => {
+  const config = createBaseConfig();
+  config.agentRuntime = 'gemini';
+  config.geminiAuthMode = 'oauth';
+  config.geminiBaseUrl = 'https://proxy.example.com/gemini';
+  config.geminiModel = 'gemini-2.5-pro';
+
+  const lines = buildRuntimeEnvLines(config);
+  assert.ok(lines.includes('GEMINI_AUTH_MODE=api_key'));
+  assert.ok(lines.includes('GEMINI_MODEL=gemini-2.5-pro'));
+  assert.ok(lines.includes('SOLOMESH_CAP_SUPPORTS_NATIVE_THINKING_STREAM=1'));
+  assert.ok(lines.includes('GOOGLE_GEMINI_BASE_URL=https://proxy.example.com/gemini'));
+});
+
+test('buildRuntimeEnvLines includes GOOGLE_GEMINI_BASE_URL in gemini api_key mode', () => {
+  const config = createBaseConfig();
+  config.agentRuntime = 'gemini';
+  config.geminiAuthMode = 'api_key';
+  config.geminiApiKey = 'gm-valid-001';
+  config.geminiBaseUrl = 'https://proxy.example.com/gemini';
+
+  const lines = buildRuntimeEnvLines(config);
+  assert.ok(lines.includes('GEMINI_AUTH_MODE=api_key'));
+  assert.ok(lines.includes('SOLOMESH_CAP_SUPPORTS_NATIVE_THINKING_STREAM=1'));
+  assert.ok(lines.includes('GOOGLE_GEMINI_BASE_URL=https://proxy.example.com/gemini'));
+});
+
+test('buildContainerEnvLines treats workspace gemini oauth override as api_key mode', () => {
+  const global = createBaseConfig();
+  global.agentRuntime = 'gemini';
+  global.geminiAuthMode = 'api_key';
+  global.geminiApiKey = 'gm-global-001';
+  global.geminiBaseUrl = 'https://global-proxy.example.com/gemini';
+
+  const lines = buildContainerEnvLines(global, {
+    agentRuntime: 'gemini',
+    geminiAuthMode: 'oauth',
+    geminiBaseUrl: 'https://workspace-proxy.example.com/gemini',
+  });
+
+  assert.ok(lines.includes('GEMINI_AUTH_MODE=api_key'));
+  assert.ok(lines.includes('SOLOMESH_CAP_SUPPORTS_NATIVE_THINKING_STREAM=1'));
+  assert.ok(lines.includes('GOOGLE_GEMINI_BASE_URL=https://workspace-proxy.example.com/gemini'));
+});
+
+test('buildContainerEnvLines includes GOOGLE_GEMINI_BASE_URL when workspace override uses gemini api_key mode', () => {
+  const global = createBaseConfig();
+  global.agentRuntime = 'gemini';
+  global.geminiAuthMode = 'oauth';
+  global.geminiApiKey = '';
+  global.geminiBaseUrl = '';
+
+  const lines = buildContainerEnvLines(global, {
+    agentRuntime: 'gemini',
+    geminiAuthMode: 'api_key',
+    geminiApiKey: 'gm-workspace-001',
+    geminiBaseUrl: 'https://workspace-proxy.example.com/gemini',
+  });
+
+  assert.ok(lines.includes('GEMINI_AUTH_MODE=api_key'));
+  assert.ok(lines.includes('GOOGLE_GEMINI_BASE_URL=https://workspace-proxy.example.com/gemini'));
 });

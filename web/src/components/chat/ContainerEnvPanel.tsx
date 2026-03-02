@@ -34,7 +34,6 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
   const [codexApiKeyDirty, setCodexApiKeyDirty] = useState(false);
   const [geminiBaseUrl, setGeminiBaseUrl] = useState('');
   const [geminiModel, setGeminiModel] = useState('');
-  const [geminiAuthMode, setGeminiAuthMode] = useState<'api_key' | 'oauth'>('api_key');
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiApiKeyDirty, setGeminiApiKeyDirty] = useState(false);
   const [customEnv, setCustomEnv] = useState<{ key: string; value: string }[]>([]);
@@ -97,10 +96,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
     !!baseUrl.trim() ||
     !!authToken.trim();
   const codexDraftReady = !!config?.hasCodexApiKey || !!codexApiKey.trim();
-  const geminiDraftReady =
-    geminiAuthMode === 'oauth'
-      ? true
-      : !!config?.hasGeminiApiKey || !!geminiApiKey.trim();
+  const geminiDraftReady = !!config?.hasGeminiApiKey || !!geminiApiKey.trim();
   const sdkDraftReady = isGeminiRuntime ? geminiDraftReady : codexDraftReady;
   const sdkHasApiKey = isGeminiRuntime
     ? !!config?.hasGeminiApiKey
@@ -142,7 +138,6 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
     setCodexApiKeyDirty(false);
     setGeminiBaseUrl(config.geminiBaseUrl || '');
     setGeminiModel(config.geminiModel || '');
-    setGeminiAuthMode(config.geminiAuthMode || 'api_key');
     setGeminiApiKey('');
     setGeminiApiKeyDirty(false);
     const entries = Object.entries(config.customEnv || {}).map(([key, value]) => ({ key, value }));
@@ -168,13 +163,13 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
         if (isGeminiRuntime) {
           data.geminiBaseUrl = geminiBaseUrl;
           data.geminiModel = geminiModel;
-          data.geminiAuthMode = geminiAuthMode;
+          data.geminiAuthMode = 'api_key';
         } else {
           data.codexModel = codexModel;
         }
       }
       if (isGeminiRuntime) {
-        if (geminiAuthMode === 'api_key' && geminiApiKeyDirty) {
+        if (geminiApiKeyDirty) {
           data.geminiApiKey = geminiApiKey;
         }
       } else if (codexApiKeyDirty) {
@@ -199,7 +194,7 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
       codexApiKey?: string;
       geminiBaseUrl?: string;
       geminiModel?: string;
-      geminiAuthMode?: 'api_key' | 'oauth';
+      geminiAuthMode?: 'api_key';
       geminiApiKey?: string;
       customEnv?: Record<string, string>;
     });
@@ -317,88 +312,52 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
           {!usesAnthropicRuntime ? (
             <div className="rounded-lg space-y-4 bg-muted/15 p-4">
               {isGeminiRuntime && (
-                <div className="inline-flex rounded-xl border border-border/70 bg-muted/60 p-1">
-                  <button
-                    type="button"
-                    disabled={controlsBusy}
-                    onClick={() => setGeminiAuthMode('oauth')}
-                    className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-                      geminiAuthMode === 'oauth'
-                        ? 'bg-card text-brand-700 shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {t('chat.containerEnv.geminiOfficial')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={controlsBusy}
-                    onClick={() => setGeminiAuthMode('api_key')}
-                    className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-                      geminiAuthMode === 'api_key'
-                        ? 'bg-card text-brand-700 shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    API Key
-                  </button>
-                </div>
-              )}
-
-              {isGeminiRuntime && geminiAuthMode === 'oauth' && (
-                <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/70 p-3 space-y-2">
-                  <div className="text-xs font-medium text-foreground/90">
-                    {t('chat.containerEnv.geminiOfficialRecommended')}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {t('chat.containerEnv.geminiOfficialHint')}
-                  </div>
+                <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/70 p-3 text-[11px] text-muted-foreground">
+                  {t('chat.containerEnv.geminiApiKeyHint')}
                 </div>
               )}
 
               <div className="grid grid-cols-1 gap-3">
-                {(!isGeminiRuntime || geminiAuthMode === 'api_key') && (
-                  <div className="rounded-lg bg-muted/10 p-3">
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">
-                      {isGeminiRuntime ? 'GEMINI_API_KEY' : 'CODEX_API_KEY'}
-                      {(isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey) && (
-                        <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">
-                          ({isGeminiRuntime ? config?.geminiApiKeyMasked : config?.codexApiKeyMasked})
-                        </span>
-                      )}
-                    </label>
-                    {(sdkHasApiKey || sdkApiKeyDegraded) && (
-                      <div className="mb-2 text-[11px] text-muted-foreground">
-                        {t('chat.containerEnv.currentSource')}{containerSecretSourceLabel(sdkApiKeySource)}
-                      </div>
+                <div className="rounded-lg bg-muted/10 p-3">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    {isGeminiRuntime ? 'GEMINI_API_KEY' : 'CODEX_API_KEY'}
+                    {(isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey) && (
+                      <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">
+                        ({isGeminiRuntime ? config?.geminiApiKeyMasked : config?.codexApiKeyMasked})
+                      </span>
                     )}
-                    {sdkApiKeyDegraded && (
-                      <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                        {t('chat.containerEnv.apiKeyDegraded')}
-                      </div>
-                    )}
-                    <Input
-                      type="password"
-                      value={isGeminiRuntime ? geminiApiKey : codexApiKey}
-                      onChange={(e) => {
-                        if (isGeminiRuntime) {
-                          setGeminiApiKey(e.target.value);
-                          setGeminiApiKeyDirty(true);
-                        } else {
-                          setCodexApiKey(e.target.value);
-                          setCodexApiKeyDirty(true);
-                        }
-                      }}
-                      placeholder={
-                        (isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey)
-                          ? t('chat.containerEnv.placeholderOverrideKeep')
-                          : t('chat.containerEnv.placeholderUseGlobal')
+                  </label>
+                  {(sdkHasApiKey || sdkApiKeyDegraded) && (
+                    <div className="mb-2 text-[11px] text-muted-foreground">
+                      {t('chat.containerEnv.currentSource')}{containerSecretSourceLabel(sdkApiKeySource)}
+                    </div>
+                  )}
+                  {sdkApiKeyDegraded && (
+                    <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                      {t('chat.containerEnv.apiKeyDegraded')}
+                    </div>
+                  )}
+                  <Input
+                    type="password"
+                    value={isGeminiRuntime ? geminiApiKey : codexApiKey}
+                    onChange={(e) => {
+                      if (isGeminiRuntime) {
+                        setGeminiApiKey(e.target.value);
+                        setGeminiApiKeyDirty(true);
+                      } else {
+                        setCodexApiKey(e.target.value);
+                        setCodexApiKeyDirty(true);
                       }
-                      className="h-9 rounded-lg border-border/75 bg-card px-2.5 py-1.5 text-xs"
-                      disabled={controlsBusy}
-                    />
-                  </div>
-                )}
+                    }}
+                    placeholder={
+                      (isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey)
+                        ? t('chat.containerEnv.placeholderOverrideKeep')
+                        : t('chat.containerEnv.placeholderUseGlobal')
+                    }
+                    className="h-9 rounded-lg border-border/75 bg-card px-2.5 py-1.5 text-xs"
+                    disabled={controlsBusy}
+                  />
+                </div>
                 {!isGeminiRuntime && currentRuntime.capabilities.supportsCustomBaseUrl && (
                   <div className="rounded-lg bg-muted/10 p-3">
                     <label className="block text-xs font-medium text-muted-foreground mb-1">
@@ -419,6 +378,9 @@ export function ContainerEnvPanel({ groupJid, onClose }: ContainerEnvPanelProps)
                     <label className="block text-xs font-medium text-muted-foreground mb-1">
                       GOOGLE_GEMINI_BASE_URL
                     </label>
+                    <div className="mb-2 text-[11px] text-muted-foreground">
+                      {t('chat.containerEnv.geminiBaseUrlApiKeyOnly')}
+                    </div>
                     <Input
                       type="text"
                       value={geminiBaseUrl}

@@ -28,7 +28,6 @@ import { looksLikeHttpUrl } from '../lib/runtime-input-validation';
 import { useI18n, type MessageKey } from '../i18n';
 
 type ClaudeAccessMode = 'official' | 'third_party';
-type GeminiAccessMode = 'api_key' | 'oauth';
 type EngineMode = AgentRuntimeId;
 
 interface EnvRow {
@@ -126,7 +125,6 @@ export function SetupProvidersPage() {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiBaseUrl, setGeminiBaseUrl] = useState('');
   const [geminiModel, setGeminiModel] = useState('gemini-2.5-pro');
-  const [geminiAccessMode, setGeminiAccessMode] = useState<GeminiAccessMode>('api_key');
 
   useEffect(() => {
     if (user === null && initialized === true) {
@@ -212,15 +210,14 @@ export function SetupProvidersPage() {
     engineMode === 'codex'
       ? !!codexApiKey.trim()
       : engineMode === 'gemini'
-        ? (geminiAccessMode === 'oauth' ? true : !!geminiApiKey.trim())
+        ? !!geminiApiKey.trim()
       : effectiveClaudeAccessMode === 'third_party'
         ? !!(baseUrl.trim() && authToken.trim())
         : oauthDone || !!officialToken.trim();
   const claudeOfficialDraftReady = oauthDone || !!officialToken.trim();
   const claudeThirdPartyDraftReady = !!(baseUrl.trim() && authToken.trim());
   const codexDraftReady = !!codexApiKey.trim();
-  const geminiDraftReady =
-    geminiAccessMode === 'oauth' ? true : !!geminiApiKey.trim();
+  const geminiDraftReady = !!geminiApiKey.trim();
 
   const addCustomEnvRow = () => setCustomEnvRows((rows) => [...rows, { key: '', value: '' }]);
   const removeCustomEnvRow = (idx: number) =>
@@ -287,8 +284,7 @@ export function SetupProvidersPage() {
     const geminiTouched =
       !!geminiApiKey.trim() ||
       !!geminiBaseUrl.trim() ||
-      (!!geminiModelValue && geminiModelValue !== 'gemini-2.5-pro') ||
-      geminiAccessMode !== 'api_key';
+      (!!geminiModelValue && geminiModelValue !== 'gemini-2.5-pro');
 
     const wantsClaude =
       !!claudeRuntime &&
@@ -341,15 +337,15 @@ export function SetupProvidersPage() {
       setError(t('setupProviders.errors.codexApiKeyInvalid'));
       return;
     }
-    if (wantsGemini && geminiAccessMode === 'api_key' && !geminiApiKey.trim()) {
+    if (wantsGemini && !geminiApiKey.trim()) {
       setError(
         t('setupProviders.errors.geminiApiKeyRequired', {
-          label: geminiRuntime?.label ?? 'Gemini CLI',
+          label: geminiRuntime?.label ?? 'Gemini',
         }),
       );
       return;
     }
-    if (wantsGemini && geminiAccessMode === 'api_key' && looksLikeHttpUrl(geminiApiKey.trim())) {
+    if (wantsGemini && looksLikeHttpUrl(geminiApiKey.trim())) {
       setError(t('setupProviders.errors.geminiApiKeyInvalid'));
       return;
     }
@@ -452,12 +448,12 @@ export function SetupProvidersPage() {
         await api.put(getRuntimeConfigEndpoint(), {
           geminiBaseUrl: geminiBaseUrl.trim(),
           geminiModel: geminiModelValue || 'gemini-2.5-pro',
-          geminiAuthMode: geminiAccessMode,
+          geminiAuthMode: 'api_key',
         });
         await api.put(
           getRuntimeSecretsEndpoint(),
           buildGeminiSecretsPayload({
-            geminiAuthMode: geminiAccessMode,
+            geminiAuthMode: 'api_key',
             geminiApiKeyDirty: true,
             geminiApiKey: geminiApiKey.trim(),
             hasGeminiApiKey: false,
@@ -886,93 +882,44 @@ export function SetupProvidersPage() {
                 <div className="surface-card-soft flex items-center gap-2 border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs text-muted-foreground">
                   <Server className="w-4 h-4 text-primary" />
                   {engineMode === 'gemini'
-                    ? (geminiAccessMode === 'oauth'
-                      ? t('setupProviders.runtime.generic.geminiOauthHint')
-                      : t('setupProviders.runtime.generic.geminiApiHint'))
+                    ? t('setupProviders.runtime.generic.geminiApiHint')
                     : t('setupProviders.runtime.generic.codexHint')}
                 </div>
 
-                {engineMode === 'gemini' && (
-                  <div className="inline-flex rounded-xl border border-border/70 bg-muted/60 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setGeminiAccessMode('oauth')}
-                      disabled={saving}
-                      className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-                        geminiAccessMode === 'oauth'
-                          ? 'bg-card text-brand-700 shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {t('setupProviders.runtime.gemini.tabOfficial')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGeminiAccessMode('api_key')}
-                      disabled={saving}
-                      className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-                        geminiAccessMode === 'api_key'
-                          ? 'bg-card text-brand-700 shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {t('setupProviders.runtime.gemini.tabApiKey')}
-                    </button>
-                  </div>
-                )}
-
-                {engineMode === 'gemini' && geminiAccessMode === 'oauth' && (
-                  <div className="surface-card-soft rounded-xl space-y-3 border border-brand-200 bg-brand-50/70 p-4">
-                    <div className="text-sm font-medium text-foreground/90">
-                      {t('setupProviders.runtime.gemini.officialTitle')}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {t('setupProviders.runtime.gemini.officialDescription')}
-                    </div>
-                    <div className="rounded-lg bg-muted/15 p-3 text-sm text-foreground/80">
-                      <div className="font-medium mb-2">{t('setupProviders.runtime.gemini.quickCheckTitle')}</div>
-                      <ol className="list-decimal ml-5 space-y-1 text-xs">
-                        <li>{t('setupProviders.runtime.gemini.quickCheck1')}</li>
-                        <li>{t('setupProviders.runtime.gemini.quickCheck2')}</li>
-                        <li>{t('setupProviders.runtime.gemini.quickCheck3')}</li>
-                      </ol>
-                    </div>
-                  </div>
-                )}
-
                 <div className="grid grid-cols-1 gap-3">
-                  {(engineMode !== 'gemini' || geminiAccessMode === 'api_key') && (
-                    <div className="rounded-lg bg-muted/10 p-3">
-                      <label className="block text-sm font-medium text-foreground/80 mb-1">
-                        {engineMode === 'gemini'
-                          ? t('setupProviders.runtime.generic.geminiApiKeyLabel')
-                          : t('setupProviders.runtime.generic.codexApiKeyLabel')}
-                      </label>
-                      <Input
-                        type="password"
-                        value={engineMode === 'gemini' ? geminiApiKey : codexApiKey}
-                        onChange={(e) => {
-                          if (engineMode === 'gemini') {
-                            setGeminiApiKey(e.target.value);
-                          } else {
-                            setCodexApiKey(e.target.value);
-                          }
-                        }}
-                        placeholder={
-                          engineMode === 'gemini'
-                            ? t('setupProviders.runtime.generic.geminiApiKeyPlaceholder')
-                            : t('setupProviders.runtime.generic.codexApiKeyPlaceholder')
+                  <div className="rounded-lg bg-muted/10 p-3">
+                    <label className="block text-sm font-medium text-foreground/80 mb-1">
+                      {engineMode === 'gemini'
+                        ? t('setupProviders.runtime.generic.geminiApiKeyLabel')
+                        : t('setupProviders.runtime.generic.codexApiKeyLabel')}
+                    </label>
+                    <Input
+                      type="password"
+                      value={engineMode === 'gemini' ? geminiApiKey : codexApiKey}
+                      onChange={(e) => {
+                        if (engineMode === 'gemini') {
+                          setGeminiApiKey(e.target.value);
+                        } else {
+                          setCodexApiKey(e.target.value);
                         }
-                        className="h-10 rounded-xl border-border/75 bg-card/95"
-                        disabled={saving}
-                      />
-                    </div>
-                  )}
+                      }}
+                      placeholder={
+                        engineMode === 'gemini'
+                          ? t('setupProviders.runtime.generic.geminiApiKeyPlaceholder')
+                          : t('setupProviders.runtime.generic.codexApiKeyPlaceholder')
+                      }
+                      className="h-10 rounded-xl border-border/75 bg-card/95"
+                      disabled={saving}
+                    />
+                  </div>
                   {engineMode === 'gemini' && (
                     <div className="rounded-lg bg-muted/10 p-3">
                       <label className="block text-sm font-medium text-foreground/80 mb-1">
                         {t('setupProviders.runtime.generic.geminiBaseUrlLabel')}
                       </label>
+                      <div className="mb-2 text-xs text-muted-foreground">
+                        {t('setupProviders.runtime.generic.geminiBaseUrlApiKeyOnly')}
+                      </div>
                       <Input
                         type="text"
                         value={geminiBaseUrl}

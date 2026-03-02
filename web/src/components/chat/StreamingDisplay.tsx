@@ -6,6 +6,7 @@ import { EmojiAvatar } from '../common/EmojiAvatar';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { TaskInlineCard } from './TaskInlineCard';
 import { useI18n } from '../../i18n';
+import { formatToolDisplayName } from '../../lib/tool-display';
 
 interface StreamingDisplayProps {
   groupJid: string;
@@ -257,7 +258,9 @@ export function StreamingDisplay({ groupJid, isWaiting, senderName: senderNamePr
                             <div key={tool.toolUseId || i} className={isNested ? 'border-l-2 border-brand-200 pl-3' : ''}>
                               <div className="mb-1 flex items-center justify-between gap-2">
                                 <p className="truncate text-xs font-semibold text-foreground">
-                                  {tool.toolName === 'Skill' ? (tool.skillName || unknownLabel) : tool.toolName}
+                                  {tool.toolName === 'Skill'
+                                    ? (tool.skillName || unknownLabel)
+                                    : formatToolDisplayName(tool.toolName)}
                                 </p>
                                 {elapsed != null && (
                                   <span className="text-[10px] text-muted-foreground">{Math.round(elapsed)}s</span>

@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { wsManager } from '../api/ws';
 import { useFileStore } from './files';
 import { useAuthStore } from './auth';
+import { formatToolDisplayName } from '../lib/tool-display';
 import type { GroupInfo, AgentInfo } from '../types';
 import {
   isProviderDirectiveOnly,
@@ -478,7 +479,9 @@ function applyStreamEvent(
       const isSkill = tool.toolName === 'Skill';
       const label = isSkill
         ? chatStoreText('chat.store.stream.skillLabel', { name: tool.skillName || unknownLabel })
-        : chatStoreText('chat.store.stream.toolLabel', { name: tool.toolName });
+        : chatStoreText('chat.store.stream.toolLabel', {
+            name: formatToolDisplayName(tool.toolName),
+          });
       const detail = tool.toolInputSummary ? ` (${tool.toolInputSummary})` : '';
       next.recentEvents = pushEvent(prev.recentEvents, isSkill ? 'skill' : 'tool', `${label}${detail}`);
       break;
@@ -493,7 +496,9 @@ function applyStreamEvent(
           const isSkill = ended.toolName === 'Skill';
           const label = isSkill
             ? chatStoreText('chat.store.stream.skillLabel', { name: ended.skillName || unknownLabel })
-            : chatStoreText('chat.store.stream.toolLabel', { name: ended.toolName });
+            : chatStoreText('chat.store.stream.toolLabel', {
+                name: formatToolDisplayName(ended.toolName),
+              });
           next.recentEvents = pushEvent(
             prev.recentEvents,
             isSkill ? 'skill' : 'tool',

@@ -21,7 +21,7 @@ test('codex runtime mapping', () => {
 
 test('gemini runtime mapping', () => {
   const rt = getProviderRuntime('gemini');
-  assert.equal(rt.skillInstallAgent, 'gemini-cli');
+  assert.equal(rt.skillInstallAgent, 'gemini');
   assert.equal(rt.globalSkillsDirName, '.gemini/skills');
   assert.equal(rt.supportsSkillsInstall, false);
   assert.equal(rt.primaryMemoryFileName, 'GEMINI.md');

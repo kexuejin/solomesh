@@ -64,19 +64,6 @@ test('gemini api_key payload only updates gemini key when edited', () => {
   });
 });
 
-test('gemini oauth payload clears stored api key', () => {
-  const payload = buildGeminiSecretsPayload({
-    geminiAuthMode: 'oauth',
-    geminiApiKeyDirty: false,
-    geminiApiKey: '',
-    hasGeminiApiKey: true,
-  });
-
-  assert.deepEqual(payload, {
-    clearGeminiApiKey: true,
-  });
-});
-
 test('empty payload is treated as no secret changes', () => {
   const payload = buildCodexSecretsPayload({ codexApiKeyDirty: false, codexApiKey: '' });
   assert.equal(hasSecretPayloadChanges(payload), false);
