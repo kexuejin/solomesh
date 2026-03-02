@@ -15,6 +15,8 @@ test('create task form emits explicit taskConfig on_error todo flag', () => {
   assert.ok(source.includes('taskConfig'));
   assert.ok(source.includes('on_error'));
   assert.ok(source.includes('todo_ingest'));
+  assert.ok(source.includes('taskConfigJson'));
+  assert.ok(source.includes('JSON.parse'));
 });
 
 test('generic task form surface does not hardcode competitor plugin fields', () => {
@@ -61,4 +63,6 @@ test('i18n messages contain workflow todo rule labels in zh and en', () => {
   assert.ok(messages.includes('onErrorTodoRuleDisabledHint'));
   assert.ok(messages.includes('On error -> Todo'));
   assert.ok(messages.includes('失败写入 Todo'));
+  assert.ok(messages.includes('taskConfigJsonTitle'));
+  assert.ok(messages.includes('taskConfigJsonInvalid'));
 });

@@ -52,6 +52,36 @@ const ALL_WEEKDAYS = [...WEEKDAY_VALUES];
 const WORKDAYS = [1, 2, 3, 4, 5];
 const TEMPLATE_NONE = '__none__';
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasOwnKeys(value: object | null | undefined): boolean {
+  if (!value) return false;
+  return Object.keys(value).length > 0;
+}
+
+function deepMergeObjects(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    const current = result[key];
+    if (isPlainObject(current) && isPlainObject(value)) {
+      result[key] = deepMergeObjects(current, value);
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+function toTaskConfigJson(value: TaskConfig | null | undefined): string {
+  if (!isPlainObject(value) || !hasOwnKeys(value)) return '';
+  return JSON.stringify(value, null, 2);
+}
+
 function uniqueSortedWeekdays(days: number[]): number[] {
   const order = [1, 2, 3, 4, 5, 6, 0];
   return [...new Set(days)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
@@ -235,7 +265,7 @@ export function CreateTaskForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [onErrorTodoIngest, setOnErrorTodoIngest] = useState(false);
-  const [templateTaskConfig, setTemplateTaskConfig] = useState<TaskConfig | null>(null);
+  const [taskConfigJson, setTaskConfigJson] = useState('');
 
   useEffect(() => {
     if (formData.groupFolder || groups.length === 0) return;
@@ -277,12 +307,13 @@ export function CreateTaskForm({
     setIntervalUnit(schedule.intervalUnit);
     setIntervalWeekdays(schedule.intervalWeekdays);
     setOnErrorTodoIngest(template.defaultOnErrorTodoIngest ?? false);
-    setTemplateTaskConfig(template.defaultTaskConfig ?? null);
+    setTaskConfigJson(toTaskConfigJson(template.defaultTaskConfig));
 
     setErrors((prev) => {
       const next = { ...prev };
       delete next.prompt;
       delete next.scheduleValue;
+      delete next.taskConfigJson;
       return next;
     });
   };
@@ -290,7 +321,7 @@ export function CreateTaskForm({
   const handleTemplateChoiceChange = (value: string) => {
     setTemplateChoice(value);
     if (value === TEMPLATE_NONE) {
-      setTemplateTaskConfig(null);
+      setTaskConfigJson('');
       return;
     }
     const template = templates.find((item) => item.id === value);
@@ -381,9 +412,35 @@ export function CreateTaskForm({
 
     setSubmitting(true);
     try {
-      const nextTaskConfig: TaskConfig = templateTaskConfig
-        ? { ...templateTaskConfig }
-        : {};
+      let nextTaskConfig: TaskConfig = {};
+      const taskConfigText = taskConfigJson.trim();
+      if (taskConfigText) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(taskConfigText);
+        } catch {
+          setErrors((prev) => ({
+            ...prev,
+            taskConfigJson: t('tasks.form.errors.taskConfigJsonInvalid'),
+          }));
+          setSubmitting(false);
+          return;
+        }
+        if (!isPlainObject(parsed)) {
+          setErrors((prev) => ({
+            ...prev,
+            taskConfigJson: t('tasks.form.errors.taskConfigJsonInvalid'),
+          }));
+          setSubmitting(false);
+          return;
+        }
+        nextTaskConfig = deepMergeObjects({}, parsed) as TaskConfig;
+      }
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.taskConfigJson;
+        return next;
+      });
       if (onErrorTodoIngest) {
         const existingOnError =
           nextTaskConfig.on_error
@@ -752,6 +809,26 @@ export function CreateTaskForm({
               <span>{t('tasks.form.onErrorTodoIngest')}</span>
             </label>
             <p className="text-xs text-muted-foreground">{t('tasks.form.onErrorTodoIngestHint')}</p>
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+            <div className="text-sm font-medium text-foreground/80">{t('tasks.form.taskConfigJsonTitle')}</div>
+            <p className="text-xs text-muted-foreground">{t('tasks.form.taskConfigJsonHint')}</p>
+            <Textarea
+              value={taskConfigJson}
+              onChange={(e) => {
+                setTaskConfigJson(e.target.value);
+                setErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.taskConfigJson;
+                  return next;
+                });
+              }}
+              rows={6}
+              className={cn('resize-y font-mono text-xs', errors.taskConfigJson && 'border-red-500')}
+              placeholder={t('tasks.form.taskConfigJsonPlaceholder')}
+            />
+            {errors.taskConfigJson && <p className="text-sm text-red-600">{errors.taskConfigJson}</p>}
           </div>
 
           <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
