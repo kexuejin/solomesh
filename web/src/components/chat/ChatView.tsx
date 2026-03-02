@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../stores/chat';
 import { useAuthStore } from '../../stores/auth';
 import { MessageList } from './MessageList';
-import { MessageInput } from './MessageInput';
+import { MessageInput, type MessageInputSendOptions } from './MessageInput';
 import { StreamingDisplay } from './StreamingDisplay';
 
 import { FilePanel } from './FilePanel';
@@ -384,9 +384,17 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
   const handleSend = async (
     content: string,
     attachments?: Array<{ data: string; mimeType: string }>,
-    operationPermissionMode?: 'default' | 'bypass',
+    options?: MessageInputSendOptions,
   ) => {
-    await sendMessage(groupJid, content, attachments, operationPermissionMode);
+    await sendMessage(
+      groupJid,
+      content,
+      attachments,
+      options?.operationPermissionMode,
+      options?.agentRuntimeOverride,
+      options?.modelOverride,
+      options?.reasoningEffort,
+    );
     setScrollTrigger(n => n + 1);
   };
 
@@ -869,8 +877,16 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                 agentId={activeAgentTab}
               />
               <MessageInput
-                onSend={async (content, _attachments, operationPermissionMode) => {
-                  sendAgentMessage(groupJid, activeAgentTab, content, operationPermissionMode);
+                onSend={async (content, _attachments, options) => {
+                  sendAgentMessage(
+                    groupJid,
+                    activeAgentTab,
+                    content,
+                    options?.operationPermissionMode,
+                    options?.agentRuntimeOverride,
+                    options?.modelOverride,
+                    options?.reasoningEffort,
+                  );
                   setScrollTrigger(n => n + 1);
                 }}
                 groupJid={groupJid}
@@ -997,7 +1013,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                         {t('chat.view.sdkTask.teammateForwardHint')}
                       </div>
                       <MessageInput
-                        onSend={async (content, _attachments, operationPermissionMode) => {
+                        onSend={async (content, _attachments, options) => {
                           const taskDesc = (activeSdkTask?.description || 'Teammate').replace(/"/g, '\\"');
                           // Keep this forwarding wrapper stable (non-localized) as an internal routing hint.
                           const wrappedContent = `[Send to Teammate "${taskDesc}"]: ${content}`;
@@ -1005,7 +1021,10 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                             groupJid,
                             wrappedContent,
                             undefined,
-                            operationPermissionMode,
+                            options?.operationPermissionMode,
+                            options?.agentRuntimeOverride,
+                            options?.modelOverride,
+                            options?.reasoningEffort,
                           );
                           setScrollTrigger(n => n + 1);
                         }}

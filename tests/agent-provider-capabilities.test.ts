@@ -17,7 +17,7 @@ test('agent provider capability matrix is explicit per runtime', () => {
   assert.equal(claude.capabilities.supportsOAuthLogin, true);
   assert.equal(claude.capabilities.supportsOfficialAuth, true);
   assert.equal(claude.capabilities.supportsThirdPartyGateway, true);
-  assert.equal(claude.capabilities.supportsModelOverride, false);
+  assert.equal(claude.capabilities.supportsModelOverride, true);
   assert.equal(claude.capabilities.supportsTaskNotificationSynthesis, true);
   assert.equal(claude.capabilities.supportsNativeThinkingStream, true);
 
@@ -41,6 +41,28 @@ test('agent provider capability matrix is explicit per runtime', () => {
 test('agent providers list order is stable for runtime selectors', () => {
   const ids = listAgentProviderDefinitions().map((item) => item.id);
   assert.deepEqual(ids, [...AGENT_PROVIDER_IDS]);
+});
+
+test('codex provider model catalog matches CLI options', () => {
+  const codex = getAgentProviderDefinition('codex');
+  assert.equal(codex.defaultModel, 'gpt-5.3-codex');
+  assert.deepEqual(codex.supportedModels, [
+    'gpt-5.3-codex',
+    'gpt-5.2-codex',
+    'gpt-5.1-codex-max',
+    'gpt-5.2',
+    'gpt-5.1-codex-mini',
+  ]);
+});
+
+test('claude provider model catalog uses full model ids', () => {
+  const claude = getAgentProviderDefinition('claude');
+  assert.equal(claude.defaultModel, 'claude-opus-4-6');
+  assert.deepEqual(claude.supportedModels, [
+    'claude-opus-4-6',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5',
+  ]);
 });
 
 test('gemini capabilities stay SDK-level even when legacy oauth mode value appears', () => {

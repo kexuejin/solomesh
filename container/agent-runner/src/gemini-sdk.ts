@@ -35,6 +35,11 @@ export interface GeminiSdkChatConfig {
     disable: boolean;
     maximumRemoteCalls: number;
   };
+  thinkingConfig?: {
+    includeThoughts?: boolean;
+    thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+    thinkingBudget?: number;
+  };
 }
 
 export interface GeminiSdkChatCreateParams {
@@ -76,8 +81,29 @@ export interface GeminiSdkChunkToolEventsResult {
 }
 
 export type GeminiOperationPermissionMode = 'default' | 'bypass';
+export type GeminiReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 const DEFAULT_MAX_REMOTE_CALLS = 8;
 const BYPASS_MAX_REMOTE_CALLS = 20;
+
+function buildGeminiThinkingConfig(
+  reasoningEffort?: GeminiReasoningEffort,
+): GeminiSdkChatConfig['thinkingConfig'] | undefined {
+  if (!reasoningEffort) return undefined;
+
+  if (reasoningEffort === 'xhigh') {
+    // Gemini currently tops out at HIGH thinking level; xhigh maps to HIGH + auto budget.
+    return {
+      includeThoughts: true,
+      thinkingLevel: 'high',
+      thinkingBudget: -1,
+    };
+  }
+
+  return {
+    includeThoughts: true,
+    thinkingLevel: reasoningEffort,
+  };
+}
 
 export function buildGeminiSdkClientOptions(
   env: Record<string, string | undefined>,
@@ -114,23 +140,33 @@ export function buildGeminiSdkChatCreateParams(
   mcpClients: unknown[],
   mcpToTool: (...args: unknown[]) => unknown,
   operationPermissionMode: GeminiOperationPermissionMode = 'default',
+  reasoningEffort?: GeminiReasoningEffort,
 ): GeminiSdkChatCreateParams {
+  const thinkingConfig = buildGeminiThinkingConfig(reasoningEffort);
+
   if (!mcpClients.length) {
-    return { model };
+    return thinkingConfig
+      ? { model, config: { thinkingConfig } }
+      : { model };
+  }
+
+  const config: GeminiSdkChatConfig = {
+    tools: [mcpToTool(...mcpClients)],
+    automaticFunctionCalling: {
+      disable: false,
+      maximumRemoteCalls:
+        operationPermissionMode === 'bypass'
+          ? BYPASS_MAX_REMOTE_CALLS
+          : DEFAULT_MAX_REMOTE_CALLS,
+    },
+  };
+  if (thinkingConfig) {
+    config.thinkingConfig = thinkingConfig;
   }
 
   return {
     model,
-    config: {
-      tools: [mcpToTool(...mcpClients)],
-      automaticFunctionCalling: {
-        disable: false,
-        maximumRemoteCalls:
-          operationPermissionMode === 'bypass'
-            ? BYPASS_MAX_REMOTE_CALLS
-            : DEFAULT_MAX_REMOTE_CALLS,
-      },
-    },
+    config,
   };
 }
 

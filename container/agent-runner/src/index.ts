@@ -43,6 +43,7 @@ import {
 
 type AgentProviderId = 'claude' | 'codex' | 'gemini';
 type OperationPermissionMode = 'default' | 'bypass';
+type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 const DEFAULT_OPERATION_PERMISSION_MODE_BY_PROVIDER: Record<
   AgentProviderId,
   OperationPermissionMode
@@ -79,6 +80,13 @@ function toClaudePermissionMode(
   return mode === 'default' ? 'default' : 'bypassPermissions';
 }
 
+function normalizeReasoningEffort(input: unknown): ReasoningEffort | undefined {
+  if (input === 'low' || input === 'medium' || input === 'high' || input === 'xhigh') {
+    return input;
+  }
+  return undefined;
+}
+
 function parseBooleanEnv(
   name: string,
   fallback: boolean,
@@ -97,11 +105,10 @@ const WORKSPACE_GLOBAL = process.env.SOLOMESH_WORKSPACE_GLOBAL || '/workspace/gl
 const WORKSPACE_MEMORY = process.env.SOLOMESH_WORKSPACE_MEMORY || '/workspace/memory';
 const WORKSPACE_IPC = process.env.SOLOMESH_WORKSPACE_IPC || '/workspace/ipc';
 
-// 模型配置：支持别名（opus/sonnet/haiku）或完整模型 ID
-// 别名自动解析为最新版本，如 opus → Opus 4.6
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'opus';
+// 模型配置：支持 Claude 模型完整 ID（推荐）以及别名（opus/sonnet/haiku）
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-6';
 const AGENT_PROVIDER_ID = normalizeAgentProvider(process.env.AGENT_RUNTIME);
-const CODEX_MODEL = process.env.CODEX_MODEL || 'gpt-5-codex';
+const CODEX_MODEL = process.env.CODEX_MODEL || 'gpt-5.3-codex';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
 const PRIMARY_MEMORY_FILE_NAME =
   process.env.SOLOMESH_PRIMARY_MEMORY_FILE_NAME ||
@@ -114,6 +121,8 @@ interface ContainerInput {
   groupFolder: string;
   chatJid: string;
   operationPermissionMode?: OperationPermissionMode;
+  modelOverride?: string;
+  reasoningEffort?: ReasoningEffort;
   /** @deprecated Use isHome + isAdminHome instead. Kept for backward compatibility with older host processes. */
   isMain?: boolean;
   /** Whether this is the user's home container (admin or member). */
@@ -1121,12 +1130,14 @@ async function runClaudeQuery(
     'claude',
     containerInput.operationPermissionMode,
   );
+  const modelOverride = containerInput.modelOverride?.trim();
+  const resolvedClaudeModel = modelOverride || CLAUDE_MODEL;
 
   try {
     const q = query({
     prompt: stream,
     options: {
-      model: CLAUDE_MODEL,
+      model: resolvedClaudeModel,
       cwd: WORKSPACE_GROUP,
       additionalDirectories: extraDirs,
       resume: sessionId,
@@ -1740,6 +1751,153 @@ function normalizeCodexBaseUrlForSdk(raw: string): string {
   }
 }
 
+type CodexSdkInputPart =
+  | { type: 'text'; text: string }
+  | { type: 'local_image'; path: string };
+
+function normalizeImageBase64Payload(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (!trimmed.startsWith('data:')) return trimmed;
+  const commaIndex = trimmed.indexOf(',');
+  if (commaIndex < 0) return '';
+  return trimmed.slice(commaIndex + 1).trim();
+}
+
+function inferImageMimeTypeFromDataUrl(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^data:(image\/[a-z0-9.+-]+);base64,/i);
+  return match?.[1]?.toLowerCase();
+}
+
+function normalizeImageMimeType(
+  mimeType: string | undefined,
+  rawData: string,
+): string {
+  const normalizedMimeType = mimeType?.trim().toLowerCase();
+  if (normalizedMimeType?.startsWith('image/')) return normalizedMimeType;
+  const inferred = inferImageMimeTypeFromDataUrl(rawData);
+  return inferred || 'image/png';
+}
+
+function imageExtensionFromMimeType(mimeType: string): string {
+  switch (mimeType) {
+    case 'image/jpeg':
+    case 'image/jpg':
+      return 'jpg';
+    case 'image/png':
+      return 'png';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    case 'image/bmp':
+      return 'bmp';
+    case 'image/tiff':
+      return 'tiff';
+    case 'image/heic':
+      return 'heic';
+    case 'image/heif':
+      return 'heif';
+    case 'image/avif':
+      return 'avif';
+    default:
+      return 'png';
+  }
+}
+
+function buildCodexSdkInput(
+  promptWithMemory: string,
+  images: Array<{ data: string; mimeType?: string }> | undefined,
+  emitWarning: (message: string) => void,
+): {
+  input: string | CodexSdkInputPart[];
+  cleanup: () => void;
+} {
+  if (!images || images.length === 0) {
+    return {
+      input: promptWithMemory,
+      cleanup: () => {},
+    };
+  }
+
+  const baseDir = path.join(WORKSPACE_IPC, 'codex-image-input');
+  let tempDir: string | null = null;
+  const inputParts: CodexSdkInputPart[] = [{ type: 'text', text: promptWithMemory }];
+
+  try {
+    fs.mkdirSync(baseDir, { recursive: true });
+    tempDir = fs.mkdtempSync(path.join(baseDir, 'turn-'));
+
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i];
+      const imageIndex = i + 1;
+      const normalizedBase64 = normalizeImageBase64Payload(image.data).replace(/\s+/g, '');
+      if (!normalizedBase64) {
+        emitWarning(`⚠️ Codex 图片 ${imageIndex} 数据为空，已忽略。`);
+        continue;
+      }
+
+      let imageBuffer: Buffer;
+      try {
+        imageBuffer = Buffer.from(normalizedBase64, 'base64');
+      } catch {
+        emitWarning(`⚠️ Codex 图片 ${imageIndex} 解析失败，已忽略。`);
+        continue;
+      }
+      if (imageBuffer.length === 0) {
+        emitWarning(`⚠️ Codex 图片 ${imageIndex} 解析后为空，已忽略。`);
+        continue;
+      }
+
+      const mimeType = normalizeImageMimeType(image.mimeType, image.data);
+      const ext = imageExtensionFromMimeType(mimeType);
+      const imagePath = path.join(
+        tempDir,
+        `image-${String(imageIndex).padStart(2, '0')}.${ext}`,
+      );
+      fs.writeFileSync(imagePath, imageBuffer);
+      inputParts.push({
+        type: 'local_image',
+        path: imagePath,
+      });
+    }
+  } catch (err) {
+    if (tempDir) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup error
+      }
+    }
+    emitWarning(
+      `⚠️ Codex 图片预处理失败，已按纯文本继续：${err instanceof Error ? err.message : String(err)}`,
+    );
+    return {
+      input: promptWithMemory,
+      cleanup: () => {},
+    };
+  }
+
+  if (inputParts.length === 1) {
+    emitWarning('⚠️ Codex 图片附件无法解析，已忽略。');
+  }
+
+  const cleanup = () => {
+    if (!tempDir) return;
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup error
+    }
+  };
+
+  return {
+    input: inputParts.length > 1 ? inputParts : promptWithMemory,
+    cleanup,
+  };
+}
+
 async function runCodexQuery(
   prompt: string,
   sessionId: string | undefined,
@@ -1755,14 +1913,6 @@ async function runCodexQuery(
   const emit = (output: ContainerOutput): void => {
     if (emitOutput) writeOutput(output);
   };
-
-  if (images && images.length > 0) {
-    emit({
-      status: 'success',
-      result: '⚠️ Codex SDK 当前不支持该入口的图片输入，已忽略本次图片附件。',
-      newSessionId: sessionId,
-    });
-  }
 
   const { Codex } = await loadCodexSdk();
   const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
@@ -1812,15 +1962,21 @@ async function runCodexQuery(
     'codex',
     containerInput.operationPermissionMode,
   );
+  const modelOverride = containerInput.modelOverride?.trim();
+  const resolvedCodexModel = modelOverride || CODEX_MODEL;
+  const reasoningEffort = normalizeReasoningEffort(containerInput.reasoningEffort);
 
   const threadOptions: Record<string, unknown> = {
-    model: CODEX_MODEL,
+    model: resolvedCodexModel,
     workingDirectory: WORKSPACE_GROUP,
     approvalPolicy: 'never',
     sandboxMode: operationPermissionMode === 'bypass' ? 'danger-full-access' : 'workspace-write',
     skipGitRepoCheck: true,
     additionalDirectories: extraDirs,
   };
+  if (reasoningEffort) {
+    threadOptions.modelReasoningEffort = reasoningEffort;
+  }
 
   const thread = sessionId
     ? codex.resumeThread(sessionId, threadOptions)
@@ -1857,9 +2013,20 @@ async function runCodexQuery(
   setTimeout(pollSignals, IPC_POLL_MS);
 
   const codexPrompt = `${prompt}\n${memoryRecall}`.trim();
+  const codexInput = buildCodexSdkInput(
+    codexPrompt,
+    images,
+    (warningMessage) => {
+      emit({
+        status: 'success',
+        result: warningMessage,
+        newSessionId: sessionId,
+      });
+    },
+  );
 
   try {
-    const streamed = await thread.runStreamed(codexPrompt, {
+    const streamed = await thread.runStreamed(codexInput.input, {
       signal: controller.signal,
     });
     const stream = toAsyncEventStream(streamed);
@@ -2088,6 +2255,8 @@ async function runCodexQuery(
       return { newSessionId, lastAssistantUuid, closedDuringQuery, contextOverflow: true, interruptedDuringQuery };
     }
     throw err;
+  } finally {
+    codexInput.cleanup();
   }
 }
 
@@ -2277,6 +2446,7 @@ async function getOrCreateGeminiSdkSession(
   mcpServerPath: string,
   containerInput: ContainerInput,
   operationPermissionMode: OperationPermissionMode,
+  model: string,
 ): Promise<GeminiSdkSessionState> {
   const existing = geminiSdkSessions.get(sessionKey);
   if (existing) return existing;
@@ -2291,7 +2461,6 @@ async function getOrCreateGeminiSdkSession(
 
   const { GoogleGenAI, mcpToTool } = await loadGeminiSdk();
   const ai = new GoogleGenAI(options);
-  const model = GEMINI_MODEL.trim() || 'gemini-2.5-pro';
 
   let mcpClients: McpClient[] = [];
   try {
@@ -2299,7 +2468,13 @@ async function getOrCreateGeminiSdkSession(
       buildGeminiSdkMcpServerList(mcpServerPath, containerInput),
     );
     const chat = ai.chats.create(
-      buildGeminiSdkChatCreateParams(model, mcpClients, mcpToTool, operationPermissionMode),
+      buildGeminiSdkChatCreateParams(
+        model,
+        mcpClients,
+        mcpToTool,
+        operationPermissionMode,
+        normalizeReasoningEffort(containerInput.reasoningEffort),
+      ),
     );
     const state: GeminiSdkSessionState = { chat, mcpClients };
     geminiSdkSessions.set(sessionKey, state);
@@ -2332,12 +2507,15 @@ async function runGeminiSdkQuery(
     'gemini',
     containerInput.operationPermissionMode,
   );
-  const sessionCacheKey = `${newSessionId}:${operationPermissionMode}`;
+  const modelOverride = containerInput.modelOverride?.trim();
+  const model = modelOverride || GEMINI_MODEL.trim() || 'gemini-2.5-pro';
+  const sessionCacheKey = `${newSessionId}:${operationPermissionMode}:${model}`;
   const sdkSession = await getOrCreateGeminiSdkSession(
     sessionCacheKey,
     mcpServerPath,
     containerInput,
     operationPermissionMode,
+    model,
   );
   const contents = buildGeminiSdkContents(
     `${prompt}\n${memoryRecall}`.trim(),

@@ -74,6 +74,10 @@ import {
   setChatRequestedOperationPermissionMode,
   type OperationPermissionMode,
 } from './operation-permission-mode.js';
+import {
+  setChatRequestedRunOverrides,
+  type ReasoningEffort,
+} from './chat-run-overrides.js';
 
 // --- App Setup ---
 
@@ -204,7 +208,15 @@ app.post('/api/messages', authMiddleware, async (c) => {
     );
   }
 
-  const { chatJid, content, attachments, operationPermissionMode } = validation.data;
+  const {
+    chatJid,
+    content,
+    attachments,
+    operationPermissionMode,
+    agentRuntimeOverride,
+    modelOverride,
+    reasoningEffort,
+  } = validation.data;
   const group = getRegisteredGroup(chatJid);
   if (!group) return c.json({ error: 'Group not found' }, 404);
   const authUser = c.get('user') as AuthUser;
@@ -225,6 +237,9 @@ app.post('/api/messages', authMiddleware, async (c) => {
     authUser.id,
     authUser.display_name || authUser.username,
     operationPermissionMode,
+    agentRuntimeOverride,
+    modelOverride,
+    reasoningEffort,
   );
   if (!result.ok) return c.json({ error: result.error }, result.status);
   return c.json({
@@ -243,6 +258,9 @@ async function handleWebUserMessage(
   userId = 'web-user',
   displayName = 'Web',
   operationPermissionMode?: OperationPermissionMode,
+  agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+  modelOverride?: string,
+  reasoningEffort?: ReasoningEffort,
 ): Promise<
   | {
       ok: true;
@@ -294,6 +312,11 @@ async function handleWebUserMessage(
 
   const shared = !group.is_home && isGroupShared(group.folder);
   setChatRequestedOperationPermissionMode(chatJid, operationPermissionMode);
+  setChatRequestedRunOverrides(chatJid, {
+    agentRuntimeOverride,
+    modelOverride,
+    reasoningEffort,
+  });
   const providerDirective = parseProviderDirective(content);
   const workflowCommand = parseWorkflowCommand(content);
   const hasWorkflowControl = workflowCommand.type !== 'none';
@@ -334,7 +357,12 @@ async function handleWebUserMessage(
       formatted,
       images,
       intent,
-      { operationPermissionMode },
+      {
+        operationPermissionMode,
+        agentRuntimeOverride,
+        modelOverride,
+        reasoningEffort,
+      },
     );
     pipedToActive = sendResult !== 'no_active';
     if (sendResult === 'no_active') {
@@ -361,6 +389,9 @@ async function handleAgentConversationMessage(
   displayName: string,
   attachments?: Array<{ type: 'image'; data: string; mimeType?: string }>,
   operationPermissionMode?: OperationPermissionMode,
+  agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+  modelOverride?: string,
+  reasoningEffort?: ReasoningEffort,
 ): Promise<void> {
   if (!deps) return;
 
@@ -372,6 +403,11 @@ async function handleAgentConversationMessage(
 
   const virtualChatJid = `${chatJid}#agent:${agentId}`;
   setChatRequestedOperationPermissionMode(virtualChatJid, operationPermissionMode);
+  setChatRequestedRunOverrides(virtualChatJid, {
+    agentRuntimeOverride,
+    modelOverride,
+    reasoningEffort,
+  });
 
   // Store message with virtual chat_jid
   const messageId = crypto.randomUUID();
@@ -434,7 +470,12 @@ async function handleAgentConversationMessage(
       formatted,
       undefined,
       analyzeIntent(formatted),
-      { operationPermissionMode },
+      {
+        operationPermissionMode,
+        agentRuntimeOverride,
+        modelOverride,
+        reasoningEffort,
+      },
     );
   if (sendResult === 'no_active' || sendResult === false) {
     // No running process — start one via processAgentConversation
@@ -577,11 +618,22 @@ function setupWebSocket(server: any): WebSocketServer {
             content: msg.content,
             attachments: msg.attachments,
             operationPermissionMode: msg.operationPermissionMode,
+            agentRuntimeOverride: msg.agentRuntimeOverride,
+            modelOverride: msg.modelOverride,
+            reasoningEffort: msg.reasoningEffort,
           });
           if (!wsValidation.success) {
             return;
           }
-          const { chatJid, content, attachments, operationPermissionMode } = wsValidation.data;
+          const {
+            chatJid,
+            content,
+            attachments,
+            operationPermissionMode,
+            agentRuntimeOverride,
+            modelOverride,
+            reasoningEffort,
+          } = wsValidation.data;
           const agentId = (msg as { agentId?: string }).agentId;
 
           // 群组访问权限检查
@@ -612,6 +664,9 @@ function setupWebSocket(server: any): WebSocketServer {
               session.user_id, session.display_name || session.username,
               attachments,
               operationPermissionMode,
+              agentRuntimeOverride,
+              modelOverride,
+              reasoningEffort,
             );
             return;
           }
@@ -623,6 +678,9 @@ function setupWebSocket(server: any): WebSocketServer {
             session.user_id,
             session.display_name || session.username,
             operationPermissionMode,
+            agentRuntimeOverride,
+            modelOverride,
+            reasoningEffort,
           );
           if (!result.ok) {
             logger.warn(
