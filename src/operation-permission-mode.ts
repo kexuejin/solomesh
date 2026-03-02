@@ -2,6 +2,14 @@ export type OperationPermissionMode = 'default' | 'bypass';
 export type OperationPermissionRuntime = 'claude' | 'codex' | 'gemini';
 
 const chatRequestedOperationPermissionModes = new Map<string, OperationPermissionMode>();
+const DEFAULT_OPERATION_PERMISSION_MODE_BY_RUNTIME: Record<
+  OperationPermissionRuntime,
+  OperationPermissionMode
+> = {
+  claude: 'bypass',
+  codex: 'default',
+  gemini: 'default',
+};
 
 export function normalizeOperationPermissionMode(
   value: unknown,
@@ -33,12 +41,10 @@ export function resolveOperationPermissionModeForRuntime(
   runtime: OperationPermissionRuntime,
   requested: OperationPermissionMode | undefined,
 ): OperationPermissionMode {
-  if (runtime === 'claude') {
-    return requested === 'default' || requested === 'bypass'
-      ? requested
-      : 'bypass';
+  if (requested === 'default' || requested === 'bypass') {
+    return requested;
   }
-  return 'default';
+  return DEFAULT_OPERATION_PERMISSION_MODE_BY_RUNTIME[runtime];
 }
 
 export function mapClaudePermissionMode(

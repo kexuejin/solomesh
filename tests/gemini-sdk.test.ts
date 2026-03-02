@@ -89,6 +89,26 @@ test('buildGeminiSdkChatCreateParams wires tools and automaticFunctionCalling wh
       tools: [{ kind: 'mcp-tool' }],
       automaticFunctionCalling: {
         disable: false,
+        maximumRemoteCalls: 8,
+      },
+    },
+  });
+});
+
+test('buildGeminiSdkChatCreateParams increases tool-call budget in bypass mode', () => {
+  const params = buildGeminiSdkChatCreateParams(
+    'gemini-2.5-pro',
+    [{ id: 'a' }],
+    () => ({ kind: 'mcp-tool' }),
+    'bypass',
+  );
+
+  assert.deepEqual(params, {
+    model: 'gemini-2.5-pro',
+    config: {
+      tools: [{ kind: 'mcp-tool' }],
+      automaticFunctionCalling: {
+        disable: false,
         maximumRemoteCalls: 20,
       },
     },

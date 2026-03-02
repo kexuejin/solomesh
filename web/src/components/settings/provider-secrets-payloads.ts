@@ -57,6 +57,7 @@ export function buildGeminiSecretsPayload(input: {
   geminiAuthMode: 'api_key';
   geminiApiKeyDirty: boolean;
   geminiApiKey: string;
+  hasGeminiApiKey?: boolean;
 }): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   if (input.geminiApiKeyDirty) {

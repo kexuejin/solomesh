@@ -43,6 +43,14 @@ import {
 
 type AgentProviderId = 'claude' | 'codex' | 'gemini';
 type OperationPermissionMode = 'default' | 'bypass';
+const DEFAULT_OPERATION_PERMISSION_MODE_BY_PROVIDER: Record<
+  AgentProviderId,
+  OperationPermissionMode
+> = {
+  claude: 'bypass',
+  codex: 'default',
+  gemini: 'default',
+};
 
 function normalizeAgentProvider(input: unknown): AgentProviderId {
   if (input === 'codex') return 'codex';
@@ -62,10 +70,7 @@ function resolveOperationPermissionModeForProvider(
   requested: unknown,
 ): OperationPermissionMode {
   const normalized = normalizeOperationPermissionMode(requested);
-  if (provider === 'claude') {
-    return normalized ?? 'bypass';
-  }
-  return 'default';
+  return normalized ?? DEFAULT_OPERATION_PERMISSION_MODE_BY_PROVIDER[provider];
 }
 
 function toClaudePermissionMode(
@@ -1803,12 +1808,16 @@ async function runCodexQuery(
   }
 
   const codex = new Codex(codexOptions);
+  const operationPermissionMode = resolveOperationPermissionModeForProvider(
+    'codex',
+    containerInput.operationPermissionMode,
+  );
 
   const threadOptions: Record<string, unknown> = {
     model: CODEX_MODEL,
     workingDirectory: WORKSPACE_GROUP,
     approvalPolicy: 'never',
-    sandboxMode: 'danger-full-access',
+    sandboxMode: operationPermissionMode === 'bypass' ? 'danger-full-access' : 'workspace-write',
     skipGitRepoCheck: true,
     additionalDirectories: extraDirs,
   };
@@ -2267,6 +2276,7 @@ async function getOrCreateGeminiSdkSession(
   sessionKey: string,
   mcpServerPath: string,
   containerInput: ContainerInput,
+  operationPermissionMode: OperationPermissionMode,
 ): Promise<GeminiSdkSessionState> {
   const existing = geminiSdkSessions.get(sessionKey);
   if (existing) return existing;
@@ -2289,7 +2299,7 @@ async function getOrCreateGeminiSdkSession(
       buildGeminiSdkMcpServerList(mcpServerPath, containerInput),
     );
     const chat = ai.chats.create(
-      buildGeminiSdkChatCreateParams(model, mcpClients, mcpToTool),
+      buildGeminiSdkChatCreateParams(model, mcpClients, mcpToTool, operationPermissionMode),
     );
     const state: GeminiSdkSessionState = { chat, mcpClients };
     geminiSdkSessions.set(sessionKey, state);
@@ -2318,10 +2328,16 @@ async function runGeminiSdkQuery(
   };
 
   const newSessionId = sessionId || 'latest';
+  const operationPermissionMode = resolveOperationPermissionModeForProvider(
+    'gemini',
+    containerInput.operationPermissionMode,
+  );
+  const sessionCacheKey = `${newSessionId}:${operationPermissionMode}`;
   const sdkSession = await getOrCreateGeminiSdkSession(
-    newSessionId,
+    sessionCacheKey,
     mcpServerPath,
     containerInput,
+    operationPermissionMode,
   );
   const contents = buildGeminiSdkContents(
     `${prompt}\n${memoryRecall}`.trim(),

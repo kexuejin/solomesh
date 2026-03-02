@@ -75,6 +75,10 @@ export interface GeminiSdkChunkToolEventsResult {
   state: GeminiSdkToolStreamState;
 }
 
+export type GeminiOperationPermissionMode = 'default' | 'bypass';
+const DEFAULT_MAX_REMOTE_CALLS = 8;
+const BYPASS_MAX_REMOTE_CALLS = 20;
+
 export function buildGeminiSdkClientOptions(
   env: Record<string, string | undefined>,
 ): GeminiSdkClientOptions {
@@ -109,6 +113,7 @@ export function buildGeminiSdkChatCreateParams(
   model: string,
   mcpClients: unknown[],
   mcpToTool: (...args: unknown[]) => unknown,
+  operationPermissionMode: GeminiOperationPermissionMode = 'default',
 ): GeminiSdkChatCreateParams {
   if (!mcpClients.length) {
     return { model };
@@ -120,7 +125,10 @@ export function buildGeminiSdkChatCreateParams(
       tools: [mcpToTool(...mcpClients)],
       automaticFunctionCalling: {
         disable: false,
-        maximumRemoteCalls: 20,
+        maximumRemoteCalls:
+          operationPermissionMode === 'bypass'
+            ? BYPASS_MAX_REMOTE_CALLS
+            : DEFAULT_MAX_REMOTE_CALLS,
       },
     },
   };
