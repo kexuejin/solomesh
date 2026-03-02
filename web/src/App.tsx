@@ -15,6 +15,7 @@ import { APP_BASE, shouldUseHashRouter } from './utils/url';
 
 const ChatPage = lazy(() => import('./pages/ChatPage').then(m => ({ default: m.ChatPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then(m => ({ default: m.TasksPage })));
+const TodosPage = lazy(() => import('./pages/TodosPage').then(m => ({ default: m.TodosPage })));
 const DecisionCenterPage = lazy(() => import('./pages/DecisionCenterPage').then(m => ({ default: m.DecisionCenterPage })));
 const MonitorPage = lazy(() => import('./pages/MonitorPage').then(m => ({ default: m.MonitorPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
@@ -57,6 +58,7 @@ export function App() {
           <Route path="/chat/:groupFolder?" element={<Suspense fallback={null}><ChatPage /></Suspense>} />
           <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
           <Route path="/tasks" element={<Suspense fallback={null}><TasksPage /></Suspense>} />
+          <Route path="/todos" element={<Suspense fallback={null}><TodosPage /></Suspense>} />
           <Route path="/decision-center" element={<Suspense fallback={null}><DecisionCenterPage /></Suspense>} />
           <Route path="/monitor" element={<Suspense fallback={null}><MonitorPage /></Suspense>} />
           <Route path="/memory" element={<MemoryPage />} />

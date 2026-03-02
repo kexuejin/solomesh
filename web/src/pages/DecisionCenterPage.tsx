@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, CircleOff, Lightbulb, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/common/PageHeader';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -60,6 +61,7 @@ function decisionStatusClass(status: DecisionItemStatus): string {
 
 export function DecisionCenterPage() {
   const { t, locale } = useI18n();
+  const navigate = useNavigate();
   const { items, nextCursor, loading, error, loadItems, acceptItem, ignoreItem } = useDecisionItemsStore();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
@@ -634,6 +636,13 @@ export function DecisionCenterPage() {
                                     {copiedTodoId === item.accepted_todo_id
                                       ? t('decisionCenter.item.copied')
                                       : t('decisionCenter.item.copyTodoId')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded border border-border bg-card px-1.5 py-0.5 text-[11px] text-foreground hover:bg-muted/60"
+                                    onClick={() => navigate(`/todos?todoId=${encodeURIComponent(item.accepted_todo_id as string)}`)}
+                                  >
+                                    {t('decisionCenter.item.viewTodo')}
                                   </button>
                                 </div>
                               )}

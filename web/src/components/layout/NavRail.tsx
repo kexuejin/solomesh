@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { MessageSquare, Clock, Activity, Settings, LogOut, Lightbulb } from 'lucide-react';
+import { MessageSquare, Clock, Activity, Settings, LogOut, Lightbulb, ListChecks } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth';
 import { EmojiAvatar } from '../common/EmojiAvatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -8,6 +8,7 @@ import { useI18n } from '../../i18n';
 const mainNavItems = [
   { path: '/chat', icon: MessageSquare, labelKey: 'nav.workspace' as const },
   { path: '/tasks', icon: Clock, labelKey: 'nav.tasks' as const },
+  { path: '/todos', icon: ListChecks, labelKey: 'nav.todos' as const },
   { path: '/decision-center', icon: Lightbulb, labelKey: 'nav.decisionCenter' as const },
   { path: '/monitor', icon: Activity, labelKey: 'nav.monitor' as const },
 ];

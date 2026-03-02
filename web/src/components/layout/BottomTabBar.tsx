@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { MessageSquare, Clock, Activity, Settings, Lightbulb } from 'lucide-react';
+import { MessageSquare, Clock, Activity, Settings, Lightbulb, ListChecks } from 'lucide-react';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { lightTap } from '../../hooks/useHaptic';
 import { useI18n } from '../../i18n';
@@ -7,6 +7,7 @@ import { useI18n } from '../../i18n';
 export const navItems = [
   { path: '/chat', icon: MessageSquare, labelKey: 'nav.workspace' as const },
   { path: '/tasks', icon: Clock, labelKey: 'nav.tasks' as const },
+  { path: '/todos', icon: ListChecks, labelKey: 'nav.todos' as const },
   { path: '/decision-center', icon: Lightbulb, labelKey: 'nav.decisionCenter' as const },
   { path: '/monitor', icon: Activity, labelKey: 'nav.monitor' as const },
   { path: '/settings', icon: Settings, labelKey: 'nav.settings' as const },
