@@ -316,6 +316,94 @@ const BUILTIN_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  {
+    id: 'competitor-watch',
+    name: 'Competitor Watch',
+    description: '竞品追踪路径：抓取动态、评估影响、沉淀 Todo。',
+    version: 1,
+    recommendedTriggers: ['竞品', '竞争对手', 'pricing', 'pricing page', '发布动态', '功能更新', 'competitor'],
+    stages: [
+      {
+        id: 'collect-signals',
+        name: '竞品信号收集',
+        defaultProvider: 'codex',
+        goal: '收集近期竞品功能、定价、公告和发布变化。',
+        requiredOutputHints: ['变化点', '证据链接', '时间范围'],
+        doneKeywords: ['收集完成', 'signal collected'],
+        skillRefs: ['competitor-tracker'],
+        todoIngest: {
+          enabled: false,
+        },
+      },
+      {
+        id: 'impact-assessment',
+        name: '影响评估',
+        defaultProvider: 'claude',
+        goal: '评估变化对当前项目的影响和优先级。',
+        requiredOutputHints: ['影响评估', '优先级', '建议动作'],
+        doneKeywords: ['评估完成', 'assessment done'],
+        todoIngest: {
+          enabled: false,
+        },
+      },
+      {
+        id: 'emit-todo',
+        name: 'Todo 输出',
+        defaultProvider: 'claude',
+        goal: '输出可执行 Todo 候选并附带 evidence 与 dedupe 建议。',
+        requiredOutputHints: ['todo标题', 'evidence', 'dedupe建议'],
+        doneKeywords: ['todo完成', 'todo emitted'],
+        todoIngest: {
+          enabled: true,
+          priority: 'high',
+        },
+      },
+    ],
+  },
+  {
+    id: 'project-recommendation',
+    name: 'Project Recommendation',
+    description: '项目推荐路径：发现候选、评分筛选、沉淀 Todo。',
+    version: 1,
+    recommendedTriggers: ['项目推荐', '推荐项目', '新项目', '开源项目', 'project recommendation', 'project radar'],
+    stages: [
+      {
+        id: 'collect-candidates',
+        name: '候选收集',
+        defaultProvider: 'codex',
+        goal: '收集近期值得关注的项目与工具候选。',
+        requiredOutputHints: ['候选列表', '来源', '背景'],
+        doneKeywords: ['候选完成', 'candidate collected'],
+        skillRefs: ['project-recommender'],
+        todoIngest: {
+          enabled: false,
+        },
+      },
+      {
+        id: 'score-filter',
+        name: '评分筛选',
+        defaultProvider: 'claude',
+        goal: '基于相关性、影响力、落地成本进行评分筛选。',
+        requiredOutputHints: ['评分', '筛选理由', '风险提示'],
+        doneKeywords: ['筛选完成', 'filter done'],
+        todoIngest: {
+          enabled: false,
+        },
+      },
+      {
+        id: 'emit-todo',
+        name: 'Todo 输出',
+        defaultProvider: 'claude',
+        goal: '输出可执行推荐 Todo 与下一步动作。',
+        requiredOutputHints: ['todo标题', '推荐理由', '下一步动作'],
+        doneKeywords: ['todo完成', 'todo emitted'],
+        todoIngest: {
+          enabled: true,
+          priority: 'medium',
+        },
+      },
+    ],
+  },
 ];
 
 const BUILTIN_TEMPLATE_RECORDS: WorkflowTemplateRecord[] = BUILTIN_WORKFLOW_TEMPLATES.map((template) => {
@@ -1536,6 +1624,8 @@ export function resolveWorkflowRecommendation(
     'analysis-heavy': ['调研', '分析', '架构', 'architecture', 'risk', '方案'],
     'feature-delivery': ['实现', '开发', '功能', 'feature', '交付'],
     'review-gate': ['review', '审查', '质量', '安全', '漏洞'],
+    'competitor-watch': ['竞品', '竞争对手', 'pricing', '发布', '动态', 'competitor'],
+    'project-recommendation': ['推荐项目', '项目推荐', '新项目', '开源', 'project', 'recommendation'],
   };
 
   for (const [templateId, keywords] of Object.entries(highSignalGroups)) {

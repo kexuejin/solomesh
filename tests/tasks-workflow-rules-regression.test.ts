@@ -11,6 +11,7 @@ test('create task form emits explicit workflowRules on_error todo flag', () => {
   const source = read('web/src/components/tasks/CreateTaskForm.tsx');
 
   assert.ok(source.includes('onErrorTodoIngest'));
+  assert.ok(source.includes('template.defaultOnErrorTodoIngest ?? false'));
   assert.ok(source.includes('workflowRules'));
   assert.ok(source.includes('on_error'));
   assert.ok(source.includes('todo_ingest'));

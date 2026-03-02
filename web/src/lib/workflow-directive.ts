@@ -56,6 +56,16 @@ const WORKFLOW_TEMPLATE_SUGGESTIONS: WorkflowCommandSuggestion[] = [
     label: 'review-gate',
     descriptionKey: 'chat.workflowDirective.templates.reviewGate',
   },
+  {
+    value: '/wf competitor-watch',
+    label: 'competitor-watch',
+    descriptionKey: 'chat.workflowDirective.templates.competitorWatch',
+  },
+  {
+    value: '/wf project-recommendation',
+    label: 'project-recommendation',
+    descriptionKey: 'chat.workflowDirective.templates.projectRecommendation',
+  },
 ];
 
 const WORKFLOW_CONTROL_SUGGESTIONS: WorkflowCommandSuggestion[] = [

@@ -32,3 +32,16 @@
 - 创建入口：自动化创建表单
 - 编辑入口：自动化任务详情
 - 生效行为：任务执行失败时写入 Todo（通过统一 `todo.ingest`）
+
+## 当前内置验证资产
+
+- 内置 Workflow 模板：
+  - `competitor-watch`（竞品追踪，最终阶段 `emit-todo` 写入 Todo）
+  - `project-recommendation`（项目推荐，最终阶段 `emit-todo` 写入 Todo）
+- 内置 Automation 模板：
+  - `competitor-watch`
+  - `project-recommendation`
+  - 默认开启失败规则：`workflow_rules.on_error.todo_ingest=true`
+- 内置 Skill（Plugin 示例）：
+  - `container/skills/competitor-tracker/SKILL.md`
+  - `container/skills/project-recommender/SKILL.md`

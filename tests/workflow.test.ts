@@ -212,6 +212,30 @@ test('feature-delivery implementation stage defaults to codex', () => {
   assert.equal(implementationStage?.defaultProvider, 'codex');
 });
 
+test('builtin plugin-oriented templates include explicit todo ingest stage', () => {
+  const competitor = getWorkflowTemplate('competitor-watch');
+  const projectRecommend = getWorkflowTemplate('project-recommendation');
+
+  assert.ok(competitor);
+  assert.ok(projectRecommend);
+
+  const competitorEmit = competitor?.stages.find((stage) => stage.id === 'emit-todo');
+  const projectEmit = projectRecommend?.stages.find((stage) => stage.id === 'emit-todo');
+  assert.ok(competitorEmit);
+  assert.ok(projectEmit);
+  assert.equal(competitorEmit?.todoIngest?.enabled, true);
+  assert.equal(projectEmit?.todoIngest?.enabled, true);
+  assert.equal(competitorEmit?.todoIngest?.priority, 'high');
+  assert.equal(projectEmit?.todoIngest?.priority, 'medium');
+});
+
+test('recommendation resolves competitor and project recommendation intents', () => {
+  const competitorRec = resolveWorkflowRecommendation('帮我做竞品追踪，关注官网定价页和功能更新');
+  const projectRec = resolveWorkflowRecommendation('请推荐值得跟进的新项目并按影响力排序');
+  assert.equal(competitorRec?.templateId, 'competitor-watch');
+  assert.equal(projectRec?.templateId, 'project-recommendation');
+});
+
 test('workflow template precedence: user > global > builtin', () => {
   const globalDraft = upsertWorkflowTemplateDraft({
     scope: 'global',

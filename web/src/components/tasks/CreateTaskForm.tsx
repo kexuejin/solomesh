@@ -278,6 +278,7 @@ export function CreateTaskForm({
     setIntervalNumber(schedule.intervalNumber);
     setIntervalUnit(schedule.intervalUnit);
     setIntervalWeekdays(schedule.intervalWeekdays);
+    setOnErrorTodoIngest(template.defaultOnErrorTodoIngest ?? false);
 
     setErrors((prev) => {
       const next = { ...prev };

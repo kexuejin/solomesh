@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getSchedulePresets, parseHumanSchedule } from '../web/src/components/tasks/automation-presets';
+import {
+  getAutomationTemplates,
+  getSchedulePresets,
+  parseHumanSchedule,
+} from '../web/src/components/tasks/automation-presets';
 import { en, zhCN } from '../web/src/i18n/messages';
 
 function dictT(dict: typeof zhCN, key: string): string {
@@ -34,4 +38,24 @@ test('getSchedulePresets returns localized labels and hints', () => {
   assert.equal(zhPresets[0]?.hint, '高频巡检');
   assert.equal(enPresets[0]?.label, 'Every 10 minutes');
   assert.equal(enPresets[0]?.hint, 'High-frequency checks');
+});
+
+test('getAutomationTemplates includes plugin validation presets for todo ingest', () => {
+  const zhTemplates = getAutomationTemplates((key) => dictT(zhCN, key));
+  const enTemplates = getAutomationTemplates((key) => dictT(en, key));
+
+  const zhCompetitor = zhTemplates.find((item) => item.id === 'competitor-watch');
+  const zhProjectRecommend = zhTemplates.find((item) => item.id === 'project-recommendation');
+  const enCompetitor = enTemplates.find((item) => item.id === 'competitor-watch');
+  const enProjectRecommend = enTemplates.find((item) => item.id === 'project-recommendation');
+
+  assert.ok(zhCompetitor);
+  assert.ok(zhProjectRecommend);
+  assert.ok(enCompetitor);
+  assert.ok(enProjectRecommend);
+
+  assert.equal(zhCompetitor?.defaultOnErrorTodoIngest, true);
+  assert.equal(zhProjectRecommend?.defaultOnErrorTodoIngest, true);
+  assert.equal(enCompetitor?.defaultOnErrorTodoIngest, true);
+  assert.equal(enProjectRecommend?.defaultOnErrorTodoIngest, true);
 });
