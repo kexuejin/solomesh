@@ -129,7 +129,7 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
             </div>
 
             {/* Status Badge */}
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
                   task.status
@@ -137,6 +137,11 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
               >
                 {getStatusLabel(task.status)}
               </span>
+              {task.workflow_rules?.on_error?.todo_ingest === true && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700 border border-brand-200">
+                  {t('tasks.card.onErrorTodo')}
+                </span>
+              )}
             </div>
           </div>
 

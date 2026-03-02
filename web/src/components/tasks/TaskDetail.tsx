@@ -10,6 +10,7 @@ export function TaskDetail({ task }: TaskDetailProps) {
   const { t, locale } = useI18n();
   const { logs, loadLogs } = useTasksStore();
   const taskLogs = logs[task.id] || [];
+  const onErrorTodoRuleEnabled = task.workflow_rules?.on_error?.todo_ingest === true;
 
   useEffect(() => {
     loadLogs(task.id);
@@ -149,6 +150,15 @@ export function TaskDetail({ task }: TaskDetailProps) {
           <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.createdAt')}</div>
           <div className="text-sm text-foreground">
             {formatDate(task.created_at)}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.onErrorTodoRule')}</div>
+          <div className="text-sm text-foreground">
+            {onErrorTodoRuleEnabled
+              ? t('tasks.detail.enabled')
+              : t('tasks.detail.disabled')}
           </div>
         </div>
 

@@ -13,11 +13,18 @@ export interface ScheduledTask {
   context_mode: 'group' | 'isolated';
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
+  workflow_rules?: TaskWorkflowRules | null;
   next_run: string | null;
   last_run?: string | null;
   last_result?: string | null;
   status: 'active' | 'paused' | 'completed';
   created_at: string;
+}
+
+export interface TaskWorkflowRules {
+  on_error?: {
+    todo_ingest?: boolean;
+  };
 }
 
 export interface TaskRunLog {
@@ -45,6 +52,7 @@ interface TasksState {
     contextMode: 'group' | 'isolated',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
+    workflowRules?: TaskWorkflowRules | null,
   ) => Promise<void>;
   updateTaskStatus: (id: string, status: 'active' | 'paused') => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
@@ -99,6 +107,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     contextMode: 'group' | 'isolated',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
+    workflowRules?: TaskWorkflowRules | null,
   ) => {
     try {
       const normalizedScheduleValue =
@@ -119,6 +128,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       }
       if (scriptCommand) {
         body.script_command = scriptCommand;
+      }
+      if (workflowRules !== undefined) {
+        body.workflow_rules = workflowRules;
       }
       await api.post('/api/tasks', body);
       set({ error: null });

@@ -36,6 +36,11 @@ export function TasksPage() {
     contextMode: 'group' | 'isolated';
     executionType: 'agent' | 'script';
     scriptCommand: string;
+    workflowRules: {
+      on_error?: {
+        todo_ingest?: boolean;
+      };
+    } | null;
   }) => {
     await createTask(
       data.groupFolder,
@@ -46,6 +51,7 @@ export function TasksPage() {
       data.contextMode,
       data.executionType,
       data.scriptCommand,
+      data.workflowRules,
     );
     setShowCreateForm(false);
   };

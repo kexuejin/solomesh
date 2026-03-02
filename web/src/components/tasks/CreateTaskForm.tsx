@@ -38,6 +38,11 @@ interface CreateTaskFormProps {
     contextMode: ContextMode;
     executionType: 'agent' | 'script';
     scriptCommand: string;
+    workflowRules: {
+      on_error?: {
+        todo_ingest?: boolean;
+      };
+    } | null;
   }) => Promise<void>;
   onClose: () => void;
 }
@@ -232,6 +237,7 @@ export function CreateTaskForm({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [onErrorTodoIngest, setOnErrorTodoIngest] = useState(false);
 
   useEffect(() => {
     if (formData.groupFolder || groups.length === 0) return;
@@ -378,6 +384,13 @@ export function CreateTaskForm({
         scriptCommand: formData.scriptCommand.trim(),
         scheduleType,
         scheduleValue,
+        workflowRules: onErrorTodoIngest
+          ? {
+            on_error: {
+              todo_ingest: true,
+            },
+          }
+          : null,
       });
     } catch (error) {
       console.error('Failed to create task:', error);
@@ -701,6 +714,20 @@ export function CreateTaskForm({
             {formData.executionType !== 'script' && (
               <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
             )}
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+            <div className="text-sm font-medium text-foreground/80">{t('tasks.form.failureRuleTitle')}</div>
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={onErrorTodoIngest}
+                onChange={(e) => setOnErrorTodoIngest(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border"
+              />
+              <span>{t('tasks.form.onErrorTodoIngest')}</span>
+            </label>
+            <p className="text-xs text-muted-foreground">{t('tasks.form.onErrorTodoIngestHint')}</p>
           </div>
 
           <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
