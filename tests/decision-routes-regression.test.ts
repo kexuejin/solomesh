@@ -22,3 +22,12 @@ test('decision routes expose list/ingest/accept/ignore endpoints', () => {
   assert.ok(routes.includes('canAccessGroup'));
   assert.ok(routes.includes('getDecisionItemById'));
 });
+
+test('decision routes enforce scope-based visibility and non-leaking not-found responses', () => {
+  const routes = read('src/routes/decision-items.ts');
+  assert.ok(routes.includes("if (item.scope_level === 'workspace')"));
+  assert.ok(routes.includes('accessibleFolders.has(item.scope_id)'));
+  assert.ok(routes.includes("if (user.role === 'admin') return true;"));
+  assert.ok(routes.includes('return item.created_by === user.id;'));
+  assert.ok(routes.includes("return c.json({ error: 'Decision item not found' }, 404);"));
+});
