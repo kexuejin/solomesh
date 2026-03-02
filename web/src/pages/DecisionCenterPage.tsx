@@ -68,6 +68,8 @@ export function DecisionCenterPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [actingId, setActingId] = useState<string | null>(null);
   const [batchActing, setBatchActing] = useState(false);
+  const [batchAction, setBatchAction] = useState<'accept' | 'ignore' | null>(null);
+  const [batchActingItemId, setBatchActingItemId] = useState<string | null>(null);
   const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
   const [copiedTodoId, setCopiedTodoId] = useState<string | null>(null);
 
@@ -276,11 +278,16 @@ export function DecisionCenterPage() {
   const handleBatchAccept = async () => {
     if (selectedPendingIds.length === 0) return;
     setBatchActing(true);
+    setBatchAction('accept');
+    setBatchActingItemId(null);
     const failedIds: string[] = [];
     for (const itemId of selectedPendingIds) {
+      setBatchActingItemId(itemId);
       const ok = await acceptItem(itemId);
       if (!ok) failedIds.push(itemId);
     }
+    setBatchActingItemId(null);
+    setBatchAction(null);
     setSelectedPendingIds(failedIds);
     setBatchActing(false);
   };
@@ -288,11 +295,16 @@ export function DecisionCenterPage() {
   const handleBatchIgnore = async () => {
     if (selectedPendingIds.length === 0) return;
     setBatchActing(true);
+    setBatchAction('ignore');
+    setBatchActingItemId(null);
     const failedIds: string[] = [];
     for (const itemId of selectedPendingIds) {
+      setBatchActingItemId(itemId);
       const ok = await ignoreItem(itemId);
       if (!ok) failedIds.push(itemId);
     }
+    setBatchActingItemId(null);
+    setBatchAction(null);
     setSelectedPendingIds(failedIds);
     setBatchActing(false);
   };
@@ -308,6 +320,9 @@ export function DecisionCenterPage() {
       // Ignore clipboard write failures.
     }
   };
+
+  const trimmedSearchQuery = searchQuery.trim();
+  const hasSearchQuery = trimmedSearchQuery.length > 0;
 
   return (
     <div className="min-h-full app-canvas p-4 lg:p-6">
@@ -463,8 +478,12 @@ export function DecisionCenterPage() {
         ) : filteredGroupedBySource.length === 0 ? (
           <EmptyState
             icon={Lightbulb}
-            title={t('decisionCenter.page.emptyTitle')}
-            description={t('decisionCenter.page.emptyDescription')}
+            title={hasSearchQuery
+              ? t('decisionCenter.page.searchEmptyTitle')
+              : t('decisionCenter.page.emptyTitle')}
+            description={hasSearchQuery
+              ? t('decisionCenter.page.searchEmptyDescription', { query: trimmedSearchQuery })
+              : t('decisionCenter.page.emptyDescription')}
           />
         ) : (
           <div className="space-y-5">
@@ -546,6 +565,9 @@ export function DecisionCenterPage() {
                 <div className="divide-y divide-border/60">
                   {group.items.map((item) => {
                     const evidenceText = parseEvidenceText(item.evidence);
+                    const itemBatchActing = batchActingItemId === item.id;
+                    const itemAcceptActing = actingId === item.id || (itemBatchActing && batchAction === 'accept');
+                    const itemIgnoreActing = actingId === item.id || (itemBatchActing && batchAction === 'ignore');
                     return (
                       <article key={item.id} className="p-4 lg:p-5">
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
@@ -622,19 +644,37 @@ export function DecisionCenterPage() {
                                 <Button
                                   size="sm"
                                   onClick={() => void handleAccept(item.id)}
-                                  disabled={actingId === item.id}
+                                  disabled={actingId === item.id || batchActing}
                                 >
-                                  <Check size={16} />
-                                  {t('decisionCenter.actions.accept')}
+                                  {itemAcceptActing ? (
+                                    <>
+                                      <RefreshCw size={16} className="animate-spin" />
+                                      {t('decisionCenter.actions.processing')}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check size={16} />
+                                      {t('decisionCenter.actions.accept')}
+                                    </>
+                                  )}
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => void handleIgnore(item.id)}
-                                  disabled={actingId === item.id}
+                                  disabled={actingId === item.id || batchActing}
                                 >
-                                  <CircleOff size={16} />
-                                  {t('decisionCenter.actions.ignore')}
+                                  {itemIgnoreActing ? (
+                                    <>
+                                      <RefreshCw size={16} className="animate-spin" />
+                                      {t('decisionCenter.actions.processing')}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CircleOff size={16} />
+                                      {t('decisionCenter.actions.ignore')}
+                                    </>
+                                  )}
                                 </Button>
                               </div>
                             )}

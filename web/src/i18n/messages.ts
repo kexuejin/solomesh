@@ -1697,6 +1697,8 @@ export const zhCN = {
       dismissError: '关闭错误提示',
       emptyTitle: '暂无待处理建议',
       emptyDescription: '自动化和工作流产出的建议会先进入这里，确认后再写入 Todo。',
+      searchEmptyTitle: '未找到匹配建议',
+      searchEmptyDescription: '未匹配到包含“{{query}}”的建议，请调整关键词或清空搜索。',
       groupCount: '{{count}} 条建议',
     },
     filters: {
@@ -1739,6 +1741,7 @@ export const zhCN = {
       clearSelection: '清空选择',
       acceptSelected: '批量采纳',
       ignoreSelected: '批量忽略',
+      processing: '处理中...',
     },
     store: {
       loadFailed: '加载决策中心建议失败',
@@ -4108,6 +4111,8 @@ export const en = {
       dismissError: 'Dismiss error',
       emptyTitle: 'No suggestions available',
       emptyDescription: 'Suggestions from automations and workflows appear here first and become Todos only after approval.',
+      searchEmptyTitle: 'No matching suggestions',
+      searchEmptyDescription: 'No suggestions matched "{{query}}". Try another keyword or clear search.',
       groupCount: '{{count}} suggestion(s)',
     },
     filters: {
@@ -4150,6 +4155,7 @@ export const en = {
       clearSelection: 'Clear selection',
       acceptSelected: 'Accept selected',
       ignoreSelected: 'Ignore selected',
+      processing: 'Processing...',
     },
     store: {
       loadFailed: 'Failed to load decision suggestions',
