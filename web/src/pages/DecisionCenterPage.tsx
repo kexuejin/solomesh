@@ -69,6 +69,7 @@ export function DecisionCenterPage() {
   const [actingId, setActingId] = useState<string | null>(null);
   const [batchActing, setBatchActing] = useState(false);
   const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
+  const [copiedTodoId, setCopiedTodoId] = useState<string | null>(null);
 
   const queryFilters = useMemo(
     () => ({
@@ -294,6 +295,18 @@ export function DecisionCenterPage() {
     }
     setSelectedPendingIds(failedIds);
     setBatchActing(false);
+  };
+
+  const handleCopyTodoId = async (todoId: string) => {
+    try {
+      await navigator.clipboard.writeText(todoId);
+      setCopiedTodoId(todoId);
+      setTimeout(() => {
+        setCopiedTodoId((prev) => (prev === todoId ? null : prev));
+      }, 1200);
+    } catch {
+      // Ignore clipboard write failures.
+    }
   };
 
   return (
@@ -589,7 +602,18 @@ export function DecisionCenterPage() {
                               <div>{t('decisionCenter.item.createdAt', { value: formatDate(item.created_at) })}</div>
                               <div>{t('decisionCenter.item.priority', { value: item.priority ?? '-' })}</div>
                               {item.accepted_todo_id && (
-                                <div>{t('decisionCenter.item.todoId', { value: item.accepted_todo_id })}</div>
+                                <div className="flex items-center gap-2 lg:justify-end">
+                                  <span>{t('decisionCenter.item.todoId', { value: item.accepted_todo_id })}</span>
+                                  <button
+                                    type="button"
+                                    className="rounded border border-border bg-card px-1.5 py-0.5 text-[11px] text-foreground hover:bg-muted/60"
+                                    onClick={() => void handleCopyTodoId(item.accepted_todo_id as string)}
+                                  >
+                                    {copiedTodoId === item.accepted_todo_id
+                                      ? t('decisionCenter.item.copied')
+                                      : t('decisionCenter.item.copyTodoId')}
+                                  </button>
+                                </div>
                               )}
                             </div>
 
