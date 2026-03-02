@@ -39,7 +39,6 @@ import { looksLikeHttpUrl } from '../../lib/runtime-input-validation';
 import { localeForDateTime, useI18n } from '../../i18n';
 
 type ClaudeAccessMode = 'official' | 'third_party';
-type GeminiAccessMode = 'api_key' | 'oauth';
 type EngineMode = AgentRuntimeId;
 
 interface RuntimeSectionProps extends SettingsNotification {}
@@ -58,10 +57,6 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const [oauthState, setOauthState] = useState<string | null>(null);
   const [oauthCode, setOauthCode] = useState('');
   const [oauthExchanging, setOauthExchanging] = useState(false);
-  const [geminiOauthLoading, setGeminiOauthLoading] = useState(false);
-  const [geminiOauthState, setGeminiOauthState] = useState<string | null>(null);
-  const [geminiOauthCode, setGeminiOauthCode] = useState('');
-  const [geminiOauthExchanging, setGeminiOauthExchanging] = useState(false);
 
   const [baseUrl, setBaseUrl] = useState('');
   const [authToken, setAuthToken] = useState('');
@@ -76,7 +71,6 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiApiKeyDirty, setGeminiApiKeyDirty] = useState(false);
   const [geminiModel, setGeminiModel] = useState('');
-  const [geminiAccessMode, setGeminiAccessMode] = useState<GeminiAccessMode>('api_key');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -119,7 +113,6 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       setCodexModel(configData.codexModel || '');
       setGeminiBaseUrl(configData.geminiBaseUrl || '');
       setGeminiModel(configData.geminiModel || '');
-      setGeminiAccessMode(configData.geminiAuthMode || 'api_key');
       setAuthToken('');
       setAuthTokenDirty(false);
       setCodexApiKey('');
@@ -180,9 +173,8 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const thirdPartyConfigured = !!(config?.hasAnthropicAuthToken || config?.anthropicBaseUrl);
   const codexConfigured = !!config?.hasCodexApiKey;
   const geminiConfigured = !!config?.hasGeminiApiKey;
-  const geminiOAuthConfigured = !!config?.hasGeminiOAuthCredentials;
   const isGeminiRuntime = engineMode === 'gemini';
-  const effectiveGeminiAccessMode: GeminiAccessMode = geminiAccessMode;
+  const effectiveGeminiAccessMode = 'api_key' as const;
   const sdkKeySource =
     isGeminiRuntime
       ? (config?.geminiApiKeySource ?? 'none')
@@ -194,10 +186,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
   const claudeOfficialDraftReady = officialConfigured || !!officialCode.trim();
   const claudeThirdPartyDraftReady = thirdPartyConfigured || (!!baseUrl.trim() && !!authToken.trim());
   const codexDraftReady = codexConfigured || !!codexApiKey.trim();
-  const geminiDraftReady =
-    effectiveGeminiAccessMode === 'oauth'
-      ? geminiOAuthConfigured
-      : geminiConfigured || !!geminiApiKey.trim();
+  const geminiDraftReady = geminiConfigured || !!geminiApiKey.trim();
   const sdkRuntimeDraftReady = isGeminiRuntime ? geminiDraftReady : codexDraftReady;
   const configuredText = t('settings.runtime.configured');
   const notConfiguredText = t('settings.runtime.notConfigured');
@@ -206,13 +195,6 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
     if (source === 'env') return t('settings.runtime.source.env');
     return t('settings.runtime.source.none');
   };
-  useEffect(() => {
-    if (!isGeminiRuntime || effectiveGeminiAccessMode !== 'oauth') {
-      setGeminiOauthState(null);
-      setGeminiOauthCode('');
-    }
-  }, [isGeminiRuntime, effectiveGeminiAccessMode]);
-
   const handleSaveDefaultRuntime = async () => {
     setSaving(true);
     setNotice(null);
@@ -334,48 +316,6 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
       setError(getErrorMessage(err, t('settings.runtime.errors.oauthCallbackFailed')));
     } finally {
       setOauthExchanging(false);
-    }
-  };
-
-  const handleGeminiOAuthStart = async () => {
-    setGeminiOauthLoading(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const data = await api.post<{ authorizeUrl: string; state: string }>(
-        '/api/config/runtime/gemini/oauth/start',
-      );
-      setGeminiOauthState(data.state);
-      setGeminiOauthCode('');
-      window.open(data.authorizeUrl, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      setError(getErrorMessage(err, t('settings.runtime.errors.geminiOauthStartFailed')));
-    } finally {
-      setGeminiOauthLoading(false);
-    }
-  };
-
-  const handleGeminiOAuthCallback = async () => {
-    if (!geminiOauthState || !geminiOauthCode.trim()) {
-      setError(t('settings.runtime.errors.geminiOauthCodeRequired'));
-      return;
-    }
-    setGeminiOauthExchanging(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await api.post<RuntimeConfigPublic>('/api/config/runtime/gemini/oauth/callback', {
-        state: geminiOauthState,
-        code: geminiOauthCode.trim(),
-      });
-      setGeminiOauthState(null);
-      setGeminiOauthCode('');
-      setNotice(t('settings.runtime.notice.geminiOauthLoginSuccess'));
-      await loadConfig();
-    } catch (err) {
-      setError(getErrorMessage(err, t('settings.runtime.errors.geminiOauthCallbackFailed')));
-    } finally {
-      setGeminiOauthExchanging(false);
     }
   };
 
@@ -855,154 +795,66 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
           <div className="rounded-lg space-y-4 bg-muted/15 p-4">
             {isGeminiRuntime && (
-              <div className="inline-flex rounded-xl border border-border/70 bg-muted/60 p-1">
-                <button
-                  type="button"
-                  disabled={controlsBusy}
-                  onClick={() => setGeminiAccessMode('oauth')}
-                  className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-                    effectiveGeminiAccessMode === 'oauth'
-                      ? 'bg-card text-brand-700 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {t('setupProviders.runtime.gemini.tabOfficial')}
-                </button>
-                <button
-                  type="button"
-                  disabled={controlsBusy}
-                  onClick={() => setGeminiAccessMode('api_key')}
-                  className={`h-9 px-3 text-sm rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-                    effectiveGeminiAccessMode === 'api_key'
-                      ? 'bg-card text-brand-700 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {t('setupProviders.runtime.gemini.tabApiKey')}
-                </button>
-              </div>
-            )}
-
-            {isGeminiRuntime && effectiveGeminiAccessMode === 'oauth' && (
-              <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/70 p-4 space-y-3">
-                <div className="text-sm font-medium text-foreground/90">{t('setupProviders.runtime.gemini.officialTitle')}</div>
-                <div className="text-xs text-muted-foreground">
-                  {t('settings.runtime.gemini.oauthDescription')}
-                </div>
-                {geminiOAuthConfigured && (
-                  <div className="surface-card-soft rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                    {t('settings.runtime.gemini.oauthConnected')}
-                  </div>
-                )}
-
-                {!geminiOauthState ? (
-                  <Button
-                    onClick={handleGeminiOAuthStart}
-                    disabled={controlsBusy || geminiOauthLoading || geminiOauthExchanging}
-                    className="h-10 rounded-xl"
-                  >
-                    {geminiOauthLoading ? <Loader2 className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
-                    {geminiOauthLoading ? t('settings.runtime.openingAuth') : t('settings.runtime.gemini.oneClickLogin')}
-                  </Button>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      {t('settings.runtime.gemini.oauthWindowOpened')}
-                    </div>
-                    <div className="flex gap-2">
-                      <Input
-                        type="text"
-                        value={geminiOauthCode}
-                        onChange={(e) => setGeminiOauthCode(e.target.value)}
-                        disabled={controlsBusy || geminiOauthExchanging}
-                        placeholder={t('settings.runtime.gemini.oauthCodePlaceholder')}
-                        className="h-10 flex-1 rounded-xl border-border/75 bg-card/95"
-                      />
-                      <Button
-                        onClick={handleGeminiOAuthCallback}
-                        disabled={controlsBusy || geminiOauthExchanging || !geminiOauthCode.trim()}
-                        className="h-10 rounded-xl"
-                      >
-                        {geminiOauthExchanging && <Loader2 className="size-4 animate-spin" />}
-                        {geminiOauthExchanging ? t('settings.runtime.confirming') : t('setupProviders.common.confirm')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={controlsBusy || geminiOauthExchanging}
-                        className="h-10 rounded-xl"
-                        onClick={() => { setGeminiOauthState(null); setGeminiOauthCode(''); }}
-                      >
-                        {t('setupProviders.common.cancel')}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="text-xs text-muted-foreground">
-                  {t('settings.runtime.gemini.fallbackHint')}
-                </div>
-                {config?.hasGeminiApiKey && (
-                  <div className="surface-card-soft rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    {t('settings.runtime.gemini.clearApiKeyHint')}
-                  </div>
-                )}
+              <div className="surface-card-soft rounded-xl border border-brand-200 bg-brand-50/70 px-3 py-2 text-xs text-muted-foreground">
+                {t('settings.runtime.gemini.apiKeyDescription')}
               </div>
             )}
 
             <div className="grid grid-cols-1 gap-4">
-              {(!isGeminiRuntime || effectiveGeminiAccessMode === 'api_key') && (
-                <div className="rounded-lg bg-muted/10 p-3">
-                  <label className="mb-1 block text-xs font-medium text-foreground/80">
-                    {isGeminiRuntime ? 'GEMINI_API_KEY' : 'CODEX_API_KEY'}{' '}
-                    {isGeminiRuntime
-                      ? (config?.hasGeminiApiKey ? `(${config.geminiApiKeyMasked})` : '')
-                      : (config?.hasCodexApiKey ? `(${config.codexApiKeyMasked})` : '')}
-                  </label>
-                  {(isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey) && (
-                    <div className="mb-2 text-[11px] text-muted-foreground">
-                      {t('settings.runtime.currentSource')}{secretSourceLabel(sdkKeySource)}
-                    </div>
-                  )}
-                  {sdkKeyDegraded && (
-                    <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                      {t('settings.runtime.apiKeyDegraded')}
-                    </div>
-                  )}
-                  <Input
-                    type="password"
-                    value={isGeminiRuntime ? geminiApiKey : codexApiKey}
-                    onChange={(e) => {
-                      if (isGeminiRuntime) {
-                        setGeminiApiKey(e.target.value);
-                        setGeminiApiKeyDirty(true);
-                      } else {
-                        setCodexApiKey(e.target.value);
-                        setCodexApiKeyDirty(true);
-                      }
-                    }}
-                    disabled={controlsBusy}
-                    placeholder={
-                      (isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey)
-                        ? t('settings.runtime.keepCurrentPlaceholder')
-                        : t('settings.runtime.enterApiKeyPlaceholder')
+              <div className="rounded-lg bg-muted/10 p-3">
+                <label className="mb-1 block text-xs font-medium text-foreground/80">
+                  {isGeminiRuntime ? 'GEMINI_API_KEY' : 'CODEX_API_KEY'}{' '}
+                  {isGeminiRuntime
+                    ? (config?.hasGeminiApiKey ? `(${config.geminiApiKeyMasked})` : '')
+                    : (config?.hasCodexApiKey ? `(${config.codexApiKeyMasked})` : '')}
+                </label>
+                {(isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey) && (
+                  <div className="mb-2 text-[11px] text-muted-foreground">
+                    {t('settings.runtime.currentSource')}{secretSourceLabel(sdkKeySource)}
+                  </div>
+                )}
+                {sdkKeyDegraded && (
+                  <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                    {t('settings.runtime.apiKeyDegraded')}
+                  </div>
+                )}
+                <Input
+                  type="password"
+                  value={isGeminiRuntime ? geminiApiKey : codexApiKey}
+                  onChange={(e) => {
+                    if (isGeminiRuntime) {
+                      setGeminiApiKey(e.target.value);
+                      setGeminiApiKeyDirty(true);
+                    } else {
+                      setCodexApiKey(e.target.value);
+                      setCodexApiKeyDirty(true);
                     }
-                    className="h-10 rounded-xl border-border/75 bg-card/95"
-                  />
-                </div>
-              )}
+                  }}
+                  disabled={controlsBusy}
+                  placeholder={
+                    (isGeminiRuntime ? config?.hasGeminiApiKey : config?.hasCodexApiKey)
+                      ? t('settings.runtime.keepCurrentPlaceholder')
+                      : t('settings.runtime.enterApiKeyPlaceholder')
+                  }
+                  className="h-10 rounded-xl border-border/75 bg-card/95"
+                />
+              </div>
               {isGeminiRuntime ? (
                 <div className="rounded-lg bg-muted/10 p-3">
                   <label className="mb-1 block text-xs font-medium text-foreground/80">
                     {t('setupProviders.runtime.generic.geminiBaseUrlLabel')}
                   </label>
-                  <Input
-                    type="text"
-                    value={geminiBaseUrl}
-                    onChange={(e) => setGeminiBaseUrl(e.target.value)}
-                    disabled={controlsBusy}
-                    placeholder={t('setupProviders.runtime.generic.geminiBaseUrlPlaceholder')}
-                    className="h-10 rounded-xl border-border/75 bg-card/95"
-                  />
+                  <div className="mb-2 text-[11px] text-muted-foreground">
+                    {t('settings.runtime.gemini.baseUrlApiKeyOnly')}
+                  </div>
+                    <Input
+                      type="text"
+                      value={geminiBaseUrl}
+                      onChange={(e) => setGeminiBaseUrl(e.target.value)}
+                      disabled={controlsBusy}
+                      placeholder={t('setupProviders.runtime.generic.geminiBaseUrlPlaceholder')}
+                      className="h-10 rounded-xl border-border/75 bg-card/95"
+                    />
                 </div>
               ) : (
                 currentRuntime.capabilities.supportsCustomBaseUrl && (
@@ -1050,13 +902,7 @@ export function RuntimeSection({ setNotice, setError }: RuntimeSectionProps) {
 
             <Button
               onClick={handleSaveSdkRuntime}
-              disabled={
-                controlsBusy ||
-                oauthExchanging ||
-                oauthLoading ||
-                geminiOauthExchanging ||
-                geminiOauthLoading
-              }
+              disabled={controlsBusy || oauthExchanging || oauthLoading}
               className="h-10 rounded-xl"
             >
               {saving && <Loader2 className="size-4 animate-spin" />}

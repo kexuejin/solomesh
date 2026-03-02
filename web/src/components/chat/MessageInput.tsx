@@ -144,12 +144,22 @@ export function MessageInput({
         label: t('chat.messageInput.permission.defaultLabel'),
         hint: t('chat.messageInput.permission.hintCodexDefault'),
       },
+      {
+        value: 'bypass',
+        label: t('chat.messageInput.permission.bypassLabel'),
+        hint: t('chat.messageInput.permission.hintCodexBypass'),
+      },
     ],
     gemini: [
       {
         value: 'default',
         label: t('chat.messageInput.permission.defaultLabel'),
         hint: t('chat.messageInput.permission.hintGeminiDefault'),
+      },
+      {
+        value: 'bypass',
+        label: t('chat.messageInput.permission.bypassLabel'),
+        hint: t('chat.messageInput.permission.hintGeminiBypass'),
       },
     ],
   };
@@ -158,12 +168,9 @@ export function MessageInput({
     provider: ProviderId,
     requested?: OperationPermissionMode,
   ): OperationPermissionMode => {
-    if (provider === 'claude') {
-      return requested === 'default' || requested === 'bypass'
-        ? requested
-        : DEFAULT_PERMISSION_MODE_BY_PROVIDER.claude;
-    }
-    return 'default';
+    return requested === 'default' || requested === 'bypass'
+      ? requested
+      : DEFAULT_PERMISSION_MODE_BY_PROVIDER[provider];
   };
 
   useEffect(() => {

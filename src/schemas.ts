@@ -10,7 +10,7 @@ export const AGENT_RUNTIME_IDS = [
   'claude-code',
   'codex',
   'opencode',
-  'gemini-cli',
+  'gemini',
 ] as const;
 
 export const MODEL_PROVIDER_IDS = [
@@ -187,7 +187,7 @@ export const RuntimeConfigSchema = z
     codexModel: z.string().max(2000).optional(),
     geminiBaseUrl: z.string().max(2000).optional(),
     geminiModel: z.string().max(2000).optional(),
-    geminiAuthMode: z.enum(['api_key', 'oauth']).optional(),
+    geminiAuthMode: z.enum(['api_key']).optional(),
   })
   .refine(
     (data) =>
@@ -311,14 +311,6 @@ export const RuntimeOAuthCredentialsSchema = z.object({
   scopes: z.array(z.string()).default([]),
 });
 
-export const GeminiOAuthCredentialsSchema = z.object({
-  accessToken: z.string().min(1),
-  refreshToken: z.string().min(1),
-  expiryDate: z.number().nullable().optional(),
-  tokenType: z.string().optional(),
-  scope: z.string().optional(),
-});
-
 export const RuntimeSecretsSchema = z
   .object({
     anthropicAuthToken: z.string().optional(),
@@ -331,8 +323,6 @@ export const RuntimeSecretsSchema = z
     clearCodexApiKey: z.boolean().optional(),
     geminiApiKey: z.string().optional(),
     clearGeminiApiKey: z.boolean().optional(),
-    geminiOAuthCredentials: GeminiOAuthCredentialsSchema.optional(),
-    clearGeminiOAuthCredentials: z.boolean().optional(),
     claudeOAuthCredentials: RuntimeOAuthCredentialsSchema.optional(),
     clearRuntimeOAuthCredentials: z.boolean().optional(),
   })
@@ -353,9 +343,6 @@ export const RuntimeSecretsSchema = z
       const hasGeminiApiKey =
         typeof data.geminiApiKey === 'string' ||
         data.clearGeminiApiKey === true;
-      const hasGeminiOAuthCredentials =
-        data.geminiOAuthCredentials !== undefined ||
-        data.clearGeminiOAuthCredentials === true;
       const hasRuntimeOAuthCredentials =
         data.claudeOAuthCredentials !== undefined ||
         data.clearRuntimeOAuthCredentials === true;
@@ -365,7 +352,6 @@ export const RuntimeSecretsSchema = z
         hasClaudeCodeOauthToken ||
         hasCodexApiKey ||
         hasGeminiApiKey ||
-        hasGeminiOAuthCredentials ||
         hasRuntimeOAuthCredentials
       );
     },
@@ -438,7 +424,7 @@ export const ContainerEnvSchema = z
     codexModel: z.string().max(2000).optional(),
     geminiBaseUrl: z.string().max(2000).optional(),
     geminiModel: z.string().max(2000).optional(),
-    geminiAuthMode: z.enum(['api_key', 'oauth']).optional(),
+    geminiAuthMode: z.enum(['api_key']).optional(),
     anthropicAuthToken: z.string().max(2000).optional(),
     anthropicApiKey: z.string().max(2000).optional(),
     claudeCodeOauthToken: z.string().max(2000).optional(),

@@ -24,11 +24,13 @@ test('chat requested operation permission mode can be set and cleared', () => {
   assert.equal(getChatRequestedOperationPermissionMode(chatJid), undefined);
 });
 
-test('runtime mode resolution keeps claude configurable and forces others to default', () => {
+test('runtime mode resolution keeps provider defaults and allows explicit bypass for all runtimes', () => {
   assert.equal(resolveOperationPermissionModeForRuntime('claude', 'bypass'), 'bypass');
   assert.equal(resolveOperationPermissionModeForRuntime('claude', undefined), 'bypass');
-  assert.equal(resolveOperationPermissionModeForRuntime('codex', 'bypass'), 'default');
-  assert.equal(resolveOperationPermissionModeForRuntime('gemini', 'bypass'), 'default');
+  assert.equal(resolveOperationPermissionModeForRuntime('codex', 'bypass'), 'bypass');
+  assert.equal(resolveOperationPermissionModeForRuntime('codex', undefined), 'default');
+  assert.equal(resolveOperationPermissionModeForRuntime('gemini', 'bypass'), 'bypass');
+  assert.equal(resolveOperationPermissionModeForRuntime('gemini', undefined), 'default');
 });
 
 test('claude permission mode mapping is stable', () => {

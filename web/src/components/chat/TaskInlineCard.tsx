@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, CheckCircle2, XCircle, Loader2 } from 'lucide-r
 import { useChatStore } from '../../stores/chat';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useI18n } from '../../i18n';
+import { formatToolDisplayName } from '../../lib/tool-display';
 
 interface TaskInlineCardProps {
   toolUseId: string;
@@ -132,7 +133,9 @@ export function TaskInlineCard({ toolUseId, description, startTime, groupJid }: 
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    {tool.toolName === 'Skill' ? (tool.skillName || unknownLabel) : tool.toolName}
+                    {tool.toolName === 'Skill'
+                      ? (tool.skillName || unknownLabel)
+                      : formatToolDisplayName(tool.toolName)}
                   </span>
                 ))}
               </div>

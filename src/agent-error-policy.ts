@@ -7,9 +7,8 @@ export interface RetryDecision {
 
 const GEMINI_TERMINAL_ERROR_PATTERNS: RegExp[] = [
   /token pool is empty/i,
+  /Gemini 运行时未检测到 GEMINI_API_KEY/i,
   /Gemini API Key 模式未检测到 GEMINI_API_KEY/i,
-  /Gemini 官方模式未检测到(?:可用)?登录凭据/i,
-  /Please set an Auth method/i,
 ];
 
 export function decideAgentErrorRetry(
@@ -35,19 +34,11 @@ export function decideAgentErrorRetry(
     };
   }
 
-  if (/Gemini API Key 模式未检测到 GEMINI_API_KEY/i.test(errorDetail)) {
+  if (/Gemini 运行时未检测到 GEMINI_API_KEY|Gemini API Key 模式未检测到 GEMINI_API_KEY/i.test(errorDetail)) {
     return {
       shouldRetry: false,
       userFacingMessage:
-        'Gemini API Key 模式未配置 GEMINI_API_KEY。请在设置页填写 API Key，或切换到 Google 官方模式。',
-    };
-  }
-
-  if (/Gemini 官方模式未检测到(?:可用)?登录凭据|Please set an Auth method/i.test(errorDetail)) {
-    return {
-      shouldRetry: false,
-      userFacingMessage:
-        'Gemini 官方模式未检测到登录凭据。请先在设置页点击“一键登录 Google”，或在运行环境执行 gemini login。',
+        'Gemini 未配置 GEMINI_API_KEY。请在设置页填写 API Key。',
     };
   }
 

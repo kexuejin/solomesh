@@ -11,7 +11,7 @@ export interface ContainerEnvPublicConfig {
   codexModel: string;
   geminiBaseUrl: string;
   geminiModel: string;
-  geminiAuthMode: 'api_key' | 'oauth';
+  geminiAuthMode: 'api_key';
   anthropicAuthTokenMasked: string | null;
   anthropicApiKeyMasked: string | null;
   claudeCodeOauthTokenMasked: string | null;
@@ -43,7 +43,7 @@ interface ContainerEnvState {
     codexModel?: string;
     geminiBaseUrl?: string;
     geminiModel?: string;
-    geminiAuthMode?: 'api_key' | 'oauth';
+    geminiAuthMode?: 'api_key';
     anthropicAuthToken?: string;
     anthropicApiKey?: string;
     claudeCodeOauthToken?: string;

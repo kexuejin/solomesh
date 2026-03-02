@@ -7,14 +7,13 @@ export interface RuntimeConfigPublic {
   codexModel: string;
   geminiBaseUrl: string;
   geminiModel: string;
-  geminiAuthMode: 'api_key' | 'oauth';
+  geminiAuthMode: 'api_key';
   updatedAt: string | null;
   hasAnthropicAuthToken: boolean;
   hasAnthropicApiKey: boolean;
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
   hasGeminiApiKey: boolean;
-  hasGeminiOAuthCredentials: boolean;
   anthropicAuthTokenMasked: string | null;
   anthropicApiKeyMasked: string | null;
   claudeCodeOauthTokenMasked: string | null;

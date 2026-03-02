@@ -29,10 +29,6 @@ const PROVIDER_CUSTOM_ENV_FILE = path.join(
   RUNTIME_CONFIG_DIR,
   'runtime-custom-env.json',
 );
-const GEMINI_OAUTH_FILE = path.join(
-  RUNTIME_CONFIG_DIR,
-  'gemini-oauth.json',
-);
 const FEISHU_CONFIG_FILE = path.join(RUNTIME_CONFIG_DIR, 'feishu-provider.json');
 const TELEGRAM_CONFIG_FILE = path.join(RUNTIME_CONFIG_DIR, 'telegram-provider.json');
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -51,7 +47,6 @@ const RESERVED_PROVIDER_ENV_KEYS = new Set([
   'GOOGLE_GEMINI_BASE_URL',
   'GEMINI_MODEL',
   'GEMINI_AUTH_MODE',
-  'GEMINI_CLI_HOME',
   'SOLOMESH_PRIMARY_MEMORY_FILE_NAME',
   'SOLOMESH_RUNTIME_LABEL',
   'SOLOMESH_CAP_SUPPORTS_MEMORY_FLUSH',
@@ -103,7 +98,6 @@ const DANGEROUS_ENV_VARS = new Set([
   'SOLOMESH_WORKSPACE_IPC',
   'CLAUDE_CONFIG_DIR',
   'CODEX_HOME',
-  'GEMINI_CLI_HOME',
 ]);
 const MAX_CUSTOM_ENV_ENTRIES = 50;
 
@@ -112,14 +106,6 @@ export interface RuntimeOAuthCredentials {
   refreshToken: string;
   expiresAt: number; // Unix timestamp (ms)
   scopes: string[];
-}
-
-export interface GeminiOAuthCredentials {
-  accessToken: string;
-  refreshToken: string;
-  expiryDate: number | null;
-  tokenType: string;
-  scope: string;
 }
 
 export type GeminiAuthMode = 'api_key' | 'oauth';
@@ -158,7 +144,6 @@ export interface RuntimeProviderPublicConfig {
   hasClaudeCodeOauthToken: boolean;
   hasCodexApiKey: boolean;
   hasGeminiApiKey: boolean;
-  hasGeminiOAuthCredentials: boolean;
   anthropicAuthTokenMasked: string | null;
   anthropicApiKeyMasked: string | null;
   claudeCodeOauthTokenMasked: string | null;
@@ -464,7 +449,7 @@ export function resolveRuntimeProviderConfigWithEnvFallback(
       fallback.geminiBaseUrl,
     ),
     geminiModel: pickPreferredValue(config.geminiModel, fallback.geminiModel),
-    geminiAuthMode: config.geminiAuthMode,
+    geminiAuthMode: normalizeGeminiAuthMode(config.geminiAuthMode),
     anthropicAuthToken: pickPreferredValue(
       config.anthropicAuthToken,
       fallback.anthropicAuthToken,
@@ -482,9 +467,6 @@ export function resolveRuntimeProviderConfigWithEnvFallback(
     claudeOAuthCredentials: config.claudeOAuthCredentials,
     updatedAt: config.updatedAt,
   };
-  if (resolved.geminiAuthMode === 'oauth') {
-    resolved.geminiApiKey = '';
-  }
   return resolved;
 }
 
@@ -503,7 +485,7 @@ export function getRuntimeApiKeyAutoRepairPatch(
     codexModel: config.codexModel,
     geminiBaseUrl: config.geminiBaseUrl,
     geminiModel: config.geminiModel,
-    geminiAuthMode: config.geminiAuthMode,
+    geminiAuthMode: normalizeGeminiAuthMode(config.geminiAuthMode),
     anthropicAuthToken: config.anthropicAuthToken,
     anthropicApiKey: config.anthropicApiKey,
     claudeCodeOauthToken: config.claudeCodeOauthToken,
@@ -521,14 +503,12 @@ export function getRuntimeApiKeyAutoRepairPatch(
     changedFields.push('codexApiKey:auto_repair_from_env');
   }
 
-  if (config.geminiAuthMode === 'api_key') {
-    const geminiCurrent = sanitizeEnvValue(config.geminiApiKey).trim();
-    const geminiCurrentValid = normalizeApiKeyValue(geminiCurrent);
-    const geminiFallbackValid = normalizeApiKeyValue(fallback.geminiApiKey);
-    if (geminiCurrent && !geminiCurrentValid && geminiFallbackValid) {
-      nextConfig.geminiApiKey = geminiFallbackValid;
-      changedFields.push('geminiApiKey:auto_repair_from_env');
-    }
+  const geminiCurrent = sanitizeEnvValue(config.geminiApiKey).trim();
+  const geminiCurrentValid = normalizeApiKeyValue(geminiCurrent);
+  const geminiFallbackValid = normalizeApiKeyValue(fallback.geminiApiKey);
+  if (geminiCurrent && !geminiCurrentValid && geminiFallbackValid) {
+    nextConfig.geminiApiKey = geminiFallbackValid;
+    changedFields.push('geminiApiKey:auto_repair_from_env');
   }
 
   return { nextConfig, changedFields };
@@ -540,7 +520,8 @@ function normalizeGeminiAuthMode(input: unknown): GeminiAuthMode {
   }
   const value = input.trim().toLowerCase();
   if (value === 'api_key' || value === 'oauth') {
-    return value;
+    // Gemini runtime is API-key-only in current product surface.
+    return 'api_key';
   }
   throw new Error('Invalid field: geminiAuthMode');
 }
@@ -786,8 +767,7 @@ function defaultsFromEnv(): RuntimeProviderConfig {
       process.env.GEMINI_NEXT_GEN_API_BASE_URL ||
       '',
     geminiModel: process.env.GEMINI_MODEL || '',
-    geminiAuthMode:
-      process.env.GEMINI_AUTH_MODE === 'oauth' ? 'oauth' : 'api_key',
+    geminiAuthMode: 'api_key',
     anthropicAuthToken: process.env.ANTHROPIC_AUTH_TOKEN || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     claudeCodeOauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN || '',
@@ -811,7 +791,7 @@ function defaultsFromEnv(): RuntimeProviderConfig {
       codexModel: raw.codexModel.trim(),
       geminiBaseUrl: raw.geminiBaseUrl.trim(),
       geminiModel: raw.geminiModel.trim(),
-      geminiAuthMode: raw.geminiAuthMode === 'oauth' ? 'oauth' : 'api_key',
+      geminiAuthMode: 'api_key',
       anthropicAuthToken: raw.anthropicAuthToken.trim(),
       anthropicApiKey: raw.anthropicApiKey.trim(),
       claudeCodeOauthToken: raw.claudeCodeOauthToken.trim(),
@@ -1077,102 +1057,6 @@ export function saveGlobalRuntimeCustomEnv(
   return sanitized;
 }
 
-interface StoredGeminiOAuthCredentialsV1 {
-  version: 1;
-  updatedAt: string;
-  credentials: GeminiOAuthCredentials;
-}
-
-function normalizeGeminiOAuthCredentials(
-  input: GeminiOAuthCredentials,
-): GeminiOAuthCredentials {
-  if (!input || typeof input !== 'object') {
-    throw new Error('Invalid gemini oauth credentials');
-  }
-  const accessToken = typeof input.accessToken === 'string'
-    ? input.accessToken.trim()
-    : '';
-  const refreshToken = typeof input.refreshToken === 'string'
-    ? input.refreshToken.trim()
-    : '';
-  const tokenType = typeof input.tokenType === 'string'
-    ? input.tokenType.trim()
-    : 'Bearer';
-  const scope = typeof input.scope === 'string'
-    ? input.scope.trim()
-    : '';
-  const expiryDate = typeof input.expiryDate === 'number' && Number.isFinite(input.expiryDate)
-    ? input.expiryDate
-    : null;
-
-  if (!accessToken) throw new Error('Invalid gemini oauth credentials: accessToken');
-  if (!refreshToken) throw new Error('Invalid gemini oauth credentials: refreshToken');
-  if (accessToken.length > MAX_FIELD_LENGTH * 4) {
-    throw new Error('Field too long: geminiOAuth.accessToken');
-  }
-  if (refreshToken.length > MAX_FIELD_LENGTH * 4) {
-    throw new Error('Field too long: geminiOAuth.refreshToken');
-  }
-  if (tokenType.length > MAX_FIELD_LENGTH) {
-    throw new Error('Field too long: geminiOAuth.tokenType');
-  }
-  if (scope.length > MAX_FIELD_LENGTH * 8) {
-    throw new Error('Field too long: geminiOAuth.scope');
-  }
-
-  return {
-    accessToken,
-    refreshToken,
-    expiryDate,
-    tokenType: tokenType || 'Bearer',
-    scope,
-  };
-}
-
-export function getGeminiOAuthCredentials(): GeminiOAuthCredentials | null {
-  try {
-    if (!fs.existsSync(GEMINI_OAUTH_FILE)) return null;
-    const raw = JSON.parse(fs.readFileSync(GEMINI_OAUTH_FILE, 'utf-8')) as {
-      version?: number;
-      credentials?: GeminiOAuthCredentials;
-    };
-    if (raw.version !== 1 || !raw.credentials) return null;
-    return normalizeGeminiOAuthCredentials(raw.credentials);
-  } catch (err) {
-    logger.warn({ err }, 'Failed to read Gemini OAuth credentials');
-    return null;
-  }
-}
-
-export function saveGeminiOAuthCredentials(
-  credentials: GeminiOAuthCredentials,
-): GeminiOAuthCredentials {
-  const normalized = normalizeGeminiOAuthCredentials(credentials);
-  const payload: StoredGeminiOAuthCredentialsV1 = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    credentials: normalized,
-  };
-  fs.mkdirSync(RUNTIME_CONFIG_DIR, { recursive: true });
-  const tmp = `${GEMINI_OAUTH_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', {
-    encoding: 'utf-8',
-    mode: 0o600,
-  });
-  fs.renameSync(tmp, GEMINI_OAUTH_FILE);
-  return normalized;
-}
-
-export function clearGeminiOAuthCredentials(): void {
-  try {
-    if (fs.existsSync(GEMINI_OAUTH_FILE)) {
-      fs.unlinkSync(GEMINI_OAUTH_FILE);
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to clear Gemini OAuth credentials');
-  }
-}
-
 function maskSecret(value: string): string | null {
   if (!value) return null;
   if (value.length <= 8)
@@ -1192,11 +1076,10 @@ export function toPublicRuntimeProviderConfig(
     config.codexApiKey,
     envFallback.codexApiKey,
   );
-  const geminiApiKeyInfo =
-    resolved.geminiAuthMode === 'oauth'
-      ? { value: '', source: 'none' as const, degraded: false }
-      : resolveApiKeyWithSource(config.geminiApiKey, envFallback.geminiApiKey);
-  const geminiOAuthCredentials = getGeminiOAuthCredentials();
+  const geminiApiKeyInfo = resolveApiKeyWithSource(
+    config.geminiApiKey,
+    envFallback.geminiApiKey,
+  );
   const codexApiKey = codexApiKeyInfo.value;
   const geminiApiKey = geminiApiKeyInfo.value;
   return {
@@ -1213,7 +1096,6 @@ export function toPublicRuntimeProviderConfig(
     hasClaudeCodeOauthToken: !!resolved.claudeCodeOauthToken,
     hasCodexApiKey: !!codexApiKey,
     hasGeminiApiKey: !!geminiApiKey,
-    hasGeminiOAuthCredentials: !!geminiOAuthCredentials,
     anthropicAuthTokenMasked: maskSecret(resolved.anthropicAuthToken),
     anthropicApiKeyMasked: maskSecret(resolved.anthropicApiKey),
     claudeCodeOauthTokenMasked: maskSecret(resolved.claudeCodeOauthToken),
@@ -1361,7 +1243,7 @@ export function buildRuntimeEnvLines(config: RuntimeProviderConfig): string[] {
   );
   const lines: string[] = [];
   lines.push(`AGENT_RUNTIME=${resolved.agentRuntime}`);
-  const runtimeDef = getAgentProviderDefinition(resolved.agentRuntime);
+  const runtimeDef = getAgentProviderDefinition(resolved.agentRuntime, resolved);
   lines.push(
     `SOLOMESH_RUNTIME_LABEL=${sanitizeEnvValue(runtimeDef.label)}`,
   );
@@ -1407,28 +1289,17 @@ export function buildRuntimeEnvLines(config: RuntimeProviderConfig): string[] {
       lines.push(`CODEX_MODEL=${sanitizeEnvValue(resolved.codexModel)}`);
     }
   } else if (resolved.agentRuntime === 'gemini') {
-    lines.push(
-      `GEMINI_AUTH_MODE=${sanitizeEnvValue(resolved.geminiAuthMode)}`,
-    );
+    lines.push('GEMINI_AUTH_MODE=api_key');
     const geminiApiKey = normalizeApiKeyValue(resolved.geminiApiKey);
     const configuredGeminiApiKey = normalizeApiKeyValue(config.geminiApiKey);
-    if (
-      resolved.geminiAuthMode === 'api_key' &&
-      config.geminiApiKey &&
-      !configuredGeminiApiKey &&
-      geminiApiKey
-    ) {
+    if (config.geminiApiKey && !configuredGeminiApiKey && geminiApiKey) {
       logger.warn(
         'Runtime config GEMINI_API_KEY is invalid, falling back to process env',
       );
-    } else if (
-      resolved.geminiAuthMode === 'api_key' &&
-      config.geminiApiKey &&
-      !configuredGeminiApiKey
-    ) {
+    } else if (config.geminiApiKey && !configuredGeminiApiKey) {
       logger.warn('Skipping invalid GEMINI_API_KEY because it looks like a URL');
     }
-    if (resolved.geminiAuthMode === 'api_key' && geminiApiKey) {
+    if (geminiApiKey) {
       lines.push(`GEMINI_API_KEY=${geminiApiKey}`);
     }
     if (resolved.geminiBaseUrl) {
@@ -1680,19 +1551,10 @@ export function toPublicContainerEnvConfig(
     config.codexApiKey || '',
     runtimeCodexApiKeyInfo,
   );
-  const effectiveGeminiAuthMode =
-    config.geminiAuthMode === 'oauth'
-      ? 'oauth'
-      : runtime.geminiAuthMode === 'oauth'
-        ? 'oauth'
-        : 'api_key';
-  const geminiApiKeyInfo =
-    effectiveGeminiAuthMode === 'oauth'
-      ? { value: '', source: 'none' as const, degraded: false }
-      : resolveContainerApiKeyWithSource(
-          config.geminiApiKey || '',
-          runtimeGeminiApiKeyInfo,
-        );
+  const geminiApiKeyInfo = resolveContainerApiKeyWithSource(
+    config.geminiApiKey || '',
+    runtimeGeminiApiKeyInfo,
+  );
   return {
     agentRuntime: normalizeAgentProvider(config.agentRuntime),
     anthropicBaseUrl: config.anthropicBaseUrl || '',
@@ -1700,8 +1562,7 @@ export function toPublicContainerEnvConfig(
     codexModel: config.codexModel || '',
     geminiBaseUrl: config.geminiBaseUrl || '',
     geminiModel: config.geminiModel || '',
-    geminiAuthMode:
-      config.geminiAuthMode === 'oauth' ? 'oauth' : 'api_key',
+    geminiAuthMode: 'api_key',
     hasAnthropicAuthToken: !!config.anthropicAuthToken,
     hasAnthropicApiKey: !!config.anthropicApiKey,
     hasClaudeCodeOauthToken: !!config.claudeCodeOauthToken,
@@ -1742,7 +1603,9 @@ export function mergeRuntimeEnvConfig(
     codexModel: override.codexModel || global.codexModel,
     geminiBaseUrl: override.geminiBaseUrl || global.geminiBaseUrl,
     geminiModel: override.geminiModel || global.geminiModel,
-    geminiAuthMode: override.geminiAuthMode || global.geminiAuthMode,
+    geminiAuthMode: normalizeGeminiAuthMode(
+      override.geminiAuthMode || global.geminiAuthMode,
+    ),
     anthropicAuthToken:
       override.anthropicAuthToken || global.anthropicAuthToken,
     anthropicApiKey: override.anthropicApiKey || global.anthropicApiKey,
@@ -1867,8 +1730,6 @@ export function buildContainerEnvLines(
 
 const OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 const OAUTH_TOKEN_URL = 'https://api.anthropic.com/v1/oauth/token';
-const GEMINI_OAUTH_CREDENTIALS_FILE = 'oauth_creds.json';
-const GEMINI_SETTINGS_FILE = 'settings.json';
 
 /**
  * Write .credentials.json to a Claude session directory.
@@ -1944,141 +1805,6 @@ export function updateAllSessionCredentials(config: RuntimeProviderConfig): void
     } catch (err) {
       logger.warn({ err }, 'Failed to write host ~/.claude/.credentials.json');
     }
-  }
-}
-
-export function writeGeminiOAuthFile(
-  geminiDir: string,
-  credentials: GeminiOAuthCredentials,
-): void {
-  const normalized = normalizeGeminiOAuthCredentials(credentials);
-  fs.mkdirSync(geminiDir, { recursive: true });
-  const filePath = path.join(geminiDir, GEMINI_OAUTH_CREDENTIALS_FILE);
-  const payload = {
-    access_token: normalized.accessToken,
-    refresh_token: normalized.refreshToken,
-    expiry_date: normalized.expiryDate ?? undefined,
-    token_type: normalized.tokenType || 'Bearer',
-    scope: normalized.scope || undefined,
-  };
-  const tmp = `${filePath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', {
-    encoding: 'utf-8',
-    mode: 0o600,
-  });
-  fs.renameSync(tmp, filePath);
-  upsertGeminiAuthType(geminiDir, 'oauth-personal');
-}
-
-function clearGeminiOAuthFile(geminiDir: string): void {
-  try {
-    const filePath = path.join(geminiDir, GEMINI_OAUTH_CREDENTIALS_FILE);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  } catch {
-    // best effort
-  }
-}
-
-function upsertGeminiAuthType(
-  geminiDir: string,
-  authType: 'oauth-personal' | 'gemini-api-key',
-): void {
-  try {
-    fs.mkdirSync(geminiDir, { recursive: true });
-    const settingsPath = path.join(geminiDir, GEMINI_SETTINGS_FILE);
-    let parsed: Record<string, unknown> = {};
-    if (fs.existsSync(settingsPath)) {
-      try {
-        const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as unknown;
-        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-          parsed = raw as Record<string, unknown>;
-        }
-      } catch {
-        // If existing settings is malformed, overwrite with minimal valid structure.
-      }
-    }
-
-    const security =
-      parsed.security && typeof parsed.security === 'object' && !Array.isArray(parsed.security)
-        ? { ...(parsed.security as Record<string, unknown>) }
-        : {};
-    const auth =
-      security.auth && typeof security.auth === 'object' && !Array.isArray(security.auth)
-        ? { ...(security.auth as Record<string, unknown>) }
-        : {};
-    auth.selectedType = authType;
-    security.auth = auth;
-
-    const next = { ...parsed, security };
-    const tmp = `${settingsPath}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', {
-      encoding: 'utf-8',
-      mode: 0o600,
-    });
-    fs.renameSync(tmp, settingsPath);
-  } catch (err) {
-    logger.warn({ err }, 'Failed to update Gemini settings auth type');
-  }
-}
-
-export function updateAllGeminiSessionCredentials(
-  credentials: GeminiOAuthCredentials | null,
-): void {
-  const sessionsDir = path.join(DATA_DIR, 'sessions');
-  try {
-    if (fs.existsSync(sessionsDir)) {
-      for (const folder of fs.readdirSync(sessionsDir)) {
-        const geminiDir = path.join(sessionsDir, folder, '.gemini');
-        if (fs.existsSync(geminiDir) && fs.statSync(geminiDir).isDirectory()) {
-          try {
-            if (credentials) {
-              writeGeminiOAuthFile(geminiDir, credentials);
-            } else {
-              clearGeminiOAuthFile(geminiDir);
-              upsertGeminiAuthType(geminiDir, 'gemini-api-key');
-            }
-          } catch (err) {
-            logger.warn({ err, folder }, 'Failed to write Gemini OAuth creds for session');
-          }
-        }
-
-        const agentsDir = path.join(sessionsDir, folder, 'agents');
-        if (fs.existsSync(agentsDir) && fs.statSync(agentsDir).isDirectory()) {
-          for (const agentId of fs.readdirSync(agentsDir)) {
-            const agentGeminiDir = path.join(agentsDir, agentId, '.gemini');
-            if (fs.existsSync(agentGeminiDir) && fs.statSync(agentGeminiDir).isDirectory()) {
-              try {
-                if (credentials) {
-                  writeGeminiOAuthFile(agentGeminiDir, credentials);
-                } else {
-                  clearGeminiOAuthFile(agentGeminiDir);
-                  upsertGeminiAuthType(agentGeminiDir, 'gemini-api-key');
-                }
-              } catch (err) {
-                logger.warn(
-                  { err, folder, agentId },
-                  'Failed to write Gemini OAuth creds for agent session',
-                );
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to update Gemini OAuth credentials for sessions');
-  }
-
-  const homeGeminiDir = path.join(process.env.HOME || '/root', '.gemini');
-  try {
-    if (credentials) {
-      writeGeminiOAuthFile(homeGeminiDir, credentials);
-    } else {
-      clearGeminiOAuthFile(homeGeminiDir);
-      upsertGeminiAuthType(homeGeminiDir, 'gemini-api-key');
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to update host ~/.gemini/oauth_creds.json');
   }
 }
 

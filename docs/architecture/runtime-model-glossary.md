@@ -10,7 +10,7 @@ Examples:
 - `claude-code`
 - `codex`
 - `opencode`
-- `gemini-cli`
+- `gemini`
 
 Responsibilities:
 - tool execution loop
@@ -69,4 +69,3 @@ Do:
 Don't:
 - `provider` (ambiguous)
 - `agentProvider` (legacy name for runtime)
-

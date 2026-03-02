@@ -35,7 +35,7 @@ test('agent provider capability matrix is explicit per runtime', () => {
   assert.equal(gemini.capabilities.supportsThirdPartyGateway, false);
   assert.equal(gemini.capabilities.supportsModelOverride, true);
   assert.equal(gemini.capabilities.supportsTaskNotificationSynthesis, false);
-  assert.equal(gemini.capabilities.supportsNativeThinkingStream, false);
+  assert.equal(gemini.capabilities.supportsNativeThinkingStream, true);
 });
 
 test('agent providers list order is stable for runtime selectors', () => {
@@ -43,13 +43,38 @@ test('agent providers list order is stable for runtime selectors', () => {
   assert.deepEqual(ids, [...AGENT_PROVIDER_IDS]);
 });
 
-test('gemini oauth mode is treated as configured without api key', () => {
+test('gemini capabilities stay SDK-level even when legacy oauth mode value appears', () => {
+  const geminiApiKey = getAgentProviderDefinition('gemini', {
+    geminiAuthMode: 'api_key',
+  });
+  assert.equal(geminiApiKey.capabilities.supportsImages, true);
+  assert.equal(geminiApiKey.capabilities.supportsCustomBaseUrl, true);
+  assert.equal(geminiApiKey.capabilities.supportsNativeThinkingStream, true);
+
+  const geminiOauth = getAgentProviderDefinition('gemini', {
+    geminiAuthMode: 'oauth',
+  });
+  assert.equal(geminiOauth.capabilities.supportsImages, true);
+  assert.equal(geminiOauth.capabilities.supportsCustomBaseUrl, true);
+  assert.equal(geminiOauth.capabilities.supportsNativeThinkingStream, true);
+});
+
+test('listAgentProviderDefinitions keeps gemini SDK capabilities stable', () => {
+  const runtimes = listAgentProviderDefinitions({ geminiAuthMode: 'api_key' });
+  const gemini = runtimes.find((item) => item.id === 'gemini');
+
+  assert.ok(gemini);
+  assert.equal(gemini.capabilities.supportsImages, true);
+  assert.equal(gemini.capabilities.supportsCustomBaseUrl, true);
+});
+
+test('gemini oauth mode is not treated as configured without api key', () => {
   assert.equal(
     isAgentProviderConfigured('gemini', {
       geminiAuthMode: 'oauth',
       geminiApiKey: '',
     }),
-    true,
+    false,
   );
   assert.equal(
     isAgentProviderConfigured('gemini', {

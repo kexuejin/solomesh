@@ -17,7 +17,7 @@ This creates ambiguity in API contracts, UI labels, and workflow routing logic.
 
 We use a strict three-layer model:
 
-1. `agentRuntime`: execution engine (`claude-code`, `codex`, `opencode`, `gemini-cli`)
+1. `agentRuntime`: execution engine (`claude-code`, `codex`, `opencode`, `gemini`)
 2. `modelProvider`: model service vendor (`anthropic`, `openai`, `google`, `openrouter`, ...)
 3. `model`: concrete model id (`gpt-5`, `claude-sonnet-4-5`, ...)
 
@@ -49,4 +49,3 @@ Rejected because the name is semantically wrong and blocks future multi-model-pe
 - Add strict schema for `agentRuntime`/`modelProvider`/`model`
 - Replace ambiguous labels in settings and docs
 - Add lint/check rule for banned terminology in new files
-

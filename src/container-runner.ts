@@ -18,13 +18,11 @@ import { loadMountAllowlist, validateAdditionalMounts } from './mount-security.j
 import {
   buildContainerEnvLines,
   type AgentProvider,
-  getGeminiOAuthCredentials,
   getRuntimeProviderConfig,
   getContainerEnvConfig,
   mergeRuntimeEnvConfig,
   shellQuoteEnvLines,
   writeCredentialsFile,
-  writeGeminiOAuthFile,
 } from './runtime-config.js';
 import { RegisteredGroup, StreamEvent } from './types.js';
 
@@ -394,16 +392,6 @@ function buildVolumeMounts(
       writeCredentialsFile(groupSessionsDir, mergedConfig);
     } catch (err) {
       logger.warn({ group: group.name, err }, 'Failed to write .credentials.json');
-    }
-  }
-  if (mergedConfig.geminiAuthMode === 'oauth') {
-    try {
-      const geminiOAuthCredentials = getGeminiOAuthCredentials();
-      if (geminiOAuthCredentials) {
-        writeGeminiOAuthFile(groupGeminiDir, geminiOAuthCredentials);
-      }
-    } catch (err) {
-      logger.warn({ group: group.name, err }, 'Failed to write Gemini oauth_creds.json');
     }
   }
 
@@ -1211,17 +1199,6 @@ export async function runHostAgent(
       logger.warn({ folder: group.folder, err }, 'Failed to write .credentials.json for host agent');
     }
   }
-  if (mergedConfig.geminiAuthMode === 'oauth') {
-    try {
-      const geminiOAuthCredentials = getGeminiOAuthCredentials();
-      if (geminiOAuthCredentials) {
-        writeGeminiOAuthFile(groupGeminiDir, geminiOAuthCredentials);
-      }
-    } catch (err) {
-      logger.warn({ folder: group.folder, err }, 'Failed to write Gemini oauth_creds.json for host agent');
-    }
-  }
-
   // 路径映射
   hostEnv['SOLOMESH_WORKSPACE_GROUP'] = groupDir;
   // Per-user global memory
@@ -1239,7 +1216,6 @@ export async function runHostAgent(
   hostEnv['SOLOMESH_WORKSPACE_IPC'] = groupIpcDir;
   hostEnv['CLAUDE_CONFIG_DIR'] = groupSessionsDir;
   hostEnv['CODEX_HOME'] = groupCodexDir;
-  hostEnv['GEMINI_CLI_HOME'] = path.dirname(groupGeminiDir);
   // 让 SDK 捕获 CLI 的 stderr 输出，便于排查启动失败
   hostEnv['DEBUG_CLAUDE_AGENT_SDK'] = '1';
   // CLI 禁止 root 用户使用 --dangerously-skip-permissions，
@@ -1261,7 +1237,7 @@ export async function runHostAgent(
   if (mergedConfig.agentRuntime === 'codex') {
     requiredDeps.push('@openai/codex-sdk');
   } else if (mergedConfig.agentRuntime === 'gemini') {
-    requiredDeps.push('@google/gemini-cli');
+    requiredDeps.push('@google/genai');
   } else {
     requiredDeps.push('@anthropic-ai/claude-agent-sdk');
   }

@@ -26,7 +26,7 @@ const PROVIDER_RUNTIME_TABLE: Record<AgentProvider, ProviderRuntime> = {
   },
   gemini: {
     id: 'gemini',
-    skillInstallAgent: 'gemini-cli',
+    skillInstallAgent: 'gemini',
     globalSkillsDirName: '.gemini/skills',
     supportsSkillsInstall: false,
     primaryMemoryFileName: getPrimaryMemoryFileName('gemini'),

@@ -66,21 +66,28 @@ const PROVIDER_DEFINITIONS: Record<AgentProvider, AgentProviderDefinition> = {
   },
   gemini: {
     id: 'gemini',
-    label: 'Gemini CLI',
-    description: 'Google Gemini CLI runtime with MCP integration.',
+    label: 'Gemini',
+    description: 'Google Gemini SDK runtime (API Key) with MCP integration.',
     capabilities: {
-      supportsImages: false,
+      supportsImages: true,
       supportsMemoryFlush: false,
-      supportsCustomBaseUrl: false,
+      supportsCustomBaseUrl: true,
       supportsOAuthLogin: false,
       supportsOfficialAuth: false,
       supportsThirdPartyGateway: false,
       supportsModelOverride: true,
-      supportsNativeThinkingStream: false,
+      supportsNativeThinkingStream: true,
       supportsTaskNotificationSynthesis: false,
     },
   },
 };
+
+function resolveCapabilities(
+  provider: AgentProvider,
+  _config?: AgentProviderConfigSnapshot,
+): AgentProviderCapabilities {
+  return PROVIDER_DEFINITIONS[provider].capabilities;
+}
 
 export function normalizeAgentProvider(input: unknown): AgentProvider {
   if (input === 'codex') return 'codex';
@@ -90,12 +97,19 @@ export function normalizeAgentProvider(input: unknown): AgentProvider {
 
 export function getAgentProviderDefinition(
   provider: AgentProvider,
+  config?: AgentProviderConfigSnapshot,
 ): AgentProviderDefinition {
-  return PROVIDER_DEFINITIONS[provider];
+  const base = PROVIDER_DEFINITIONS[provider];
+  return {
+    ...base,
+    capabilities: resolveCapabilities(provider, config),
+  };
 }
 
-export function listAgentProviderDefinitions(): AgentProviderDefinition[] {
-  return AGENT_PROVIDER_IDS.map((id) => PROVIDER_DEFINITIONS[id]);
+export function listAgentProviderDefinitions(
+  config?: AgentProviderConfigSnapshot,
+): AgentProviderDefinition[] {
+  return AGENT_PROVIDER_IDS.map((id) => getAgentProviderDefinition(id, config));
 }
 
 function hasValue(value: unknown): boolean {
@@ -126,7 +140,6 @@ export function isAgentProviderConfigured(
     case 'codex':
       return hasApiKeyValue(config.codexApiKey);
     case 'gemini':
-      if (config.geminiAuthMode === 'oauth') return true;
       return hasApiKeyValue(config.geminiApiKey);
     case 'claude': {
       const officialConfigured =

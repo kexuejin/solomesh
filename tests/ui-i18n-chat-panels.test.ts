@@ -57,3 +57,8 @@ test('chat dialogs avoid hardcoded setup placeholders', () => {
     }
   }
 });
+
+test('container env panel uses i18n for gemini api key tab label', () => {
+  const source = read('web/src/components/chat/ContainerEnvPanel.tsx');
+  assert.ok(!/>\s*API Key\s*</.test(source), 'ContainerEnvPanel should use i18n for API Key tab label');
+});

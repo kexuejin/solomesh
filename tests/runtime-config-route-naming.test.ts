@@ -11,6 +11,7 @@ test('config routes use runtime namespace only', () => {
   const configRoutes = read('src/routes/config.ts');
 
   assert.ok(configRoutes.includes("configRoutes.get('/runtimes'"));
+  assert.ok(configRoutes.includes('listAgentProviderDefinitions(effective)'));
   assert.ok(!configRoutes.includes("configRoutes.get('/providers'"));
   assert.ok(configRoutes.includes("configRoutes.get('/runtime'"));
   assert.ok(configRoutes.includes("configRoutes.get(\n  '/runtime/custom-env'"));

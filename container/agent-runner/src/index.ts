@@ -17,17 +17,22 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'node:child_process';
+import { Client as McpClient } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
-  isGeminiMissingAuthError,
-  normalizeGeminiAuthMode,
-  resolveGeminiApiKey,
-  resolveGeminiCliHomeCandidates,
-} from './gemini-auth.js';
+  buildGeminiSdkChatCreateParams,
+  buildGeminiSdkClientOptions,
+  buildGeminiSdkContents,
+  createGeminiSdkToolStreamState,
+  extractGeminiSdkChunkDeltas,
+  extractGeminiSdkChunkToolEvents,
+} from './gemini-sdk.js';
 import {
   buildClaudeMcpServers,
   buildCodexMcpServers,
-  buildGeminiMcpServers,
+  type NormalizedMcpServer,
   loadRawUserMcpServers,
   normalizeUserMcpServers,
 } from './mcp-config.js';
@@ -38,6 +43,14 @@ import {
 
 type AgentProviderId = 'claude' | 'codex' | 'gemini';
 type OperationPermissionMode = 'default' | 'bypass';
+const DEFAULT_OPERATION_PERMISSION_MODE_BY_PROVIDER: Record<
+  AgentProviderId,
+  OperationPermissionMode
+> = {
+  claude: 'bypass',
+  codex: 'default',
+  gemini: 'default',
+};
 
 function normalizeAgentProvider(input: unknown): AgentProviderId {
   if (input === 'codex') return 'codex';
@@ -57,10 +70,7 @@ function resolveOperationPermissionModeForProvider(
   requested: unknown,
 ): OperationPermissionMode {
   const normalized = normalizeOperationPermissionMode(requested);
-  if (provider === 'claude') {
-    return normalized ?? 'bypass';
-  }
-  return 'default';
+  return normalized ?? DEFAULT_OPERATION_PERMISSION_MODE_BY_PROVIDER[provider];
 }
 
 function toClaudePermissionMode(
@@ -93,19 +103,10 @@ const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'opus';
 const AGENT_PROVIDER_ID = normalizeAgentProvider(process.env.AGENT_RUNTIME);
 const CODEX_MODEL = process.env.CODEX_MODEL || 'gpt-5-codex';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
-const AGENT_RUNNER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PRIMARY_MEMORY_FILE_NAME =
   process.env.SOLOMESH_PRIMARY_MEMORY_FILE_NAME ||
   getPrimaryRuntimeMemoryFileName(AGENT_PROVIDER_ID);
 const RUNTIME_PRIMARY_MEMORY_FILE_NAMES = KNOWN_RUNTIME_MEMORY_FILE_NAMES;
-
-function resolveGeminiCliPath(): string {
-  const envBin = process.env.GEMINI_CLI_BIN?.trim();
-  if (envBin) return envBin;
-  const localBin = path.join(AGENT_RUNNER_DIR, 'node_modules', '.bin', 'gemini');
-  if (fs.existsSync(localBin)) return localBin;
-  return 'gemini';
-}
 
 interface ContainerInput {
   prompt: string;
@@ -1807,12 +1808,16 @@ async function runCodexQuery(
   }
 
   const codex = new Codex(codexOptions);
+  const operationPermissionMode = resolveOperationPermissionModeForProvider(
+    'codex',
+    containerInput.operationPermissionMode,
+  );
 
   const threadOptions: Record<string, unknown> = {
     model: CODEX_MODEL,
     workingDirectory: WORKSPACE_GROUP,
     approvalPolicy: 'never',
-    sandboxMode: 'danger-full-access',
+    sandboxMode: operationPermissionMode === 'bypass' ? 'danger-full-access' : 'workspace-write',
     skipGitRepoCheck: true,
     additionalDirectories: extraDirs,
   };
@@ -2098,31 +2103,74 @@ async function runGeminiQuery(
   _disallowedTools?: string[],
   images?: Array<{ data: string; mimeType?: string }>,
 ): Promise<QueryRunResult> {
-  const emit = (output: ContainerOutput): void => {
-    if (emitOutput) writeOutput(output);
+  return runGeminiSdkQuery(
+    prompt,
+    sessionId,
+    mcpServerPath,
+    containerInput,
+    memoryRecall,
+    emitOutput,
+    images,
+  );
+}
+
+interface GeminiSdkModule {
+  GoogleGenAI: new (options?: object) => {
+    chats: {
+      create(params: object): {
+        sendMessageStream(params: object): Promise<AsyncIterable<unknown>>;
+      };
+    };
   };
+  mcpToTool: (...args: unknown[]) => unknown;
+}
 
-  if (images && images.length > 0) {
-    emit({
-      status: 'success',
-      result: '⚠️ Gemini CLI 当前不支持该入口的图片输入，已忽略本次图片附件。',
-      newSessionId: sessionId,
-    });
-  }
+interface GeminiSdkSessionState {
+  chat: {
+    sendMessageStream(params: object): Promise<AsyncIterable<unknown>>;
+  };
+  mcpClients: McpClient[];
+}
 
-  const args = ['-p', `${prompt}\n${memoryRecall}`.trim(), '--output-format', 'text'];
-  if (GEMINI_MODEL.trim()) {
-    args.push('-m', GEMINI_MODEL.trim());
-  }
-  if (sessionId) {
-    args.push('--resume', 'latest');
-  }
+const geminiSdkSessions = new Map<string, GeminiSdkSessionState>();
 
-  const newSessionId = sessionId || 'latest';
-  const envSource = process.env as Record<string, string | undefined>;
-  const authMode = normalizeGeminiAuthMode(envSource.GEMINI_AUTH_MODE);
+async function cleanupGeminiSdkSessions(): Promise<void> {
+  const sessions = Array.from(geminiSdkSessions.entries());
+  if (sessions.length === 0) return;
+  geminiSdkSessions.clear();
+
+  await Promise.allSettled(
+    sessions.map(async ([sessionKey, state]) => {
+      await Promise.allSettled(
+        state.mcpClients.map(async (client) => {
+          try {
+            await client.close();
+          } catch (err) {
+            log(
+              `Gemini SDK MCP close failed: ${sessionKey} (${err instanceof Error ? err.message : String(err)})`,
+            );
+          }
+        }),
+      );
+    }),
+  );
+}
+
+async function loadGeminiSdk(): Promise<GeminiSdkModule> {
+  try {
+    return (await Function('return import("@google/genai")')()) as GeminiSdkModule;
+  } catch (err) {
+    throw new Error(
+      `Gemini SDK 未安装或加载失败: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+function buildGeminiMcpEnv(
+  containerInput: ContainerInput,
+): Record<string, string> {
   const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
-  const mcpEnv = {
+  return {
     SOLOMESH_CHAT_JID: containerInput.chatJid,
     SOLOMESH_GROUP_FOLDER: containerInput.groupFolder,
     SOLOMESH_IS_HOME: isHome ? '1' : '0',
@@ -2133,231 +2181,277 @@ async function runGeminiQuery(
     SOLOMESH_WORKSPACE_MEMORY: WORKSPACE_MEMORY,
     SOLOMESH_WORKSPACE_IPC: WORKSPACE_IPC,
   };
-  const builtInSolomesh = {
+}
+
+function buildGeminiSdkMcpServerList(
+  mcpServerPath: string,
+  containerInput: ContainerInput,
+): NormalizedMcpServer[] {
+  const normalizedUserMcpServers = normalizeUserMcpServers(loadRawUserMcpServers());
+  const userServers = Object.values(normalizedUserMcpServers).filter((server) => server.id !== 'solomesh');
+  const builtInSolomesh: NormalizedMcpServer = {
+    id: 'solomesh',
+    enabled: true,
+    transport: 'stdio',
     command: 'node',
     args: [mcpServerPath],
-    env: mcpEnv,
+    env: buildGeminiMcpEnv(containerInput),
   };
-  const normalizedUserMcpServers = normalizeUserMcpServers(loadRawUserMcpServers());
-  const geminiMcpServers = buildGeminiMcpServers(
-    normalizedUserMcpServers,
-    builtInSolomesh,
-  );
-  if (authMode === 'api_key' && !resolveGeminiApiKey(envSource)) {
+  return [...userServers, builtInSolomesh];
+}
+
+function toNodeEnvWithOverrides(
+  overrides?: Record<string, string>,
+): Record<string, string> {
+  const base: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === 'string') base[key] = value;
+  }
+  for (const [key, value] of Object.entries(overrides || {})) {
+    base[key] = value;
+  }
+  return base;
+}
+
+async function connectGeminiSdkMcpClients(
+  servers: NormalizedMcpServer[],
+): Promise<McpClient[]> {
+  const connected: McpClient[] = [];
+
+  for (const server of servers) {
+    let client: McpClient | null = null;
+    try {
+      client = new McpClient(
+        { name: 'solomesh-gemini-sdk', version: '1.0.0' },
+        { capabilities: {} },
+      );
+
+      if (server.transport === 'stdio') {
+        if (!server.command) throw new Error('missing stdio command');
+        const transport = new StdioClientTransport({
+          command: server.command,
+          args: server.args,
+          env: toNodeEnvWithOverrides(server.env),
+          cwd: WORKSPACE_GROUP,
+          stderr: 'inherit',
+        });
+        await client.connect(transport);
+      } else if (server.transport === 'http') {
+        if (!server.url) throw new Error('missing http url');
+        const transport = new StreamableHTTPClientTransport(
+          new URL(server.url),
+          {
+            requestInit: server.headers ? { headers: server.headers } : undefined,
+          },
+        );
+        await client.connect(transport);
+      } else {
+        if (!server.url) throw new Error('missing sse url');
+        const requestInit = server.headers ? { headers: server.headers } : undefined;
+        const transport = new SSEClientTransport(
+          new URL(server.url),
+          {
+            requestInit,
+            eventSourceInit: (requestInit || {}) as any,
+          },
+        );
+        await client.connect(transport);
+      }
+
+      connected.push(client);
+    } catch (err) {
+      if (client) {
+        try { await client.close(); } catch { /* ignore */ }
+      }
+      log(
+        `Gemini SDK MCP connect skipped: ${server.id} (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+  }
+
+  return connected;
+}
+
+async function getOrCreateGeminiSdkSession(
+  sessionKey: string,
+  mcpServerPath: string,
+  containerInput: ContainerInput,
+  operationPermissionMode: OperationPermissionMode,
+): Promise<GeminiSdkSessionState> {
+  const existing = geminiSdkSessions.get(sessionKey);
+  if (existing) return existing;
+
+  const envSource = process.env as Record<string, string | undefined>;
+  const options = buildGeminiSdkClientOptions(envSource);
+  if (!options.apiKey) {
     throw new Error(
-      'Gemini API Key 模式未检测到 GEMINI_API_KEY。请在设置中填写 API Key，或切换到 Google 官方模式并执行 gemini login。',
+      'Gemini 运行时未检测到 GEMINI_API_KEY。请在设置中填写 API Key。',
     );
   }
 
-  const resolvedCliHomes = resolveGeminiCliHomeCandidates(envSource);
-  const cliHomeCandidates =
-    authMode === 'oauth'
-      ? resolvedCliHomes
-      : [resolvedCliHomes[0]];
+  const { GoogleGenAI, mcpToTool } = await loadGeminiSdk();
+  const ai = new GoogleGenAI(options);
+  const model = GEMINI_MODEL.trim() || 'gemini-2.5-pro';
 
-  for (let idx = 0; idx < cliHomeCandidates.length; idx++) {
-    const cliHome = cliHomeCandidates[idx];
-    ensureGeminiSettingsJson(cliHome, geminiMcpServers);
-    const attempt = await runGeminiCliOnce(args, {
-      ...(process.env as Record<string, string>),
-      GEMINI_CLI_HOME: cliHome,
+  let mcpClients: McpClient[] = [];
+  try {
+    mcpClients = await connectGeminiSdkMcpClients(
+      buildGeminiSdkMcpServerList(mcpServerPath, containerInput),
+    );
+    const chat = ai.chats.create(
+      buildGeminiSdkChatCreateParams(model, mcpClients, mcpToTool, operationPermissionMode),
+    );
+    const state: GeminiSdkSessionState = { chat, mcpClients };
+    geminiSdkSessions.set(sessionKey, state);
+    return state;
+  } catch (err) {
+    await Promise.allSettled(
+      mcpClients.map(async (client) => {
+        try { await client.close(); } catch { /* ignore */ }
+      }),
+    );
+    throw err;
+  }
+}
+
+async function runGeminiSdkQuery(
+  prompt: string,
+  sessionId: string | undefined,
+  mcpServerPath: string,
+  containerInput: ContainerInput,
+  memoryRecall: string,
+  emitOutput: boolean,
+  images?: Array<{ data: string; mimeType?: string }>,
+): Promise<QueryRunResult> {
+  const emit = (output: ContainerOutput): void => {
+    if (emitOutput) writeOutput(output);
+  };
+
+  const newSessionId = sessionId || 'latest';
+  const operationPermissionMode = resolveOperationPermissionModeForProvider(
+    'gemini',
+    containerInput.operationPermissionMode,
+  );
+  const sessionCacheKey = `${newSessionId}:${operationPermissionMode}`;
+  const sdkSession = await getOrCreateGeminiSdkSession(
+    sessionCacheKey,
+    mcpServerPath,
+    containerInput,
+    operationPermissionMode,
+  );
+  const contents = buildGeminiSdkContents(
+    `${prompt}\n${memoryRecall}`.trim(),
+    images,
+  );
+
+  let closedDuringQuery = false;
+  let interruptedDuringQuery = false;
+  let fullText = '';
+  let fullThinking = '';
+  let toolStreamState = createGeminiSdkToolStreamState();
+  let ipcPolling = true;
+  const pollSignals = (): void => {
+    if (!ipcPolling) return;
+    if (shouldClose()) {
+      closedDuringQuery = true;
+      ipcPolling = false;
+      return;
+    }
+    if (shouldInterrupt()) {
+      interruptedDuringQuery = true;
+      ipcPolling = false;
+      return;
+    }
+    setTimeout(pollSignals, IPC_POLL_MS);
+  };
+  setTimeout(pollSignals, IPC_POLL_MS);
+
+  try {
+    const stream = await sdkSession.chat.sendMessageStream({
+      message: contents[0]?.parts || [{ text: `${prompt}\n${memoryRecall}`.trim() }],
     });
 
-    if (attempt.closedDuringQuery || attempt.interruptedDuringQuery) {
-      return {
-        newSessionId,
-        closedDuringQuery: attempt.closedDuringQuery,
-        interruptedDuringQuery: attempt.interruptedDuringQuery,
-      };
+    for await (const chunk of stream) {
+      if (closedDuringQuery || interruptedDuringQuery) break;
+      const toolEvents = extractGeminiSdkChunkToolEvents(chunk, toolStreamState);
+      toolStreamState = toolEvents.state;
+      for (const toolEvent of toolEvents.events) {
+        emit({
+          status: 'stream',
+          result: null,
+          streamEvent: { ...toolEvent },
+        });
+      }
+
+      const deltas = extractGeminiSdkChunkDeltas(chunk, {
+        fullText,
+        fullThinking,
+      });
+      fullText = deltas.fullText;
+      fullThinking = deltas.fullThinking;
+
+      if (deltas.thinkingDelta) {
+        emit({
+          status: 'stream',
+          result: null,
+          streamEvent: { eventType: 'thinking_delta', text: deltas.thinkingDelta },
+        });
+      }
+
+      if (deltas.textDelta) {
+        emit({
+          status: 'stream',
+          result: null,
+          streamEvent: { eventType: 'text_delta', text: deltas.textDelta },
+        });
+      }
     }
 
-    const trimmed = attempt.stdout.trim();
-    const errorMessage = attempt.stderr.trim();
-    const interactiveAuthPrompt =
-      authMode === 'oauth'
-      && /Please visit the following URL to authorize the application|Enter the authorization code/i.test(
-        `${trimmed}\n${errorMessage}`,
-      );
-
-    if (interactiveAuthPrompt) {
-      const hasFallbackCandidate = idx < cliHomeCandidates.length - 1;
-      if (hasFallbackCandidate) {
-        log(
-          `Gemini oauth prompt detected under ${cliHome}, retrying fallback home ${cliHomeCandidates[idx + 1]}`,
-        );
-        continue;
-      }
-      throw new Error(
-        'Gemini 官方模式未检测到可用登录凭据。请在设置页重新执行“一键登录 Google”。',
-      );
+    for (const toolUseId of toolStreamState.openToolUseIds) {
+      emit({
+        status: 'stream',
+        result: null,
+        streamEvent: {
+          eventType: 'tool_use_end',
+          toolUseId,
+          parentToolUseId: null,
+          isNested: false,
+        },
+      });
     }
+    toolStreamState = {
+      ...toolStreamState,
+      openToolUseIds: [],
+      openToolUseIdByName: {},
+    };
 
-    if (!trimmed && errorMessage) {
-      if (isContextOverflowError(errorMessage)) {
-        return {
-          newSessionId,
-          closedDuringQuery: false,
-          interruptedDuringQuery: false,
-          contextOverflow: true,
-        };
-      }
-
-      const hasFallbackCandidate = idx < cliHomeCandidates.length - 1;
-      if (
-        authMode === 'oauth'
-        && hasFallbackCandidate
-        && isGeminiMissingAuthError(errorMessage)
-      ) {
-        log(
-          `Gemini auth not found under ${cliHome}, retrying fallback home ${cliHomeCandidates[idx + 1]}`,
-        );
-        continue;
-      }
-
-      if (authMode === 'oauth' && isGeminiMissingAuthError(errorMessage)) {
-        throw new Error(
-          'Gemini 官方模式未检测到登录凭据。请先在设置页点击“一键登录 Google”，或在运行环境执行 gemini login。',
-        );
-      }
-      throw new Error(errorMessage);
+    ipcPolling = false;
+    if (closedDuringQuery || interruptedDuringQuery) {
+      return { newSessionId, closedDuringQuery, interruptedDuringQuery };
     }
 
     emit({
       status: 'success',
-      result: trimmed || null,
+      result: fullText || null,
       newSessionId,
     });
-    return { newSessionId, closedDuringQuery: false, interruptedDuringQuery: false };
-  }
-
-  throw new Error(
-    'Gemini 官方模式未检测到登录凭据。请先在设置页点击“一键登录 Google”，或在运行环境执行 gemini login。',
-  );
-}
-
-function ensureGeminiSettingsJson(
-  homeRoot: string,
-  mcpServers: Record<string, unknown>,
-): void {
-  const geminiConfigDir = path.join(homeRoot, '.gemini');
-  const settingsFile = path.join(geminiConfigDir, 'settings.json');
-
-  let existing: Record<string, unknown> = {};
-  try {
-    if (fs.existsSync(settingsFile)) {
-      const parsed = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')) as unknown;
-      const asObj = asRecord(parsed);
-      if (asObj) existing = asObj;
+    return { newSessionId, closedDuringQuery, interruptedDuringQuery };
+  } catch (err) {
+    ipcPolling = false;
+    if (closedDuringQuery || interruptedDuringQuery) {
+      return { newSessionId, closedDuringQuery, interruptedDuringQuery };
     }
-  } catch {
-    // Ignore malformed settings; rewrite with MCP block.
-  }
-
-  const existingMcpServers = asRecord(existing.mcpServers) || {};
-  const merged: Record<string, unknown> = {
-    ...existing,
-    mcpServers: {
-      ...existingMcpServers,
-      ...mcpServers,
-    },
-  };
-  const nextContent = `${JSON.stringify(merged, null, 2)}\n`;
-
-  try {
-    if (fs.existsSync(settingsFile)) {
-      const current = fs.readFileSync(settingsFile, 'utf-8');
-      if (current === nextContent) return;
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    if (isContextOverflowError(errorMessage)) {
+      return {
+        newSessionId,
+        closedDuringQuery: false,
+        interruptedDuringQuery: false,
+        contextOverflow: true,
+      };
     }
-  } catch {
-    // Fall through and rewrite.
+    throw err;
   }
-
-  fs.mkdirSync(geminiConfigDir, { recursive: true });
-  fs.writeFileSync(settingsFile, nextContent, 'utf-8');
-}
-
-interface GeminiCliRunResult {
-  stdout: string;
-  stderr: string;
-  closedDuringQuery: boolean;
-  interruptedDuringQuery: boolean;
-}
-
-async function runGeminiCliOnce(
-  args: string[],
-  env: Record<string, string>,
-): Promise<GeminiCliRunResult> {
-  let closedDuringQuery = false;
-  let interruptedDuringQuery = false;
-  let stdout = '';
-  let stderr = '';
-  let forceStoppedByTerminalError = false;
-
-  await new Promise<void>((resolve) => {
-    const child = spawn(resolveGeminiCliPath(), args, {
-      cwd: WORKSPACE_GROUP,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let ipcPolling = true;
-    const pollSignals = (): void => {
-      if (!ipcPolling) return;
-      if (shouldClose()) {
-        closedDuringQuery = true;
-        ipcPolling = false;
-        child.kill('SIGTERM');
-        return;
-      }
-      if (shouldInterrupt()) {
-        interruptedDuringQuery = true;
-        ipcPolling = false;
-        child.kill('SIGTERM');
-        return;
-      }
-      setTimeout(pollSignals, IPC_POLL_MS);
-    };
-    setTimeout(pollSignals, IPC_POLL_MS);
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk) => {
-      const text = chunk.toString();
-      stderr += text;
-
-      // Gemini CLI may retry quota/pool failures for several minutes.
-      // Cut short on known terminal signal so caller can surface error quickly.
-      if (!forceStoppedByTerminalError && /Token pool is empty/i.test(text)) {
-        forceStoppedByTerminalError = true;
-        ipcPolling = false;
-        try {
-          child.kill('SIGTERM');
-        } catch {
-          // ignore
-        }
-      }
-    });
-
-    child.on('error', (err) => {
-      ipcPolling = false;
-      stderr += err instanceof Error ? err.message : String(err);
-      resolve();
-    });
-
-    child.on('close', () => {
-      ipcPolling = false;
-      resolve();
-    });
-  });
-
-  return {
-    stdout,
-    stderr,
-    closedDuringQuery,
-    interruptedDuringQuery,
-  };
 }
 
 const AGENT_PROVIDERS: Record<AgentProviderId, AgentProviderRuntime> = {
@@ -2379,7 +2473,7 @@ const AGENT_PROVIDERS: Record<AgentProviderId, AgentProviderRuntime> = {
   },
   gemini: {
     id: 'gemini',
-    label: 'Gemini CLI',
+    label: 'Gemini',
     capabilities: {
       supportsMemoryFlush: false,
     },
@@ -2481,6 +2575,7 @@ async function main(): Promise<void> {
       if (queryResult.unrecoverableTranscriptError) {
         const errorMsg = '会话历史中包含无法处理的数据（如超大图片），会话需要重置。';
         log(`Unrecoverable transcript error, signaling session reset`);
+        await cleanupGeminiSdkSessions();
         writeOutput({
           status: 'error',
           result: null,
@@ -2498,6 +2593,7 @@ async function main(): Promise<void> {
         if (overflowRetryCount >= MAX_OVERFLOW_RETRIES) {
           const errorMsg = `上下文溢出错误：已重试 ${MAX_OVERFLOW_RETRIES} 次仍失败。请联系管理员检查 ${PRIMARY_MEMORY_FILE_NAME} 大小或减少会话历史。`;
           log(errorMsg);
+          await cleanupGeminiSdkSessions();
           writeOutput({
             status: 'error',
             result: null,
@@ -2607,6 +2703,7 @@ async function main(): Promise<void> {
     if (err instanceof Error && err.stack) {
       log(`Agent error stack: ${err.stack}`);
     }
+    await cleanupGeminiSdkSessions();
     // 不在 error output 中携带 sessionId：
     // 流式输出已通过 onOutput 回调传递了有效的 session 更新。
     // 如果这里携带的是 throw 前的旧 sessionId，会覆盖中间成功产生的新 session。
@@ -2617,6 +2714,8 @@ async function main(): Promise<void> {
     });
     process.exit(1);
   }
+
+  await cleanupGeminiSdkSessions();
 }
 
 main();

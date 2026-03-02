@@ -17,10 +17,26 @@ test('runtime config supports gemini base url field', () => {
   );
   assert.ok(runtimeConfig.includes('geminiBaseUrl'));
   assert.ok(runtimeConfig.includes('GOOGLE_GEMINI_BASE_URL'));
+  assert.ok(runtimeConfig.includes("lines.push('GEMINI_AUTH_MODE=api_key');"));
   assert.ok(configRoute.includes('next.geminiBaseUrl = validation.data.geminiBaseUrl;'));
 });
 
 test('settings runtime page includes gemini base url input', () => {
   const runtimeSection = read('web/src/components/settings/RuntimeSection.tsx');
-  assert.ok(runtimeSection.includes('GOOGLE_GEMINI_BASE_URL'));
+  assert.ok(runtimeSection.includes("t('setupProviders.runtime.generic.geminiBaseUrlLabel')"));
+  assert.ok(runtimeSection.includes("t('setupProviders.runtime.generic.geminiBaseUrlPlaceholder')"));
+});
+
+test('setup providers page marks gemini base url as api-key-only', () => {
+  const setupPage = read('web/src/pages/SetupProvidersPage.tsx');
+  assert.ok(setupPage.includes("t('setupProviders.runtime.generic.geminiBaseUrlApiKeyOnly')"));
+  assert.ok(setupPage.includes('disabled={saving}'));
+  assert.ok(!setupPage.includes('geminiAccessMode'));
+});
+
+test('container env panel marks gemini base url as api-key-only', () => {
+  const panel = read('web/src/components/chat/ContainerEnvPanel.tsx');
+  assert.ok(panel.includes("t('chat.containerEnv.geminiBaseUrlApiKeyOnly')"));
+  assert.ok(panel.includes('disabled={controlsBusy}'));
+  assert.ok(!panel.includes('setGeminiAuthMode'));
 });
