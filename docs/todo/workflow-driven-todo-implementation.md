@@ -193,6 +193,8 @@ Content-Type: application/json
 - `GET /api/todos?status=open&priority=high`
 - `GET /api/todos?source_type=workflow&trigger_mode=manual`
 - `GET /api/todos?source_type=plugin`
+- `GET /api/todos?source_id=workflow:competitor-watch:emit-todo`
+- `GET /api/todos?source_run_id=run_2026_03_02_0900`
 
 ## 8. 治理策略
 

@@ -27,6 +27,8 @@ test('TodoQuerySchema accepts query filters', () => {
     status: 'open',
     priority: 'high',
     source_type: 'workflow',
+    source_id: 'workflow:competitor-watch:emit-todo',
+    source_run_id: 'run-2026-03-02-0900',
     trigger_mode: 'manual',
     limit: '20',
     cursor: 'abc',
@@ -34,6 +36,8 @@ test('TodoQuerySchema accepts query filters', () => {
   assert.equal(parsed.success, true);
   if (parsed.success) {
     assert.equal(parsed.data.limit, 20);
+    assert.equal(parsed.data.source_id, 'workflow:competitor-watch:emit-todo');
+    assert.equal(parsed.data.source_run_id, 'run-2026-03-02-0900');
   }
 });
 

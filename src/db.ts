@@ -1099,6 +1099,8 @@ export interface TodoListFilters {
   status?: TodoStatus;
   priority?: TodoPriority;
   source_type?: TodoSourceType;
+  source_id?: string;
+  source_run_id?: string;
   trigger_mode?: TodoTriggerMode;
   limit?: number;
   cursor?: string;
@@ -1255,6 +1257,18 @@ export function listTodos(filters: TodoListFilters = {}): Todo[] {
       'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.source_type = ?)',
     );
     params.push(filters.source_type);
+  }
+  if (filters.source_id) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.source_id = ?)',
+    );
+    params.push(filters.source_id);
+  }
+  if (filters.source_run_id) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.source_run_id = ?)',
+    );
+    params.push(filters.source_run_id);
   }
   if (filters.trigger_mode) {
     clauses.push(

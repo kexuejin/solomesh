@@ -138,6 +138,8 @@ export const TodoQuerySchema = z
     status: TodoStatusSchema.optional(),
     priority: TodoPrioritySchema.optional(),
     source_type: TodoSourceTypeSchema.optional(),
+    source_id: z.string().max(200).optional(),
+    source_run_id: z.string().max(200).optional(),
     trigger_mode: TodoTriggerModeSchema.optional(),
     limit: z.coerce.number().int().min(1).max(200).optional().default(20),
     cursor: z.string().max(200).optional(),
