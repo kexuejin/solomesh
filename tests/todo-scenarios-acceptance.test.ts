@@ -126,3 +126,15 @@ test('scenario 6: project recommendation plugin chain exists (workflow + skill)'
   assert.ok(skill.includes('todo ingest'));
   assert.ok(skill.includes('不直接写数据库'));
 });
+
+test('scenario 7: chat command can create automation tasks from built-in templates', () => {
+  const source = read('src/index.ts');
+  const commandSource = read('src/automation-chat-command.ts');
+
+  assert.ok(source.includes('parseAutomationChatCommandInput'));
+  assert.ok(source.includes('buildAutomationTaskSpecFromChatCommand'));
+  assert.ok(source.includes('createTask({'));
+  assert.ok(commandSource.includes('competitor-watch'));
+  assert.ok(commandSource.includes('project-recommendation'));
+  assert.ok(source.includes('/auto <template-id>'));
+});

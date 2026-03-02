@@ -205,6 +205,11 @@ import {
 } from './workflow-template-edit.js';
 import { decideAgentErrorRetry } from './agent-error-policy.js';
 import { ingestTodo } from './todo-core.js';
+import {
+  buildAutomationTaskSpecFromChatCommand,
+  listAutomationChatTemplateIds,
+  parseAutomationChatCommandInput,
+} from './automation-chat-command.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const execFileAsync = promisify(execFile);
@@ -1096,6 +1101,44 @@ function maybeRecommendWorkflow(chatJid: string, messages: NewMessage[]): void {
   );
 }
 
+function resolveAutomationCommandTargetChatJid(chatJid: string): string {
+  const agentMarker = '#agent:';
+  const markerIndex = chatJid.indexOf(agentMarker);
+  if (markerIndex <= 0) return chatJid;
+  return chatJid.slice(0, markerIndex);
+}
+
+function computeTaskNextRun(
+  scheduleType: 'cron' | 'interval' | 'once',
+  scheduleValue: string,
+): string | null {
+  if (scheduleType === 'cron') {
+    try {
+      const interval = CronExpressionParser.parse(scheduleValue, { tz: TIMEZONE });
+      return interval.next().toISOString();
+    } catch {
+      return null;
+    }
+  }
+  if (scheduleType === 'interval') {
+    const ms = Number.parseInt(scheduleValue, 10);
+    if (!Number.isFinite(ms) || ms <= 0) return null;
+    return new Date(Date.now() + ms).toISOString();
+  }
+  const onceDate = new Date(scheduleValue);
+  if (Number.isNaN(onceDate.getTime())) return null;
+  return onceDate.toISOString();
+}
+
+function formatAutomationCommandUsage(): string {
+  const templates = listAutomationChatTemplateIds().join('、');
+  return [
+    `用法：/auto <template-id> [参数]，可选模板：${templates}`,
+    '示例：/auto competitor-watch repo=https://github.com/OpenHands/OpenHands branch=main lookback=50',
+    '可选参数：cron="0 11 * * 1-5" | interval_ms=600000 | once=2026-03-03T09:00:00.000Z | context=isolated|group',
+  ].join('\n');
+}
+
 function handleWorkflowControlMessages(
   chatJid: string,
   messages: NewMessage[],
@@ -1108,6 +1151,87 @@ function handleWorkflowControlMessages(
   const passthrough: NewMessage[] = [];
 
   for (const message of messages) {
+    const automationParsed = parseAutomationChatCommandInput(message.content);
+    if (automationParsed.command.type !== 'none') {
+      handledCommands = true;
+      let commandSucceeded = false;
+
+      if (automationParsed.command.type === 'help') {
+        sendSystemMessage(chatJid, 'automation', formatAutomationCommandUsage());
+      } else if (automationParsed.command.type === 'create') {
+        const targetChatJid = resolveAutomationCommandTargetChatJid(chatJid);
+        const targetGroup = getRegisteredGroup(targetChatJid);
+        if (!targetGroup) {
+          sendSystemMessage(chatJid, 'automation', '当前会话未绑定可用工作区，无法创建自动化。');
+        } else {
+          const built = buildAutomationTaskSpecFromChatCommand(automationParsed.command);
+          if (!built.ok) {
+            sendSystemMessage(
+              chatJid,
+              'automation',
+              `创建自动化失败：${built.error}\n${formatAutomationCommandUsage()}`,
+            );
+          } else {
+            const nextRun = computeTaskNextRun(
+              built.spec.scheduleType,
+              built.spec.scheduleValue,
+            );
+            if (!nextRun) {
+              sendSystemMessage(
+                chatJid,
+                'automation',
+                `创建自动化失败：调度配置无效（${built.spec.scheduleType}=${built.spec.scheduleValue}）`,
+              );
+            } else {
+              const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              const createdBy =
+                message.sender && message.sender !== '__system__'
+                  ? message.sender
+                  : undefined;
+              createTask({
+                id: taskId,
+                group_folder: targetGroup.folder,
+                chat_jid: targetChatJid,
+                prompt: built.spec.prompt,
+                schedule_type: built.spec.scheduleType,
+                schedule_value: built.spec.scheduleValue,
+                context_mode: built.spec.contextMode,
+                execution_type: 'agent',
+                script_command: null,
+                task_config: built.spec.taskConfig,
+                task_state: null,
+                next_run: nextRun,
+                status: 'active',
+                created_at: nowIso,
+                created_by: createdBy,
+              });
+              commandSucceeded = true;
+              sendSystemMessage(
+                chatJid,
+                'automation',
+                `已创建自动化：template=${built.spec.templateId}，task=${taskId}，next_run=${nextRun}`,
+              );
+            }
+          }
+        }
+      }
+
+      const shouldPassThroughPrompt =
+        commandSucceeded
+        && (
+          automationParsed.contentForPrompt.trim().length > 0
+        || !!(message.attachments && message.attachments !== '[]')
+        );
+      if (shouldPassThroughPrompt) {
+        passthrough.push(
+          automationParsed.contentForPrompt === message.content
+            ? message
+            : { ...message, content: automationParsed.contentForPrompt },
+        );
+      }
+      continue;
+    }
+
     const parsed = parseWorkflowCommandInput(message.content);
     const command = parsed.command;
     if (command.type === 'none') {

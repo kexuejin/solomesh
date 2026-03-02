@@ -85,3 +85,12 @@
 - 内置 Skill（Plugin 示例）：
   - `container/skills/competitor-tracker/SKILL.md`
   - `container/skills/project-recommender/SKILL.md`
+
+## 会话命令快速验证（Automation）
+
+- 支持会话命令直接创建自动化任务：`/auto <template-id> [参数]`
+- 示例（竞品追踪，使用 OpenHands 仓库）：
+
+```text
+/auto competitor-watch repo=https://github.com/OpenHands/OpenHands branch=main lookback=50
+```
