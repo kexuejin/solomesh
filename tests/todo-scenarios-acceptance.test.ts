@@ -36,14 +36,14 @@ test('scenario 1: manual create route defaults todo source fields', () => {
   assert.ok(routes.includes("trigger_mode: body.trigger_mode ?? 'manual'"));
 });
 
-test('scenario 2: workflow stage completion ingests workflow todo payload', () => {
+test('scenario 2: workflow stage completion writes decision item payload', () => {
   const source = read('src/index.ts');
+  assert.ok(source.includes('ingestDecisionItem('));
   assert.ok(source.includes("source_type: 'workflow'"));
-  assert.ok(
-    source.includes('source_id: `${runningWorkflow.templateId}:${currentStage?.id ?? runningWorkflow.currentStageIndex}`'),
-  );
+  assert.ok(source.includes('const stageRef ='));
+  assert.ok(source.includes('source_id: stageRef'));
   assert.ok(source.includes("source_run_id: `${runningWorkflow.chatJid}:${runningWorkflow.startedAt}`"));
-  assert.ok(source.includes("trigger_mode: 'manual'"));
+  assert.ok(source.includes('suggested_todo:'));
 });
 
 test('scenario 3: scheduled automation templates include todo-oriented presets', () => {
@@ -63,6 +63,16 @@ test('scenario 3: scheduled automation templates include todo-oriented presets',
     (competitor?.defaultTaskConfig?.plugins as Record<string, unknown> | undefined)
       ?.competitor_git
       !== undefined,
+    true,
+  );
+  assert.equal(
+    ((competitor?.defaultTaskConfig?.on_success as Record<string, unknown> | undefined)
+      ?.decision_ingest) === true,
+    true,
+  );
+  assert.equal(
+    ((project?.defaultTaskConfig?.on_success as Record<string, unknown> | undefined)
+      ?.decision_ingest) === true,
     true,
   );
   assert.equal(
@@ -91,6 +101,8 @@ test('scenario 4: automation failure ingest only runs with explicit on_error rul
   assert.ok(scheduler.includes("source_type: 'automation'"));
   assert.ok(scheduler.includes('source_id: task.id'));
   assert.ok(scheduler.includes("trigger_mode: 'automation'"));
+  assert.ok(scheduler.includes('on_success?.decision_ingest'));
+  assert.ok(scheduler.includes('ingestDecisionItem('));
 });
 
 test('scenario 5: competitor plugin chain exists (workflow + skill)', () => {

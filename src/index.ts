@@ -204,7 +204,7 @@ import {
   type WorkflowTemplateEditIntent,
 } from './workflow-template-edit.js';
 import { decideAgentErrorRetry } from './agent-error-policy.js';
-import { ingestTodo } from './todo-core.js';
+import { ingestDecisionItem } from './decision-core.js';
 import {
   buildAutomationTaskSpecFromChatCommand,
   listAutomationChatTemplateIds,
@@ -1457,28 +1457,41 @@ function maybeAdvanceWorkflowFromAssistantReply(
   }
 
   const currentStage = getWorkflowStage(runningWorkflow);
-  const shouldIngestWorkflowTodo = currentStage?.todoIngest?.enabled !== false;
-  if (shouldIngestWorkflowTodo) {
+  const shouldIngestWorkflowSuggestion = currentStage?.todoIngest?.enabled !== false;
+  if (shouldIngestWorkflowSuggestion) {
     try {
-      ingestTodo(
+      const workflowGroupFolder = registeredGroups[chatJid]?.folder ?? null;
+      const scopeLevel =
+        workflowGroupFolder && workflowGroupFolder !== MAIN_GROUP_FOLDER
+          ? 'workspace'
+          : 'global';
+      const stageRef =
+        `${runningWorkflow.templateId}:${currentStage?.id ?? runningWorkflow.currentStageIndex}`;
+      const suggestedTitle =
+        `Workflow suggestion: ${runningWorkflow.templateId}/${currentStage?.id ?? runningWorkflow.currentStageIndex}`;
+      ingestDecisionItem(
         {
-          title: `Workflow stage completed: ${runningWorkflow.templateId}/${currentStage?.id ?? runningWorkflow.currentStageIndex}`,
-          description: assistantText.slice(0, 4000),
+          title: suggestedTitle,
+          summary: assistantText.slice(0, 4000),
+          scope_level: scopeLevel,
+          scope_id: scopeLevel === 'workspace' ? workflowGroupFolder ?? undefined : undefined,
           priority: currentStage?.todoIngest?.priority,
           source_type: 'workflow',
-          source_id: `${runningWorkflow.templateId}:${currentStage?.id ?? runningWorkflow.currentStageIndex}`,
+          source_id: stageRef,
           source_run_id: `${runningWorkflow.chatJid}:${runningWorkflow.startedAt}`,
-          trigger_mode: 'manual',
           evidence: {
             stageId: currentStage?.id ?? null,
             stageReport,
             confidence: decision.confidence,
             provider: activeProvider,
-          },
-          metadata: {
             chatJid,
             stageIndex: runningWorkflow.currentStageIndex,
             templateVersion: runningWorkflow.templateVersion,
+          },
+          suggested_todo: {
+            title: suggestedTitle,
+            description: assistantText.slice(0, 4000),
+            priority: currentStage?.todoIngest?.priority,
           },
         },
         'system:workflow',
@@ -1486,7 +1499,7 @@ function maybeAdvanceWorkflowFromAssistantReply(
     } catch (error) {
       logger.warn(
         { chatJid, templateId: runningWorkflow.templateId, error },
-        'Workflow todo ingest failed',
+        'Workflow decision ingest failed',
       );
     }
   }

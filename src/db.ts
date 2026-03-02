@@ -22,6 +22,9 @@ import {
   TaskConfig,
   TaskState,
   TaskRunLog,
+  DecisionItem,
+  DecisionItemStatus,
+  DecisionItemScopeLevel,
   Todo,
   TodoPriority,
   TodoSourceEvent,
@@ -219,6 +222,35 @@ export function initDatabase(): void {
       ON todo_source_events(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_todo_source_events_source_lookup
       ON todo_source_events(source_type, source_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS decision_items (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      summary TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      scope_level TEXT NOT NULL DEFAULT 'global',
+      scope_id TEXT,
+      priority TEXT,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_run_id TEXT,
+      evidence TEXT,
+      suggested_todo_title TEXT,
+      suggested_todo_description TEXT,
+      suggested_todo_priority TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      decided_at TEXT,
+      decided_by TEXT,
+      accepted_todo_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_decision_items_status_created_at
+      ON decision_items(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_decision_items_source
+      ON decision_items(source_type, source_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_decision_items_scope
+      ON decision_items(scope_level, scope_id, created_at);
   `);
 
   // State tables (replacing JSON files)
@@ -385,6 +417,8 @@ export function initDatabase(): void {
   ensureColumn('scheduled_tasks', 'script_command', 'TEXT');
   ensureColumn('scheduled_tasks', 'task_config', 'TEXT');
   ensureColumn('scheduled_tasks', 'task_state', 'TEXT');
+  ensureColumn('decision_items', 'scope_level', "TEXT NOT NULL DEFAULT 'global'");
+  ensureColumn('decision_items', 'scope_id', 'TEXT');
   ensureColumn('registered_groups', 'selected_skills', 'TEXT');
   ensureColumn('sessions', 'agent_id', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('agents', 'kind', "TEXT NOT NULL DEFAULT 'task'");
@@ -1098,6 +1132,16 @@ export interface TodoMetricsFilters {
   date_to?: string;
 }
 
+export interface DecisionItemListFilters {
+  status?: DecisionItemStatus;
+  scope_level?: DecisionItemScopeLevel;
+  scope_id?: string;
+  source_type?: TodoSourceType;
+  source_id?: string;
+  limit?: number;
+  cursor?: string;
+}
+
 export interface TodoIngestMetrics {
   total: number;
   created: number;
@@ -1146,6 +1190,49 @@ function parseTodoRow(row: Record<string, unknown>): Todo {
       typeof row.created_by === 'string' ? row.created_by : null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+  };
+}
+
+function parseDecisionItemRow(row: Record<string, unknown>): DecisionItem {
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    summary: typeof row.summary === 'string' ? row.summary : null,
+    status: row.status as DecisionItemStatus,
+    scope_level:
+      row.scope_level === 'workspace'
+        ? 'workspace'
+        : 'global',
+    scope_id: typeof row.scope_id === 'string' ? row.scope_id : null,
+    priority:
+      row.priority === null || row.priority === undefined
+        ? null
+        : (row.priority as TodoPriority),
+    source_type: row.source_type as TodoSourceType,
+    source_id: String(row.source_id),
+    source_run_id:
+      typeof row.source_run_id === 'string' ? row.source_run_id : null,
+    evidence: typeof row.evidence === 'string' ? row.evidence : null,
+    suggested_todo_title:
+      typeof row.suggested_todo_title === 'string'
+        ? row.suggested_todo_title
+        : null,
+    suggested_todo_description:
+      typeof row.suggested_todo_description === 'string'
+        ? row.suggested_todo_description
+        : null,
+    suggested_todo_priority:
+      row.suggested_todo_priority === null
+      || row.suggested_todo_priority === undefined
+        ? null
+        : (row.suggested_todo_priority as TodoPriority),
+    created_by: typeof row.created_by === 'string' ? row.created_by : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+    decided_at: typeof row.decided_at === 'string' ? row.decided_at : null,
+    decided_by: typeof row.decided_by === 'string' ? row.decided_by : null,
+    accepted_todo_id:
+      typeof row.accepted_todo_id === 'string' ? row.accepted_todo_id : null,
   };
 }
 
@@ -1200,6 +1287,75 @@ export function updateTodoMerge(todoId: string, patch: TodoMergePatch): void {
     patch.priority,
     patch.updated_at,
     todoId,
+  );
+}
+
+export function getDecisionItemById(id: string): DecisionItem | undefined {
+  const row = db
+    .prepare('SELECT * FROM decision_items WHERE id = ?')
+    .get(id) as Record<string, unknown> | undefined;
+  return row ? parseDecisionItemRow(row) : undefined;
+}
+
+export function insertDecisionItem(item: DecisionItem): void {
+  db.prepare(
+    `
+    INSERT INTO decision_items (
+      id, title, summary, status, scope_level, scope_id, priority, source_type, source_id, source_run_id, evidence,
+      suggested_todo_title, suggested_todo_description, suggested_todo_priority,
+      created_by, created_at, updated_at, decided_at, decided_by, accepted_todo_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    item.id,
+    item.title,
+    item.summary,
+    item.status,
+    item.scope_level,
+    item.scope_id,
+    item.priority,
+    item.source_type,
+    item.source_id,
+    item.source_run_id,
+    item.evidence,
+    item.suggested_todo_title,
+    item.suggested_todo_description,
+    item.suggested_todo_priority,
+    item.created_by,
+    item.created_at,
+    item.updated_at,
+    item.decided_at,
+    item.decided_by,
+    item.accepted_todo_id,
+  );
+}
+
+export function updateDecisionItemDecision(
+  id: string,
+  patch: {
+    status: Extract<DecisionItemStatus, 'accepted' | 'ignored'>;
+    decided_at: string;
+    decided_by: string;
+    accepted_todo_id?: string | null;
+  },
+): void {
+  db.prepare(
+    `
+    UPDATE decision_items
+    SET status = ?,
+        decided_at = ?,
+        decided_by = ?,
+        accepted_todo_id = ?,
+        updated_at = ?
+    WHERE id = ?
+  `,
+  ).run(
+    patch.status,
+    patch.decided_at,
+    patch.decided_by,
+    patch.accepted_todo_id ?? null,
+    patch.decided_at,
+    id,
   );
 }
 
@@ -1314,6 +1470,61 @@ export function listTodos(filters: TodoListFilters = {}): Todo[] {
     .all(...params, limit) as Array<Record<string, unknown>>;
 
   return rows.map(parseTodoRow);
+}
+
+export function listDecisionItems(
+  filters: DecisionItemListFilters = {},
+): DecisionItem[] {
+  const clauses: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (filters.status) {
+    clauses.push('d.status = ?');
+    params.push(filters.status);
+  }
+  if (filters.scope_level) {
+    clauses.push('d.scope_level = ?');
+    params.push(filters.scope_level);
+  }
+  if (filters.scope_id) {
+    clauses.push('d.scope_id = ?');
+    params.push(filters.scope_id);
+  }
+  if (filters.source_type) {
+    clauses.push('d.source_type = ?');
+    params.push(filters.source_type);
+  }
+  if (filters.source_id) {
+    clauses.push('d.source_id = ?');
+    params.push(filters.source_id);
+  }
+  if (filters.cursor) {
+    const cursor = filters.cursor.trim();
+    const dividerIdx = cursor.lastIndexOf('|');
+    if (dividerIdx > 0) {
+      const cursorTs = cursor.slice(0, dividerIdx);
+      const cursorId = cursor.slice(dividerIdx + 1);
+      if (cursorTs && cursorId) {
+        clauses.push('(d.created_at < ? OR (d.created_at = ? AND d.id < ?))');
+        params.push(cursorTs, cursorTs, cursorId);
+      }
+    }
+  }
+
+  const limit = Math.max(1, Math.min(filters.limit ?? 50, 200));
+  const rows = db
+    .prepare(
+      `
+      SELECT d.*
+      FROM decision_items d
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY d.created_at DESC, d.id DESC
+      LIMIT ?
+    `,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+
+  return rows.map(parseDecisionItemRow);
 }
 
 export function getTodoIngestMetrics(

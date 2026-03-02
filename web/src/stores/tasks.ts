@@ -27,6 +27,10 @@ export interface TaskConfig {
     todo_ingest?: boolean;
     [key: string]: unknown;
   };
+  on_success?: {
+    decision_ingest?: boolean;
+    [key: string]: unknown;
+  };
   plugins?: Record<string, unknown>;
   [key: string]: unknown;
 }

@@ -83,6 +83,11 @@ export const TaskConfigSchema = z
         todo_ingest: z.boolean().optional(),
       })
       .optional(),
+    on_success: z
+      .object({
+        decision_ingest: z.boolean().optional(),
+      })
+      .optional(),
     plugins: z
       .object({
         competitor_git: CompetitorGitTaskConfigSchema.optional(),
@@ -129,11 +134,22 @@ export const TODO_SOURCE_TYPE_VALUES = [
   'workflow',
 ] as const;
 export const TODO_TRIGGER_MODE_VALUES = ['manual', 'automation'] as const;
+export const DECISION_ITEM_STATUS_VALUES = [
+  'pending',
+  'accepted',
+  'ignored',
+] as const;
+export const DECISION_ITEM_SCOPE_LEVEL_VALUES = [
+  'global',
+  'workspace',
+] as const;
 
 export const TodoPrioritySchema = z.enum(TODO_PRIORITY_VALUES);
 export const TodoStatusSchema = z.enum(TODO_STATUS_VALUES);
 export const TodoSourceTypeSchema = z.enum(TODO_SOURCE_TYPE_VALUES);
 export const TodoTriggerModeSchema = z.enum(TODO_TRIGGER_MODE_VALUES);
+export const DecisionItemStatusSchema = z.enum(DECISION_ITEM_STATUS_VALUES);
+export const DecisionItemScopeLevelSchema = z.enum(DECISION_ITEM_SCOPE_LEVEL_VALUES);
 
 export const TodoIngestSchema = z
   .object({
@@ -171,6 +187,40 @@ export const TodoMetricsQuerySchema = z
     trigger_mode: TodoTriggerModeSchema.optional(),
     date_from: z.string().date().optional(),
     date_to: z.string().date().optional(),
+  })
+  .strict();
+
+export const DecisionItemCreateSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    summary: z.string().max(4000).optional(),
+    scope_level: DecisionItemScopeLevelSchema.optional(),
+    scope_id: z.string().max(200).optional(),
+    priority: TodoPrioritySchema.optional(),
+    source_type: TodoSourceTypeSchema,
+    source_id: z.string().min(1).max(200),
+    source_run_id: z.string().max(200).optional(),
+    evidence: z.unknown().optional(),
+    suggested_todo: z
+      .object({
+        title: z.string().min(1).max(200),
+        description: z.string().max(4000).optional(),
+        priority: TodoPrioritySchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const DecisionItemQuerySchema = z
+  .object({
+    status: DecisionItemStatusSchema.optional(),
+    scope_level: DecisionItemScopeLevelSchema.optional(),
+    scope_id: z.string().max(200).optional(),
+    source_type: TodoSourceTypeSchema.optional(),
+    source_id: z.string().max(200).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+    cursor: z.string().max(200).optional(),
   })
   .strict();
 

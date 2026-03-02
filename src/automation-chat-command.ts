@@ -50,6 +50,9 @@ const CHAT_AUTOMATION_PRESETS: AutomationChatTemplatePreset[] = [
       on_error: {
         todo_ingest: true,
       },
+      on_success: {
+        decision_ingest: true,
+      },
       plugins: {
         competitor_git: {
           enabled: true,
@@ -70,6 +73,9 @@ const CHAT_AUTOMATION_PRESETS: AutomationChatTemplatePreset[] = [
     taskConfig: {
       on_error: {
         todo_ingest: true,
+      },
+      on_success: {
+        decision_ingest: true,
       },
     },
   },

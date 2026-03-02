@@ -141,6 +141,9 @@ const AUTOMATION_TEMPLATE_DEFS: AutomationTemplateDefinition[] = [
     contextMode: 'isolated',
     defaultOnErrorTodoIngest: true,
     defaultTaskConfig: {
+      on_success: {
+        decision_ingest: true,
+      },
       plugins: {
         competitor_git: {
           enabled: true,
@@ -161,6 +164,11 @@ const AUTOMATION_TEMPLATE_DEFS: AutomationTemplateDefinition[] = [
     scheduleValue: '30 11 * * 1-5',
     contextMode: 'isolated',
     defaultOnErrorTodoIngest: true,
+    defaultTaskConfig: {
+      on_success: {
+        decision_ingest: true,
+      },
+    },
   },
 ];
 

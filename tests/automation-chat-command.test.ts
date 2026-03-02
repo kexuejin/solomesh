@@ -59,6 +59,7 @@ test('buildAutomationTaskSpecFromChatCommand builds competitor spec with repo ar
   assert.equal(competitorConfig.repo, 'https://github.com/OpenHands/OpenHands');
   assert.equal(competitorConfig.branch, 'main');
   assert.equal(competitorConfig.lookback_commits, 80);
+  assert.equal(built.spec.taskConfig?.on_success?.decision_ingest, true);
 });
 
 test('buildAutomationTaskSpecFromChatCommand requires repo for competitor-watch', () => {
@@ -96,4 +97,5 @@ test('buildAutomationTaskSpecFromChatCommand supports project-recommendation def
   assert.equal(built.spec.scheduleValue, '30 11 * * 1-5');
   assert.equal(built.spec.contextMode, 'isolated');
   assert.equal(built.spec.taskConfig?.on_error?.todo_ingest, true);
+  assert.equal(built.spec.taskConfig?.on_success?.decision_ingest, true);
 });

@@ -30,6 +30,7 @@ import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { hasScriptCapacity, runScript } from './script-runner.js';
 import { ingestTodo } from './todo-core.js';
+import { ingestDecisionItem } from './decision-core.js';
 import { RegisteredGroup, ScheduledTask, TaskState } from './types.js';
 
 export interface SchedulerDependencies {
@@ -66,6 +67,16 @@ export function shouldIngestAutomationErrorTodo(
 ): boolean {
   if (!error) return false;
   return task.task_config?.on_error?.todo_ingest === true;
+}
+
+export function shouldIngestAutomationDecisionItem(
+  task: Pick<ScheduledTask, 'task_config'>,
+  error: string | null,
+  result: string | null,
+): boolean {
+  if (error) return false;
+  if (!result || result.trim().length === 0) return false;
+  return task.task_config?.on_success?.decision_ingest === true;
 }
 
 function normalizeGitSha(value: unknown): string | null {
@@ -233,6 +244,55 @@ function maybeIngestAutomationFailureTodo(
     logger.warn(
       { taskId: task.id, ingestError },
       'Failed to ingest automation failure todo',
+    );
+  }
+}
+
+function maybeIngestAutomationDecisionItem(
+  task: ScheduledTask,
+  runAtIso: string,
+  error: string | null,
+  result: string | null,
+): void {
+  if (!shouldIngestAutomationDecisionItem(task, error, result)) {
+    return;
+  }
+
+  try {
+    const taskPrompt = task.prompt.trim();
+    const title = taskPrompt.length > 0
+      ? `Automation suggestion: ${taskPrompt.slice(0, 80)}`
+      : `Automation suggestion: ${task.id}`;
+    const scopeLevel =
+      task.group_folder === MAIN_GROUP_FOLDER ? 'global' : 'workspace';
+    const summary = (result ?? '').trim().slice(0, 4000);
+    ingestDecisionItem(
+      {
+        title,
+        summary,
+        scope_level: scopeLevel,
+        scope_id: scopeLevel === 'workspace' ? task.group_folder : undefined,
+        source_type: 'automation',
+        source_id: task.id,
+        source_run_id: runAtIso,
+        evidence: {
+          result,
+          schedule_type: task.schedule_type,
+          schedule_value: task.schedule_value,
+          task_id: task.id,
+        },
+        suggested_todo: {
+          title,
+          description: summary,
+          priority: 'medium',
+        },
+      },
+      'system:scheduler',
+    );
+  } catch (ingestError) {
+    logger.warn(
+      { taskId: task.id, ingestError },
+      'Failed to ingest automation decision item',
     );
   }
 }
@@ -410,6 +470,7 @@ async function runTask(
     error,
   });
   maybeIngestAutomationFailureTodo(task, runAt, error, result);
+  maybeIngestAutomationDecisionItem(task, runAt, error, result);
   updateCompetitorGitCursorState(task, result, error);
 
   const nextRun = computeNextRun(task);
@@ -500,6 +561,7 @@ async function runScriptTask(
     error,
   });
   maybeIngestAutomationFailureTodo(task, runAt, error, result);
+  maybeIngestAutomationDecisionItem(task, runAt, error, result);
   updateCompetitorGitCursorState(task, result, error);
 
   const nextRun = computeNextRun(task);
