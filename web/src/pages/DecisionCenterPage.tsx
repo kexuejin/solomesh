@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { EmptyState } from '@/components/common/EmptyState';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { localeForDateTime, useI18n } from '../i18n';
 import {
   type DecisionItem,
@@ -15,6 +16,17 @@ import {
 
 type StatusFilter = 'all' | DecisionItemStatus;
 type ScopeFilter = 'all' | DecisionItemScopeLevel;
+type GroupedDecisionSource = {
+  key: string;
+  sourceType: DecisionItem['source_type'];
+  sourceId: string;
+  items: DecisionItem[];
+  stats: {
+    pending: number;
+    accepted: number;
+    ignored: number;
+  };
+};
 
 const STATUS_FILTERS: StatusFilter[] = ['all', 'pending', 'accepted', 'ignored'];
 const SCOPE_FILTERS: ScopeFilter[] = ['all', 'global', 'workspace'];
@@ -53,7 +65,10 @@ export function DecisionCenterPage() {
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
   const [workspaceFilter, setWorkspaceFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [actingId, setActingId] = useState<string | null>(null);
+  const [batchActing, setBatchActing] = useState(false);
+  const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
 
   const queryFilters = useMemo(
     () => ({
@@ -100,7 +115,7 @@ export function DecisionCenterPage() {
     return [...workspaceSet].sort((a, b) => a.localeCompare(b));
   }, [items]);
 
-  const groupedBySource = useMemo(() => {
+  const groupedBySource = useMemo<GroupedDecisionSource[]>(() => {
     const groups = new Map<
       string,
       {
@@ -127,7 +142,7 @@ export function DecisionCenterPage() {
         const accepted = sortedItems.filter((item) => item.status === 'accepted').length;
         const ignored = sortedItems.filter((item) => item.status === 'ignored').length;
         return {
-        key,
+          key,
           sourceType: group.sourceType,
           sourceId: group.sourceId,
           items: sortedItems,
@@ -144,6 +159,59 @@ export function DecisionCenterPage() {
         return a.sourceId.localeCompare(b.sourceId);
       });
   }, [items]);
+
+  const filteredGroupedBySource = useMemo<GroupedDecisionSource[]>(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return groupedBySource;
+
+    return groupedBySource
+      .map((group) => {
+        const filteredItems = group.items.filter((item) => {
+          const haystack = [
+            group.sourceId,
+            item.title,
+            item.summary ?? '',
+            item.suggested_todo_title ?? '',
+            item.suggested_todo_description ?? '',
+            item.scope_id ?? '',
+          ]
+            .join('\n')
+            .toLowerCase();
+          return haystack.includes(normalizedQuery);
+        });
+        if (filteredItems.length === 0) return null;
+        return {
+          ...group,
+          items: filteredItems,
+          stats: {
+            pending: filteredItems.filter((item) => item.status === 'pending').length,
+            accepted: filteredItems.filter((item) => item.status === 'accepted').length,
+            ignored: filteredItems.filter((item) => item.status === 'ignored').length,
+          },
+        };
+      })
+      .filter((group): group is GroupedDecisionSource => Boolean(group));
+  }, [groupedBySource, searchQuery]);
+
+  const pendingItemIds = useMemo(
+    () =>
+      filteredGroupedBySource.flatMap((group) =>
+        group.items.filter((item) => item.status === 'pending').map((item) => item.id),
+      ),
+    [filteredGroupedBySource],
+  );
+
+  const selectedPendingSet = useMemo(
+    () => new Set(selectedPendingIds),
+    [selectedPendingIds],
+  );
+
+  const allPendingSelected = pendingItemIds.length > 0 && pendingItemIds.every((id) => selectedPendingSet.has(id));
+
+  useEffect(() => {
+    const pendingSet = new Set(pendingItemIds);
+    setSelectedPendingIds((prev) => prev.filter((id) => pendingSet.has(id)));
+  }, [pendingItemIds]);
 
   const formatDate = (timestamp: string | null | undefined): string => {
     if (!timestamp) return '-';
@@ -190,6 +258,42 @@ export function DecisionCenterPage() {
     } finally {
       setActingId(null);
     }
+  };
+
+  const togglePendingSelection = (itemId: string) => {
+    setSelectedPendingIds((prev) =>
+      prev.includes(itemId)
+        ? prev.filter((id) => id !== itemId)
+        : [...prev, itemId],
+    );
+  };
+
+  const handleToggleSelectAllPending = () => {
+    setSelectedPendingIds(allPendingSelected ? [] : pendingItemIds);
+  };
+
+  const handleBatchAccept = async () => {
+    if (selectedPendingIds.length === 0) return;
+    setBatchActing(true);
+    const failedIds: string[] = [];
+    for (const itemId of selectedPendingIds) {
+      const ok = await acceptItem(itemId);
+      if (!ok) failedIds.push(itemId);
+    }
+    setSelectedPendingIds(failedIds);
+    setBatchActing(false);
+  };
+
+  const handleBatchIgnore = async () => {
+    if (selectedPendingIds.length === 0) return;
+    setBatchActing(true);
+    const failedIds: string[] = [];
+    for (const itemId of selectedPendingIds) {
+      const ok = await ignoreItem(itemId);
+      if (!ok) failedIds.push(itemId);
+    }
+    setSelectedPendingIds(failedIds);
+    setBatchActing(false);
   };
 
   return (
@@ -299,12 +403,31 @@ export function DecisionCenterPage() {
               className="min-w-56 rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-foreground"
             >
               <option value="all">{t('decisionCenter.filters.sourceAll')}</option>
-              {sourceOptions.map((sourceId) => (
-                <option key={sourceId} value={sourceId}>
-                  {sourceId}
-                </option>
-              ))}
-            </select>
+                {sourceOptions.map((sourceId) => (
+                  <option key={sourceId} value={sourceId}>
+                    {sourceId}
+                  </option>
+                ))}
+              </select>
+
+            <div className="flex min-w-[260px] flex-1 items-center gap-2">
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={t('decisionCenter.filters.searchPlaceholder')}
+                className="h-9"
+              />
+              {searchQuery.trim().length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                >
+                  {t('decisionCenter.filters.clearSearch')}
+                </Button>
+              )}
+            </div>
           </div>
         </section>
 
@@ -324,7 +447,7 @@ export function DecisionCenterPage() {
 
         {loading && items.length === 0 ? (
           <SkeletonCardList count={4} />
-        ) : items.length === 0 ? (
+        ) : filteredGroupedBySource.length === 0 ? (
           <EmptyState
             icon={Lightbulb}
             title={t('decisionCenter.page.emptyTitle')}
@@ -332,7 +455,47 @@ export function DecisionCenterPage() {
           />
         ) : (
           <div className="space-y-5">
-            {groupedBySource.map((group) => (
+            {pendingItemIds.length > 0 && (
+              <section className="surface-card-soft rounded-xl border border-border/70 bg-card/90 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-muted-foreground">
+                    {t('decisionCenter.actions.selectedCount', { count: selectedPendingIds.length })}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleToggleSelectAllPending}
+                      disabled={batchActing}
+                    >
+                      {allPendingSelected
+                        ? t('decisionCenter.actions.clearSelection')
+                        : t('decisionCenter.actions.selectAllPending')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void handleBatchAccept()}
+                      disabled={selectedPendingIds.length === 0 || batchActing}
+                    >
+                      {t('decisionCenter.actions.acceptSelected')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleBatchIgnore()}
+                      disabled={selectedPendingIds.length === 0 || batchActing}
+                    >
+                      {t('decisionCenter.actions.ignoreSelected')}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {filteredGroupedBySource.map((group) => (
               <section key={group.key} className="overflow-hidden rounded-xl border border-border/70 bg-card">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 px-4 py-3">
                   <div>
@@ -374,7 +537,18 @@ export function DecisionCenterPage() {
                       <article key={item.id} className="p-4 lg:p-5">
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
                           <div className="space-y-3">
-                            <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                            <div className="flex items-start gap-2">
+                              {item.status === 'pending' && (
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-4 w-4 rounded border-border"
+                                  checked={selectedPendingSet.has(item.id)}
+                                  onChange={() => togglePendingSelection(item.id)}
+                                  disabled={batchActing}
+                                />
+                              )}
+                              <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                            </div>
 
                             {item.summary && (
                               <p className="whitespace-pre-wrap text-sm text-foreground/90">{item.summary}</p>
@@ -451,7 +625,7 @@ export function DecisionCenterPage() {
 
             {nextCursor && (
               <div className="flex justify-center">
-                <Button variant="outline" onClick={() => void handleLoadMore()} disabled={loading}>
+                <Button variant="outline" onClick={() => void handleLoadMore()} disabled={loading || batchActing}>
                   <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                   {t('decisionCenter.page.loadMore')}
                 </Button>

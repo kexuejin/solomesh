@@ -1702,6 +1702,8 @@ export const zhCN = {
     filters: {
       sourceAll: '全部来源',
       workspaceAll: '全部工作区',
+      searchPlaceholder: '搜索标题、摘要或来源',
+      clearSearch: '清空搜索',
       status: {
         all: '全部状态',
         pending: '待决策',
@@ -1730,6 +1732,11 @@ export const zhCN = {
     actions: {
       accept: '采纳为 Todo',
       ignore: '忽略',
+      selectedCount: '已选择 {{count}} 条待处理建议',
+      selectAllPending: '全选待处理',
+      clearSelection: '清空选择',
+      acceptSelected: '批量采纳',
+      ignoreSelected: '批量忽略',
     },
     store: {
       loadFailed: '加载决策中心建议失败',
@@ -4104,6 +4111,8 @@ export const en = {
     filters: {
       sourceAll: 'All sources',
       workspaceAll: 'All workspaces',
+      searchPlaceholder: 'Search title, summary, or source',
+      clearSearch: 'Clear search',
       status: {
         all: 'All statuses',
         pending: 'Pending',
@@ -4132,6 +4141,11 @@ export const en = {
     actions: {
       accept: 'Accept as Todo',
       ignore: 'Ignore',
+      selectedCount: '{{count}} pending suggestion(s) selected',
+      selectAllPending: 'Select all pending',
+      clearSelection: 'Clear selection',
+      acceptSelected: 'Accept selected',
+      ignoreSelected: 'Ignore selected',
     },
     store: {
       loadFailed: 'Failed to load decision suggestions',
