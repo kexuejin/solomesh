@@ -57,6 +57,18 @@ test('scenario 3: scheduled automation templates include todo-oriented presets',
   assert.equal(project?.scheduleType, 'cron');
   assert.equal(competitor?.contextMode, 'isolated');
   assert.equal(project?.contextMode, 'isolated');
+  assert.equal(competitor?.defaultOnErrorTodoIngest, true);
+  assert.equal(project?.defaultOnErrorTodoIngest, true);
+  assert.equal(
+    (competitor?.defaultTaskConfig?.plugins as Record<string, unknown> | undefined)
+      ?.competitor_git
+      !== undefined,
+    true,
+  );
+  assert.equal(
+    competitor?.prompt.includes('repo: https://github.com/example/competitor'),
+    false,
+  );
 });
 
 test('scenario 4: automation failure ingest only runs with explicit on_error rule', () => {

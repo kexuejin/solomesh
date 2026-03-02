@@ -17,6 +17,16 @@ test('create task form emits explicit taskConfig on_error todo flag', () => {
   assert.ok(source.includes('todo_ingest'));
 });
 
+test('generic task form surface does not hardcode competitor plugin fields', () => {
+  const createForm = read('web/src/components/tasks/CreateTaskForm.tsx');
+  const detail = read('web/src/components/tasks/TaskDetail.tsx');
+  const tasksPage = read('web/src/pages/TasksPage.tsx');
+
+  assert.ok(!createForm.includes('competitor_git'));
+  assert.ok(!detail.includes('competitor_git'));
+  assert.ok(!tasksPage.includes('competitor_git'));
+});
+
 test('tasks store forwards and updates task_config payload', () => {
   const source = read('web/src/stores/tasks.ts');
 
