@@ -47,7 +47,10 @@ interface DecisionItemsStore {
   nextCursor: string | null;
   loading: boolean;
   error: string | null;
-  loadItems: (filters?: DecisionItemFilters) => Promise<void>;
+  loadItems: (
+    filters?: DecisionItemFilters,
+    options?: { append?: boolean },
+  ) => Promise<void>;
   acceptItem: (id: string) => Promise<boolean>;
   ignoreItem: (id: string) => Promise<boolean>;
 }
@@ -81,17 +84,35 @@ export const useDecisionItemsStore = create<DecisionItemsStore>((set) => ({
   loading: false,
   error: null,
 
-  loadItems: async (filters) => {
+  loadItems: async (filters, options) => {
     set({ loading: true });
     try {
       const data = await api.get<{ items: DecisionItem[]; nextCursor: string | null }>(
         `/api/decision-items${buildQuery(filters)}`,
       );
-      set({
-        items: data.items,
-        nextCursor: data.nextCursor,
-        loading: false,
-        error: null,
+      set((state) => {
+        if (!options?.append) {
+          return {
+            items: data.items,
+            nextCursor: data.nextCursor,
+            loading: false,
+            error: null,
+          };
+        }
+
+        const existingIds = new Set(state.items.map((item) => item.id));
+        const merged = [...state.items];
+        for (const item of data.items) {
+          if (existingIds.has(item.id)) continue;
+          merged.push(item);
+          existingIds.add(item.id);
+        }
+        return {
+          items: merged,
+          nextCursor: data.nextCursor,
+          loading: false,
+          error: null,
+        };
       });
     } catch (error) {
       set({

@@ -142,6 +142,11 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
                   {t('tasks.card.onErrorTodo')}
                 </span>
               )}
+              {task.task_config?.on_success?.decision_ingest === true && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                  {t('tasks.card.onSuccessDecision')}
+                </span>
+              )}
             </div>
           </div>
 

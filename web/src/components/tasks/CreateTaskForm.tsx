@@ -265,6 +265,7 @@ export function CreateTaskForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [onErrorTodoIngest, setOnErrorTodoIngest] = useState(false);
+  const [onSuccessDecisionIngest, setOnSuccessDecisionIngest] = useState(false);
   const [taskConfigJson, setTaskConfigJson] = useState('');
 
   useEffect(() => {
@@ -307,6 +308,7 @@ export function CreateTaskForm({
     setIntervalUnit(schedule.intervalUnit);
     setIntervalWeekdays(schedule.intervalWeekdays);
     setOnErrorTodoIngest(template.defaultOnErrorTodoIngest ?? false);
+    setOnSuccessDecisionIngest(template.defaultTaskConfig?.on_success?.decision_ingest === true);
     setTaskConfigJson(toTaskConfigJson(template.defaultTaskConfig));
 
     setErrors((prev) => {
@@ -465,6 +467,32 @@ export function CreateTaskForm({
           delete nextTaskConfig.on_error;
         }
       }
+
+      if (onSuccessDecisionIngest) {
+        const existingOnSuccess =
+          nextTaskConfig.on_success
+            && typeof nextTaskConfig.on_success === 'object'
+            && !Array.isArray(nextTaskConfig.on_success)
+            ? nextTaskConfig.on_success as Record<string, unknown>
+            : {};
+        nextTaskConfig.on_success = {
+          ...existingOnSuccess,
+          decision_ingest: true,
+        };
+      } else if (
+        nextTaskConfig.on_success
+        && typeof nextTaskConfig.on_success === 'object'
+        && !Array.isArray(nextTaskConfig.on_success)
+      ) {
+        const onSuccessConfig = { ...(nextTaskConfig.on_success as Record<string, unknown>) };
+        delete onSuccessConfig.decision_ingest;
+        if (Object.keys(onSuccessConfig).length > 0) {
+          nextTaskConfig.on_success = onSuccessConfig;
+        } else {
+          delete nextTaskConfig.on_success;
+        }
+      }
+
       await onSubmit({
         ...formData,
         prompt: formData.prompt.trim(),
@@ -809,6 +837,20 @@ export function CreateTaskForm({
               <span>{t('tasks.form.onErrorTodoIngest')}</span>
             </label>
             <p className="text-xs text-muted-foreground">{t('tasks.form.onErrorTodoIngestHint')}</p>
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+            <div className="text-sm font-medium text-foreground/80">{t('tasks.form.successRuleTitle')}</div>
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={onSuccessDecisionIngest}
+                onChange={(e) => setOnSuccessDecisionIngest(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border"
+              />
+              <span>{t('tasks.form.onSuccessDecisionIngest')}</span>
+            </label>
+            <p className="text-xs text-muted-foreground">{t('tasks.form.onSuccessDecisionIngestHint')}</p>
           </div>
 
           <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">

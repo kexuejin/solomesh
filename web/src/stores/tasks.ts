@@ -73,6 +73,7 @@ interface TasksState {
     taskConfig: TaskConfig | null,
   ) => Promise<void>;
   updateTaskOnErrorTodoRule: (id: string, enabled: boolean) => Promise<void>;
+  updateTaskOnSuccessDecisionRule: (id: string, enabled: boolean) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   loadLogs: (taskId: string) => Promise<void>;
 }
@@ -134,6 +135,24 @@ function normalizeTaskConfig(
       normalized.on_error = nextOnError;
     } else {
       delete normalized.on_error;
+    }
+  }
+
+  if (config.on_success?.decision_ingest === true) {
+    const currentOnSuccess = isPlainObject(normalized.on_success)
+      ? normalized.on_success
+      : {};
+    normalized.on_success = {
+      ...currentOnSuccess,
+      decision_ingest: true,
+    };
+  } else if (isPlainObject(normalized.on_success)) {
+    const nextOnSuccess = { ...normalized.on_success };
+    delete nextOnSuccess.decision_ingest;
+    if (hasOwnKeys(nextOnSuccess)) {
+      normalized.on_success = nextOnSuccess;
+    } else {
+      delete normalized.on_success;
     }
   }
 
@@ -230,6 +249,23 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       ...(current ?? {}),
       on_error: enabled
         ? { todo_ingest: true }
+        : undefined,
+    });
+
+    try {
+      await get().updateTaskConfig(id, next);
+    } catch {
+      set({ error: getStoreMessage('tasks.store.updateRuleFailed') });
+    }
+  },
+
+  updateTaskOnSuccessDecisionRule: async (id: string, enabled: boolean) => {
+    const task = get().tasks.find((item) => item.id === id);
+    const current = task?.task_config ?? null;
+    const next = normalizeTaskConfig({
+      ...(current ?? {}),
+      on_success: enabled
+        ? { decision_ingest: true }
         : undefined,
     });
 

@@ -48,15 +48,15 @@ function decisionStatusClass(status: DecisionItemStatus): string {
 
 export function DecisionCenterPage() {
   const { t, locale } = useI18n();
-  const { items, loading, error, loadItems, acceptItem, ignoreItem } = useDecisionItemsStore();
+  const { items, nextCursor, loading, error, loadItems, acceptItem, ignoreItem } = useDecisionItemsStore();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
   const [workspaceFilter, setWorkspaceFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [actingId, setActingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadItems({
+  const queryFilters = useMemo(
+    () => ({
       status: statusFilter === 'all' ? undefined : statusFilter,
       scope_level: scopeFilter === 'all' ? undefined : scopeFilter,
       scope_id:
@@ -65,8 +65,13 @@ export function DecisionCenterPage() {
           : undefined,
       source_id: sourceFilter === 'all' ? undefined : sourceFilter,
       limit: 100,
-    });
-  }, [loadItems, scopeFilter, sourceFilter, statusFilter, workspaceFilter]);
+    }),
+    [scopeFilter, sourceFilter, statusFilter, workspaceFilter],
+  );
+
+  useEffect(() => {
+    void loadItems(queryFilters);
+  }, [loadItems, queryFilters]);
 
   const counts = useMemo(() => {
     const pending = items.filter((item) => item.status === 'pending').length;
@@ -155,16 +160,18 @@ export function DecisionCenterPage() {
   };
 
   const handleRefresh = async () => {
-    await loadItems({
-      status: statusFilter === 'all' ? undefined : statusFilter,
-      scope_level: scopeFilter === 'all' ? undefined : scopeFilter,
-      scope_id:
-        scopeFilter === 'workspace' && workspaceFilter !== 'all'
-          ? workspaceFilter
-          : undefined,
-      source_id: sourceFilter === 'all' ? undefined : sourceFilter,
-      limit: 100,
-    });
+    await loadItems(queryFilters);
+  };
+
+  const handleLoadMore = async () => {
+    if (!nextCursor) return;
+    await loadItems(
+      {
+        ...queryFilters,
+        cursor: nextCursor,
+      },
+      { append: true },
+    );
   };
 
   const handleAccept = async (itemId: string) => {
@@ -441,6 +448,15 @@ export function DecisionCenterPage() {
                 </div>
               </section>
             ))}
+
+            {nextCursor && (
+              <div className="flex justify-center">
+                <Button variant="outline" onClick={() => void handleLoadMore()} disabled={loading}>
+                  <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                  {t('decisionCenter.page.loadMore')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
