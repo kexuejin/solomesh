@@ -1,13 +1,13 @@
 # Workflow 驱动 Todo 实现文档
 
-Date: 2026-03-01  
+Date: 2026-03-02  
 Owner: SoloMesh
 
 ## 1. 范围说明
 
 本文档对应《workflow-driven-todo-requirements.md》，目标是给出可直接落地的实现路径。
 
-实现策略：**复用现有 Workflow + Skills/MCP 机制，不新建独立触发层服务**，通过一个 Todo Core 统一承接所有来源写入。
+实现策略：**复用现有 Workflow + Automation + Skills/MCP 机制，不新建独立触发层服务，不新增插件技术实体**，通过一个 Todo Core 统一承接所有来源写入。
 
 ## 2. 现状基线
 
@@ -16,34 +16,35 @@ Owner: SoloMesh
 - Workflow 模板与发布能力：`/api/workflows/templates/*`
 - 自动化任务与运行日志：`/api/tasks/*` + `task_run_logs`
 - Skills/MCP 能力编排与调用
+- Todo Core 入口与路由：`/api/todos/ingest`、`/api/todos`
 
-当前缺口：
+当前重点：
 
-- 无独立 `todos` 领域模型与统一 ingest 入口
-- 无统一 dedupe/merge 机制
-- 无来源级别审计结构（source/run 维度）
+- 统一来源契约和场景落地口径
+- 将触发逻辑稳定收敛在 Workflow/Automation
+- 保持 Todo Core 只做治理，不承接触发判断
 
 ## 3. 目标架构
 
 ```text
-Manual UI / Workflow / Scheduled Task / Skill(MCP)
-                  |
-                  v
-            Todo Ingest API
-                  |
-                  v
-               Todo Core
-      (validate -> dedupe -> merge/create)
-                  |
-                  v
-            SQLite (todos + events)
+Manual UI / Workflow / Automation / Plugin(Skill|MCP)
+                        |
+                        v
+                  todo.ingest
+                        |
+                        v
+                     Todo Core
+         (validate -> dedupe -> merge/create)
+                        |
+                        v
+              SQLite (todos + source_events)
 ```
 
 ## 4. 模块设计
 
-### 4.1 Todo Core（新增）
+### 4.1 Todo Core
 
-建议新增：`src/todo-core.ts`
+核心文件：`src/todo-core.ts`
 
 职责：
 
@@ -52,153 +53,158 @@ Manual UI / Workflow / Scheduled Task / Skill(MCP)
 - 合并/创建事务逻辑
 - 输出 `created|merged|ignored`
 
-建议核心函数：
+核心函数：
 
 - `ingestTodo(input, actor): IngestResult`
 - `computeDedupeKey(input): string`
-- `mergeTodo(existing, input): MergedTodo`
+- `buildMergePatch(existing, incoming, nowIso): TodoMergePatch`
 
-### 4.2 Todo API（新增）
+### 4.2 Todo API
 
-建议新增：`src/routes/todo.ts`
+核心文件：`src/routes/todos.ts`
 
-最小接口：
+接口：
 
-- `POST /api/todos/ingest`（统一入口）
-- `POST /api/todos`（手动创建，可内部转 ingest）
+- `POST /api/todos/ingest`（统一写入口）
+- `POST /api/todos`（手动创建，内部转 ingest）
 - `GET /api/todos`（查询）
-- `GET /api/todos/:id/events`（来源事件追溯）
+- `GET /api/todos/:id/events`（来源追溯）
 
-### 4.3 Schema（扩展）
+### 4.3 Schema
 
-建议扩展：`src/schemas.ts`
+核心文件：`src/schemas.ts`
 
 - `TodoIngestSchema`
-- `TodoCreateSchema`
 - `TodoQuerySchema`
 
-### 4.4 数据层（扩展）
+### 4.4 数据层
 
-建议扩展：`src/db.ts`
+核心文件：`src/db.ts`
 
-- 新增 `todos` 表
-- 新增 `todo_source_events` 表
-- 新增读写函数：`insertTodo` / `updateTodoMerge` / `insertTodoSourceEvent` / `getTodoByDedupeKey`
+- 表：`todos`
+- 表：`todo_source_events`
+- 函数：`getTodoByDedupeKey`、`insertTodo`、`updateTodoMerge`
+- 函数：`insertTodoSourceEvent`、`listTodoSourceEvents`
 
-## 5. 数据库建议
+### 4.5 Plugin 形态（无新增实体）
 
-### 5.1 `todos`
+`Plugin` 在实现层直接映射为：
 
-关键字段：
+- `Skill Plugin`：本地技能能力包
+- `MCP Plugin`：远程工具能力
 
-- `id TEXT PRIMARY KEY`
-- `title TEXT NOT NULL`
-- `description TEXT`
-- `status TEXT NOT NULL DEFAULT 'open'`
-- `priority TEXT`
-- `dedupe_key TEXT NOT NULL`
-- `occurrence_count INTEGER NOT NULL DEFAULT 1`
-- `first_seen_at TEXT NOT NULL`
-- `last_seen_at TEXT NOT NULL`
-- `created_by TEXT`
-- `created_at TEXT NOT NULL`
-- `updated_at TEXT NOT NULL`
+管理与配置复用现有能力：
 
-索引建议：
+- Skills 管理：`/api/skills`
+- MCP 管理：`/api/mcp-servers`
+- 编排管理：`/api/workflows/templates/*`
 
-- `UNIQUE(dedupe_key)`
-- `INDEX(status, priority, last_seen_at)`
+## 5. Ingest 契约与来源约定
 
-### 5.2 `todo_source_events`
+标准字段：
 
-关键字段：
+- `source_type`: `manual | workflow | automation | plugin`
+- `source_id`: 来源标识
+- `source_run_id`: 本次执行批次
+- `trigger_mode`: `manual | automation`
+- `evidence`: 证据上下文
 
-- `id INTEGER PRIMARY KEY AUTOINCREMENT`
-- `todo_id TEXT NOT NULL`
-- `source_type TEXT NOT NULL`
-- `source_id TEXT NOT NULL`
-- `source_run_id TEXT`
-- `trigger_mode TEXT`
-- `action TEXT NOT NULL` (`created|merged|ignored`)
-- `evidence TEXT`
-- `created_at TEXT NOT NULL`
+`source_id` 约定（建议）：
 
-索引建议：
+- workflow: `workflow:<template_id>:<stage_id>`
+- automation: `automation:<task_id>`
+- plugin(skill): `skill:<skill_id>`
+- plugin(mcp): `mcp:<server>:<tool>`
 
-- `INDEX(todo_id, created_at)`
-- `INDEX(source_type, source_id, created_at)`
-
-## 6. Ingest 处理流程
-
-1. 校验入参（schema）
-2. 计算/确认 `dedupe_key`
-3. 开启事务
-4. 根据 `dedupe_key` 查重
-5. 分支：
-- 不存在：创建 todo + 记录 source event（`created`）
-- 存在：执行合并策略 + 记录 source event（`merged`）
-6. 提交事务并返回结果
-
-合并规则（最小）：
-
-- `occurrence_count += 1`
-- `last_seen_at = now`
-- `evidence` 追加/去重
-- `priority = max(priority_old, priority_new)`（仅升不降）
-
-## 7. 与 Workflow / Skill 集成
-
-### 7.1 Workflow
-
-- 在 workflow stage 中调用 `todo ingest` 能力（HTTP/MCP/Skill 均可）。
-- stage 传入 `source_type=workflow`。
-- `trigger_mode` 由触发上下文决定（手动/自动化）。
-
-### 7.2 自动化任务
-
-- 定时任务触发 workflow 时传入 `source_type=automation`、`source_id=task_id`、`source_run_id=run_id`。
-- Workflow 内最终统一调用 Todo Ingest。
-
-### 7.3 Skill / MCP
-
-- Skill 不直接写库，只调用 `todo ingest`。
-- 保证治理策略在 Todo Core 一处生效。
-
-Skill/MCP 调用示例（统一入口）：
+示例：
 
 ```http
 POST /api/todos/ingest
 Content-Type: application/json
 
 {
-  "title": "Review generated DB migration",
-  "description": "Candidate from skill output",
-  "priority": "medium",
+  "title": "竞品发布了新计费页",
+  "description": "检测到 pricing 页面新增 annual discount 入口",
+  "priority": "high",
   "source_type": "plugin",
-  "source_id": "skill:db-migration-reviewer",
+  "source_id": "skill:competitor-tracker",
   "source_run_id": "run_2026_03_02_0900",
   "trigger_mode": "automation",
+  "dedupe_key": "competitor:pricing:annual-discount",
   "evidence": {
-    "skill": "db-migration-reviewer",
-    "confidence": 0.86
+    "competitor": "example-ai",
+    "url": "https://example.com/pricing",
+    "confidence": 0.88
   }
 }
 ```
 
-查询过滤建议：
+## 6. 六类场景落地
+
+1. 手动创建
+- 链路：用户 -> `POST /api/todos`
+- 来源：`source_type=manual`
+
+2. 会话内手动执行 Workflow
+- 链路：用户 -> Workflow stage -> `ingestTodo`
+- 来源：`source_type=workflow`，`trigger_mode=manual`
+
+3. 自动化定时巡检
+- 链路：Automation -> Workflow(可选) -> `ingestTodo`
+- 来源：`source_type=automation`，`trigger_mode=automation`
+
+4. 失败分支写 Todo
+- 链路：Workflow/Automation `on_error` -> `ingestTodo`
+- 规则：失败触发必须由流程显式配置，不由 Todo Core 内部隐式触发
+
+5. 竞品追踪插件
+- 链路：Plugin(Skill/MCP) -> Workflow(可选过滤) -> `ingestTodo`
+- dedupe 建议：`竞品 + 功能点 + 变更类型`
+
+6. 项目推荐插件
+- 链路：Plugin(Skill/MCP) -> Workflow(阈值过滤/打分) -> `ingestTodo`
+- dedupe 建议：`推荐对象 + 推荐理由`
+
+## 7. 与 Workflow / Automation / Plugin 集成
+
+### 7.1 Workflow
+
+- 在 stage 完成节点或显式步骤中调用 `todo ingest`。
+- stage 传入 `source_type=workflow`。
+- `trigger_mode` 由触发上下文决定（手动/自动）。
+
+### 7.2 Automation
+
+- 定时任务触发 Workflow 或能力步骤。
+- 当配置了显式规则（如 `on_error`、`score >= threshold`）时调用 `todo ingest`。
+- 不要求 Todo Core 维护自动触发策略字段。
+
+### 7.3 Plugin（Skill/MCP）
+
+- 插件只产出候选项，不直接写 Todo 库。
+- 由 Workflow 或任务执行器将候选项映射为 ingest payload。
+- 对外统一来源：`source_type=plugin`。
+
+### 7.4 查询过滤
 
 - `GET /api/todos?status=open&priority=high`
 - `GET /api/todos?source_type=workflow&trigger_mode=manual`
+- `GET /api/todos?source_type=plugin`
 
-## 8. 权限与治理
+## 8. 治理策略
 
-最小策略：
+治理分层：
 
-- 自动化来源是否允许自动创建 Todo（布尔开关）
-- 每来源每日上限（防刷单）
-- 白名单来源（按 `source_type + source_id`）
+1. `Todo Core`
+- 去重、合并、审计、并发安全
 
-建议将策略放在运行配置中，便于后续 UI 配置化。
+2. `Workflow/Automation`
+- 触发规则（何时写入 Todo）
+- 失败分支规则（`on_error`）
+- 候选过滤规则（阈值、评分、白名单）
+
+3. `Plugin (Skill/MCP)`
+- 负责发现候选，不负责 Todo 治理
 
 ## 9. 测试方案
 
@@ -214,41 +220,43 @@ Content-Type: application/json
 - 重复写入走合并路径
 - 并发写入同 dedupe key 无重复记录
 
-### 9.3 端到端测试
+### 9.3 端到端测试（六类场景）
 
 - 手动创建 Todo
-- workflow 手动触发创建 Todo
-- 定时任务触发 workflow 创建 Todo
+- Workflow 手动触发创建 Todo
+- Automation 定时触发创建 Todo
+- Workflow/Automation 失败分支创建 Todo
+- 竞品追踪插件创建 Todo
+- 项目推荐插件创建 Todo
 
-## 10. 分阶段实施计划
+## 10. 分阶段实施建议
 
 ### Phase 1: Core
 
-- 新建 `todos` / `todo_source_events`
-- 落地 `todo-core.ts`
-- 开通 `POST /api/todos/ingest`
+- 稳定 `todos` / `todo_source_events` 模型
+- 稳定 `todo.ingest` 合约与事件追溯
 
 ### Phase 2: Integrations
 
-- Workflow 调用 Todo Ingest
-- 自动化任务上下文携带 `source_run_id`
-- Skill/MCP 接入统一入口
+- Workflow 全量接入统一入口
+- Automation 通过显式规则接入
+- Skill/MCP（插件）接入统一入口
 
-### Phase 3: Governance
+### Phase 3: Governance & Observability
 
-- 来源限额与白名单
-- 观测指标（创建率、合并率、误报率）
-- 运维报表与审计检索
+- 完善来源治理策略
+- 增加创建率/合并率/噪声率指标
+- 增加按来源与运行批次的审计检索
 
 ## 11. 风险与回滚
 
 风险：
 
 - dedupe 规则过于粗糙导致误合并
-- 自动化来源误报造成 Todo 噪音
+- 自动化来源误报导致 Todo 噪音
 
 缓解：
 
-- 初期对自动化来源默认“可创建但限额低”
+- 对关键来源优先提供显式 `dedupe_key`
+- 默认仅在显式流程规则命中时写入 Todo
 - 保留 source event 全链路，支持回溯和人工修正
-- dedupe key 支持覆盖（上游可显式传入）

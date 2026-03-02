@@ -35,6 +35,7 @@ docs/plans/
 .claude/
 .mcp.json
 /.omc/
+/.worktrees/
 
 # OS
 .DS_Store
