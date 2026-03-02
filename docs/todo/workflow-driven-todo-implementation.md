@@ -178,6 +178,9 @@ Content-Type: application/json
 - 定时任务触发 Workflow 或能力步骤。
 - 当配置了显式规则（如 `on_error`、`score >= threshold`）时调用 `todo ingest`。
 - 不要求 Todo Core 维护自动触发策略字段。
+- 当前失败分支规则载体：`workflow_rules.on_error.todo_ingest`。
+- Task API 创建/更新任务时通过 `workflow_rules` 传入规则（`POST /api/tasks`、`PATCH /api/tasks/:id`）。
+- 前端当前支持：创建自动化时配置该规则，任务详情可开启/关闭该规则。
 
 ### 7.3 Plugin（Skill/MCP）
 
@@ -226,6 +229,7 @@ Content-Type: application/json
 - Workflow 手动触发创建 Todo
 - Automation 定时触发创建 Todo
 - Workflow/Automation 失败分支创建 Todo
+- 自动化失败规则可在创建时配置并在任务详情页更新
 - 竞品追踪插件创建 Todo
 - 项目推荐插件创建 Todo
 

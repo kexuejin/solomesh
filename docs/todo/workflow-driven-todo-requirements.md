@@ -117,6 +117,12 @@ Ingest 响应必须返回：
 
 自动化、失败分支、阈值过滤等触发策略必须定义在 Workflow/Automation/Plugin 执行逻辑，不由 Todo Core 内部隐式触发。
 
+当前自动化失败写入 Todo 的最小落地约定：
+
+- 规则字段：`workflow_rules.on_error.todo_ingest = true`
+- 规则生效点：Automation 执行出错分支
+- 规则行为：命中时调用统一 `todo ingest`
+
 ### FR-008: 插件接入约束
 
 Skill/MCP 插件不得直接写 Todo 库，必须通过统一 `todo ingest` 能力写入。

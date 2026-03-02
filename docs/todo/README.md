@@ -25,3 +25,10 @@
 | Workflow/Automation 失败分支 | Workflow/Automation | Workflow 规则 | Skill/MCP(可选) | `source_type=workflow|automation`, `trigger_mode=automation` |
 | 竞品追踪插件 | 用户/Automation | Workflow(可选) | Plugin(Skill/MCP) | `source_type=plugin`, `source_id=skill:<id>` 或 `mcp:<server>:<tool>` |
 | 项目推荐插件 | 用户/Automation | Workflow(阈值/打分) | Plugin(Skill/MCP) | `source_type=plugin`, `source_id=skill:<id>` 或 `mcp:<server>:<tool>` |
+
+## 当前自动化规则落地
+
+- 字段：`workflow_rules.on_error.todo_ingest`
+- 创建入口：自动化创建表单
+- 编辑入口：自动化任务详情
+- 生效行为：任务执行失败时写入 Todo（通过统一 `todo.ingest`）
