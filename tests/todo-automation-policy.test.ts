@@ -1,28 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { shouldIngestAutomationTodo } from '../src/todo-core.js';
+import { shouldIngestAutomationErrorTodo } from '../src/task-scheduler.js';
 
-test('quota reached blocks auto-create', () => {
+test('missing error skips automation todo ingest', () => {
   assert.equal(
-    shouldIngestAutomationTodo({
-      autoCreate: true,
-      dailyQuota: 3,
-      currentCount: 3,
-      hasError: true,
-    }),
+    shouldIngestAutomationErrorTodo(
+      {
+        workflow_rules: {
+          on_error: { todo_ingest: true },
+        },
+      },
+      null,
+    ),
     false,
   );
 });
 
-test('error and quota available allows auto-create', () => {
+test('error without explicit on_error.todo_ingest rule skips ingest', () => {
   assert.equal(
-    shouldIngestAutomationTodo({
-      autoCreate: true,
-      dailyQuota: 3,
-      currentCount: 2,
-      hasError: true,
-    }),
+    shouldIngestAutomationErrorTodo(
+      {
+        workflow_rules: {},
+      },
+      'task failed',
+    ),
+    false,
+  );
+});
+
+test('error with explicit on_error.todo_ingest ingests todo', () => {
+  assert.equal(
+    shouldIngestAutomationErrorTodo(
+      {
+        workflow_rules: {
+          on_error: { todo_ingest: true },
+        },
+      },
+      'task failed',
+    ),
     true,
   );
 });

@@ -53,15 +53,17 @@ test('TaskPatchSchema accepts execution_type and script_command fields', () => {
   }
 });
 
-test('TaskPatchSchema accepts todo automation policy fields', () => {
+test('TaskPatchSchema accepts explicit workflow todo rule fields', () => {
   const parsed = TaskPatchSchema.safeParse({
-    todo_auto_create: true,
-    todo_daily_quota: 10,
+    workflow_rules: {
+      on_error: {
+        todo_ingest: true,
+      },
+    },
   });
 
   assert.equal(parsed.success, true);
   if (parsed.success) {
-    assert.equal(parsed.data.todo_auto_create, true);
-    assert.equal(parsed.data.todo_daily_quota, 10);
+    assert.equal(parsed.data.workflow_rules?.on_error?.todo_ingest, true);
   }
 });

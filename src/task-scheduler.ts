@@ -18,7 +18,6 @@ import {
   writeTasksSnapshot,
 } from './container-runner.js';
 import {
-  countTodoEventsForSourceOnDate,
   getAllTasks,
   cleanupOldTaskRunLogs,
   getDueTasks,
@@ -29,7 +28,7 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { hasScriptCapacity, runScript } from './script-runner.js';
-import { ingestTodo, shouldIngestAutomationTodo } from './todo-core.js';
+import { ingestTodo } from './todo-core.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
 export interface SchedulerDependencies {
@@ -49,6 +48,14 @@ export interface SchedulerDependencies {
 }
 
 const runningTaskIds = new Set<string>();
+
+export function shouldIngestAutomationErrorTodo(
+  task: Pick<ScheduledTask, 'workflow_rules'>,
+  error: string | null,
+): boolean {
+  if (!error) return false;
+  return task.workflow_rules?.on_error?.todo_ingest === true;
+}
 
 function computeNextRun(task: ScheduledTask): string | null {
   if (task.schedule_type === 'cron') {
@@ -75,25 +82,7 @@ function maybeIngestAutomationFailureTodo(
   error: string | null,
   result: string | null,
 ): void {
-  if (!error) return;
-
-  const autoCreate = Boolean(task.todo_auto_create);
-  const rawQuota = Number(task.todo_daily_quota ?? 20);
-  const dailyQuota = Number.isFinite(rawQuota) ? Math.max(1, rawQuota) : 20;
-  const currentCount = countTodoEventsForSourceOnDate(
-    'automation',
-    task.id,
-    runAtIso.slice(0, 10),
-  );
-
-  if (
-    !shouldIngestAutomationTodo({
-      autoCreate,
-      dailyQuota,
-      currentCount,
-      hasError: true,
-    })
-  ) {
+  if (!shouldIngestAutomationErrorTodo(task, error)) {
     return;
   }
 
@@ -101,7 +90,7 @@ function maybeIngestAutomationFailureTodo(
     ingestTodo(
       {
         title: `Automation task failed: ${task.id}`,
-        description: error.slice(0, 4000),
+        description: (error ?? '').slice(0, 4000),
         priority: 'high',
         source_type: 'automation',
         source_id: task.id,

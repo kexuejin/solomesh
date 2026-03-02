@@ -73,13 +73,6 @@ export interface TodoIngestResult {
   reason?: string;
 }
 
-export interface AutomationTodoPolicyInput {
-  autoCreate: boolean;
-  dailyQuota: number;
-  currentCount: number;
-  hasError: boolean;
-}
-
 export function computeDedupeKey(input: TodoDedupeInput): string {
   if (input.dedupe_key?.trim()) {
     return input.dedupe_key.trim();
@@ -115,15 +108,6 @@ export function buildMergePatch(
     priority: mergePriority(existing.priority, incoming.priority ?? undefined),
     updated_at: nowIso,
   };
-}
-
-export function shouldIngestAutomationTodo(
-  input: AutomationTodoPolicyInput,
-): boolean {
-  if (!input.autoCreate) return false;
-  if (!input.hasError) return false;
-  if (input.dailyQuota <= 0) return false;
-  return input.currentCount < input.dailyQuota;
 }
 
 export function ingestTodo(

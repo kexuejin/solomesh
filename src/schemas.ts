@@ -55,6 +55,16 @@ export const RuntimeModelSelectionSchema = z
     { message: 'At least one of agentRuntime/modelProvider/model must be provided' },
   );
 
+export const TaskWorkflowRulesSchema = z
+  .object({
+    on_error: z
+      .object({
+        todo_ingest: z.boolean().optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
 export const TaskPatchSchema = z.object({
   prompt: z.string().optional(),
   schedule_type: z.enum(['cron', 'interval', 'once']).optional(),
@@ -62,8 +72,7 @@ export const TaskPatchSchema = z.object({
   context_mode: z.enum(['group', 'isolated']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).nullable().optional(),
-  todo_auto_create: z.boolean().optional(),
-  todo_daily_quota: z.number().int().min(1).max(1000).nullable().optional(),
+  workflow_rules: TaskWorkflowRulesSchema.nullable().optional(),
   status: z.enum(['active', 'paused']).optional(),
   next_run: z.string().optional(),
 });
@@ -126,8 +135,7 @@ export const TaskCreateSchema = z.object({
   context_mode: z.enum(['group', 'isolated']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).optional(),
-  todo_auto_create: z.boolean().optional(),
-  todo_daily_quota: z.number().int().min(1).max(1000).optional(),
+  workflow_rules: TaskWorkflowRulesSchema.optional(),
 }).superRefine((data, ctx) => {
   const execType = data.execution_type || 'agent';
   if (execType === 'agent' && !data.prompt?.trim()) {

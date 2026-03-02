@@ -19,6 +19,7 @@ import {
   ChannelSessionBinding,
   ScheduledTask,
   SubAgent,
+  TaskWorkflowRules,
   TaskRunLog,
   Todo,
   TodoPriority,
@@ -159,8 +160,7 @@ export function initDatabase(): void {
       context_mode TEXT DEFAULT 'isolated',
       execution_type TEXT DEFAULT 'agent',
       script_command TEXT,
-      todo_auto_create INTEGER NOT NULL DEFAULT 0,
-      todo_daily_quota INTEGER,
+      workflow_rules TEXT,
       next_run TEXT,
       last_run TEXT,
       last_result TEXT,
@@ -381,11 +381,19 @@ export function initDatabase(): void {
   ensureColumn('scheduled_tasks', 'created_by', 'TEXT');
   ensureColumn('scheduled_tasks', 'execution_type', "TEXT DEFAULT 'agent'");
   ensureColumn('scheduled_tasks', 'script_command', 'TEXT');
-  ensureColumn('scheduled_tasks', 'todo_auto_create', 'INTEGER NOT NULL DEFAULT 0');
-  ensureColumn('scheduled_tasks', 'todo_daily_quota', 'INTEGER');
+  ensureColumn('scheduled_tasks', 'workflow_rules', 'TEXT');
   ensureColumn('registered_groups', 'selected_skills', 'TEXT');
   ensureColumn('sessions', 'agent_id', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('agents', 'kind', "TEXT NOT NULL DEFAULT 'task'");
+
+  // Backward compatibility: migrate legacy todo_auto_create flag to explicit on_error rule.
+  if (hasColumn('scheduled_tasks', 'todo_auto_create')) {
+    db.prepare(
+      `UPDATE scheduled_tasks
+       SET workflow_rules = ?
+       WHERE workflow_rules IS NULL AND todo_auto_create = 1`,
+    ).run(JSON.stringify({ on_error: { todo_ingest: true } }));
+  }
 
   // Migration: remove UNIQUE constraint from registered_groups.folder
   // Multiple groups (web:main + feishu chats) share folder='main' by design.
@@ -444,8 +452,7 @@ export function initDatabase(): void {
     'context_mode',
     'execution_type',
     'script_command',
-    'todo_auto_create',
-    'todo_daily_quota',
+    'workflow_rules',
     'next_run',
     'last_run',
     'last_result',
@@ -843,6 +850,55 @@ export function getMessagesSince(
     }));
 }
 
+function parseTaskWorkflowRules(raw: unknown): TaskWorkflowRules | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as TaskWorkflowRules;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as TaskWorkflowRules;
+  }
+  return null;
+}
+
+function parseScheduledTaskRow(row: Record<string, unknown>): ScheduledTask {
+  const directRules = parseTaskWorkflowRules(row.workflow_rules);
+  if (directRules) {
+    return {
+      ...(row as unknown as ScheduledTask),
+      workflow_rules: directRules,
+    };
+  }
+
+  // Backward compatibility for legacy rows before workflow_rules migration.
+  const legacyAutoCreate = Number(row.todo_auto_create ?? 0) === 1;
+  if (!legacyAutoCreate) {
+    return {
+      ...(row as unknown as ScheduledTask),
+      workflow_rules: null,
+    };
+  }
+
+  return {
+    ...(row as unknown as ScheduledTask),
+    workflow_rules: {
+      on_error: {
+        todo_ingest: true,
+      },
+    },
+  };
+}
+
 export function createTask(
   task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
 ): void {
@@ -850,10 +906,10 @@ export function createTask(
     `
     INSERT INTO scheduled_tasks (
       id, group_folder, chat_jid, prompt, schedule_type, schedule_value,
-      context_mode, execution_type, script_command, todo_auto_create, todo_daily_quota,
+      context_mode, execution_type, script_command, workflow_rules,
       next_run, status, created_at, created_by
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -865,8 +921,7 @@ export function createTask(
     task.context_mode || 'isolated',
     task.execution_type || 'agent',
     task.script_command ?? null,
-    task.todo_auto_create ? 1 : 0,
-    task.todo_daily_quota ?? null,
+    task.workflow_rules ? JSON.stringify(task.workflow_rules) : null,
     task.next_run,
     task.status,
     task.created_at,
@@ -875,23 +930,26 @@ export function createTask(
 }
 
 export function getTaskById(id: string): ScheduledTask | undefined {
-  return db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(id) as
-    | ScheduledTask
+  const row = db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(id) as
+    | Record<string, unknown>
     | undefined;
+  return row ? parseScheduledTaskRow(row) : undefined;
 }
 
 export function getTasksForGroup(groupFolder: string): ScheduledTask[] {
-  return db
+  const rows = db
     .prepare(
       'SELECT * FROM scheduled_tasks WHERE group_folder = ? ORDER BY created_at DESC',
     )
-    .all(groupFolder) as ScheduledTask[];
+    .all(groupFolder) as Record<string, unknown>[];
+  return rows.map((row) => parseScheduledTaskRow(row));
 }
 
 export function getAllTasks(): ScheduledTask[] {
-  return db
+  const rows = db
     .prepare('SELECT * FROM scheduled_tasks ORDER BY created_at DESC')
-    .all() as ScheduledTask[];
+    .all() as Record<string, unknown>[];
+  return rows.map((row) => parseScheduledTaskRow(row));
 }
 
 export function updateTask(
@@ -905,8 +963,7 @@ export function updateTask(
       | 'context_mode'
       | 'execution_type'
       | 'script_command'
-      | 'todo_auto_create'
-      | 'todo_daily_quota'
+      | 'workflow_rules'
       | 'next_run'
       | 'status'
     >
@@ -939,13 +996,11 @@ export function updateTask(
     fields.push('script_command = ?');
     values.push(updates.script_command);
   }
-  if (updates.todo_auto_create !== undefined) {
-    fields.push('todo_auto_create = ?');
-    values.push(updates.todo_auto_create ? 1 : 0);
-  }
-  if (updates.todo_daily_quota !== undefined) {
-    fields.push('todo_daily_quota = ?');
-    values.push(updates.todo_daily_quota);
+  if (updates.workflow_rules !== undefined) {
+    fields.push('workflow_rules = ?');
+    values.push(
+      updates.workflow_rules ? JSON.stringify(updates.workflow_rules) : null,
+    );
   }
   if (updates.next_run !== undefined) {
     fields.push('next_run = ?');
@@ -989,7 +1044,7 @@ export function deleteTasksForGroup(groupFolder: string): void {
 
 export function getDueTasks(): ScheduledTask[] {
   const now = new Date().toISOString();
-  return db
+  const rows = db
     .prepare(
       `
     SELECT * FROM scheduled_tasks
@@ -997,7 +1052,8 @@ export function getDueTasks(): ScheduledTask[] {
     ORDER BY next_run
   `,
     )
-    .all(now) as ScheduledTask[];
+    .all(now) as Record<string, unknown>[];
+  return rows.map((row) => parseScheduledTaskRow(row));
 }
 
 export function updateTaskAfterRun(

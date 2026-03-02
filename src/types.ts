@@ -119,8 +119,7 @@ export interface ScheduledTask {
   prompt: string;
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
-  todo_auto_create?: boolean;
-  todo_daily_quota?: number | null;
+  workflow_rules?: TaskWorkflowRules | null;
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
@@ -130,6 +129,12 @@ export interface ScheduledTask {
   status: 'active' | 'paused' | 'completed';
   created_at: string;
   created_by?: string;
+}
+
+export interface TaskWorkflowRules {
+  on_error?: {
+    todo_ingest?: boolean;
+  };
 }
 
 export interface TaskRunLog {
