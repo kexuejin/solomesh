@@ -71,9 +71,10 @@ export function TodosPage() {
     todos,
     nextCursor,
     loading,
-    error,
+    listError,
     eventsByTodo,
     eventsLoadingByTodo,
+    eventsErrorByTodo,
     loadTodos,
     loadTodoEvents,
   } = useTodosStore();
@@ -305,11 +306,11 @@ export function TodosPage() {
           </div>
         </section>
 
-        {error && (
+        {listError && (
           <div className="surface-card-soft flex items-center justify-between rounded-xl border border-red-200 bg-red-50/85 p-3">
-            <span className="text-sm text-red-700">{error}</span>
+            <span className="text-sm text-red-700">{listError}</span>
             <button
-              onClick={() => useTodosStore.setState({ error: null })}
+              onClick={() => useTodosStore.setState({ listError: null })}
               className="rounded p-1 text-red-400 hover:text-red-600"
               aria-label={t('todos.page.dismissError')}
               type="button"
@@ -335,6 +336,7 @@ export function TodosPage() {
               const focused = Boolean(focusTodoId) && todo.id === focusTodoId;
               const events = eventsByTodo[todo.id] ?? [];
               const eventsLoading = eventsLoadingByTodo[todo.id] === true;
+              const eventsError = eventsErrorByTodo[todo.id];
               const expanded = expandedTodoId === todo.id;
               return (
                 <section
@@ -392,6 +394,11 @@ export function TodosPage() {
 
                   {expanded && (
                     <div className="mt-3 space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                      {eventsError && (
+                        <div className="rounded-md border border-red-200 bg-red-50/85 px-3 py-2 text-xs text-red-700">
+                          {eventsError}
+                        </div>
+                      )}
                       {eventsLoading ? (
                         <div className="text-xs text-muted-foreground">{t('todos.events.loading')}</div>
                       ) : events.length === 0 ? (

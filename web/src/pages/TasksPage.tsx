@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTasksStore } from '../stores/tasks';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
 import { TaskCard } from '../components/tasks/TaskCard';
 import { CreateTaskForm } from '../components/tasks/CreateTaskForm';
-import { Plus, RefreshCw, Clock, X } from 'lucide-react';
+import { Plus, RefreshCw, Clock, X, ListChecks } from 'lucide-react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -15,6 +16,7 @@ import type { TaskConfig } from '../stores/tasks';
 
 export function TasksPage() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { tasks, loading, error, loadTasks, createTask, updateTaskStatus, deleteTask } = useTasksStore();
   const { groups, loadGroups } = useChatStore();
   const user = useAuthStore((s) => s.user);
@@ -103,6 +105,10 @@ export function TasksPage() {
                 <Button variant="outline" onClick={loadTasks} disabled={loading}>
                   <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                   {t('tasks.page.refresh')}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/todos')}>
+                  <ListChecks size={18} />
+                  {t('tasks.page.viewTodos')}
                 </Button>
                 <Button onClick={() => openCreateForm()}>
                   <Plus size={18} />

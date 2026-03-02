@@ -52,9 +52,10 @@ interface TodosStore {
   todos: TodoItem[];
   nextCursor: string | null;
   loading: boolean;
-  error: string | null;
+  listError: string | null;
   eventsByTodo: Record<string, TodoSourceEvent[]>;
   eventsLoadingByTodo: Record<string, boolean>;
+  eventsErrorByTodo: Record<string, string | null>;
   loadTodos: (
     filters?: TodoFilters,
     options?: { append?: boolean },
@@ -89,9 +90,10 @@ export const useTodosStore = create<TodosStore>((set) => ({
   todos: [],
   nextCursor: null,
   loading: false,
-  error: null,
+  listError: null,
   eventsByTodo: {},
   eventsLoadingByTodo: {},
+  eventsErrorByTodo: {},
 
   loadTodos: async (filters, options) => {
     set({ loading: true });
@@ -105,7 +107,7 @@ export const useTodosStore = create<TodosStore>((set) => ({
             todos: data.todos,
             nextCursor: data.nextCursor,
             loading: false,
-            error: null,
+            listError: null,
           };
         }
 
@@ -120,13 +122,13 @@ export const useTodosStore = create<TodosStore>((set) => ({
           todos: merged,
           nextCursor: data.nextCursor,
           loading: false,
-          error: null,
+          listError: null,
         };
       });
     } catch (error) {
       set({
         loading: false,
-        error: extractStoreErrorMessage(error) ?? getStoreMessage('todos.store.loadFailed'),
+        listError: extractStoreErrorMessage(error) ?? getStoreMessage('todos.store.loadFailed'),
       });
     }
   },
@@ -137,6 +139,10 @@ export const useTodosStore = create<TodosStore>((set) => ({
       eventsLoadingByTodo: {
         ...state.eventsLoadingByTodo,
         [todoId]: true,
+      },
+      eventsErrorByTodo: {
+        ...state.eventsErrorByTodo,
+        [todoId]: null,
       },
     }));
     try {
@@ -152,7 +158,10 @@ export const useTodosStore = create<TodosStore>((set) => ({
           ...state.eventsLoadingByTodo,
           [todoId]: false,
         },
-        error: null,
+        eventsErrorByTodo: {
+          ...state.eventsErrorByTodo,
+          [todoId]: null,
+        },
       }));
     } catch (error) {
       set((state) => ({
@@ -160,7 +169,10 @@ export const useTodosStore = create<TodosStore>((set) => ({
           ...state.eventsLoadingByTodo,
           [todoId]: false,
         },
-        error: extractStoreErrorMessage(error) ?? getStoreMessage('todos.store.loadEventsFailed'),
+        eventsErrorByTodo: {
+          ...state.eventsErrorByTodo,
+          [todoId]: extractStoreErrorMessage(error) ?? getStoreMessage('todos.store.loadEventsFailed'),
+        },
       }));
     }
   },

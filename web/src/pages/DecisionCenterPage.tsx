@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, CircleOff, Lightbulb, RefreshCw } from 'lucide-react';
+import { Check, CircleOff, Lightbulb, ListChecks, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/common/PageHeader';
@@ -340,10 +340,16 @@ export function DecisionCenterPage() {
             })}
             className="mb-4"
             actions={
-              <Button variant="outline" onClick={() => void handleRefresh()} disabled={loading}>
-                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                {t('decisionCenter.page.refresh')}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => navigate('/todos')}>
+                  <ListChecks size={18} />
+                  {t('decisionCenter.page.viewTodos')}
+                </Button>
+                <Button variant="outline" onClick={() => void handleRefresh()} disabled={loading}>
+                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                  {t('decisionCenter.page.refresh')}
+                </Button>
+              </div>
             }
           />
 
