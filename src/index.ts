@@ -166,6 +166,7 @@ import {
 } from './operation-permission-mode.js';
 import {
   buildProviderHandoffPrompt,
+  selectProviderHandoffContextMessages,
   resolveProviderHandoffTransition,
 } from './provider-handoff.js';
 import {
@@ -1915,10 +1916,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     effectiveProvider,
   });
   if (handoffTransition) {
-    const before = sinceCursor.timestamp || undefined;
-    const recent = getMessagesPage(chatJid, before, 24)
+    const recentRows = getMessagesPage(chatJid, undefined, 48)
       .reverse()
       .map((m) => ({
+        id: m.id,
         sender: m.sender,
         sender_name: m.sender_name,
         content: m.content,
@@ -1926,6 +1927,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         is_from_me: m.is_from_me,
         provider: m.provider ?? null,
       }));
+    const recent = selectProviderHandoffContextMessages(
+      recentRows,
+      missedMessages.map((m) => m.id),
+      24,
+    );
     const handoffPrompt = buildProviderHandoffPrompt(handoffTransition, recent);
     prompt = `${handoffPrompt}\n\n${prompt}`;
     delete chatProviderPendingHandoffFrom[chatJid];
@@ -3238,10 +3244,10 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
     effectiveProvider,
   });
   if (handoffTransition) {
-    const before = sinceCursor.timestamp || undefined;
-    const recent = getMessagesPage(virtualChatJid, before, 24)
+    const recentRows = getMessagesPage(virtualChatJid, undefined, 48)
       .reverse()
       .map((m) => ({
+        id: m.id,
         sender: m.sender,
         sender_name: m.sender_name,
         content: m.content,
@@ -3249,6 +3255,11 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
         is_from_me: m.is_from_me,
         provider: m.provider ?? null,
       }));
+    const recent = selectProviderHandoffContextMessages(
+      recentRows,
+      missedMessages.map((m) => m.id),
+      24,
+    );
     const handoffPrompt = buildProviderHandoffPrompt(handoffTransition, recent);
     prompt = `${handoffPrompt}\n\n${prompt}`;
     delete chatProviderPendingHandoffFrom[virtualChatJid];
