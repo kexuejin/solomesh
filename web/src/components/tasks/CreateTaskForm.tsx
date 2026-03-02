@@ -38,7 +38,7 @@ interface CreateTaskFormProps {
     contextMode: ContextMode;
     executionType: 'agent' | 'script';
     scriptCommand: string;
-    workflowRules: {
+    taskConfig: {
       on_error?: {
         todo_ingest?: boolean;
       };
@@ -385,7 +385,7 @@ export function CreateTaskForm({
         scriptCommand: formData.scriptCommand.trim(),
         scheduleType,
         scheduleValue,
-        workflowRules: onErrorTodoIngest
+        taskConfig: onErrorTodoIngest
           ? {
             on_error: {
               todo_ingest: true,

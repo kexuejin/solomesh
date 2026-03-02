@@ -8,9 +8,9 @@ interface TaskDetailProps {
 
 export function TaskDetail({ task }: TaskDetailProps) {
   const { t, locale } = useI18n();
-  const { logs, loadLogs, updateTaskWorkflowRule } = useTasksStore();
+  const { logs, loadLogs, updateTaskOnErrorTodoRule } = useTasksStore();
   const taskLogs = logs[task.id] || [];
-  const onErrorTodoRuleEnabled = task.workflow_rules?.on_error?.todo_ingest === true;
+  const onErrorTodoRuleEnabled = task.task_config?.on_error?.todo_ingest === true;
   const [updatingRule, setUpdatingRule] = useState(false);
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export function TaskDetail({ task }: TaskDetailProps) {
   const handleToggleOnErrorTodoRule = async () => {
     setUpdatingRule(true);
     try {
-      await updateTaskWorkflowRule(task.id, !onErrorTodoRuleEnabled);
+      await updateTaskOnErrorTodoRule(task.id, !onErrorTodoRuleEnabled);
     } finally {
       setUpdatingRule(false);
     }

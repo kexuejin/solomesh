@@ -119,7 +119,7 @@ Ingest 响应必须返回：
 
 当前自动化失败写入 Todo 的最小落地约定：
 
-- 规则字段：`workflow_rules.on_error.todo_ingest = true`
+- 规则字段：`task_config.on_error.todo_ingest = true`
 - 规则生效点：Automation 执行出错分支
 - 规则行为：命中时调用统一 `todo ingest`
 

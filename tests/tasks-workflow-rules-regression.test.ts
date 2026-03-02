@@ -7,22 +7,22 @@ function read(relPath: string): string {
   return fs.readFileSync(path.join(process.cwd(), relPath), 'utf8');
 }
 
-test('create task form emits explicit workflowRules on_error todo flag', () => {
+test('create task form emits explicit taskConfig on_error todo flag', () => {
   const source = read('web/src/components/tasks/CreateTaskForm.tsx');
 
   assert.ok(source.includes('onErrorTodoIngest'));
   assert.ok(source.includes('template.defaultOnErrorTodoIngest ?? false'));
-  assert.ok(source.includes('workflowRules'));
+  assert.ok(source.includes('taskConfig'));
   assert.ok(source.includes('on_error'));
   assert.ok(source.includes('todo_ingest'));
 });
 
-test('tasks store forwards and updates workflow_rules payload', () => {
+test('tasks store forwards and updates task_config payload', () => {
   const source = read('web/src/stores/tasks.ts');
 
-  assert.ok(source.includes('workflowRules'));
-  assert.ok(source.includes('workflow_rules'));
-  assert.ok(source.includes('updateTaskWorkflowRule'));
+  assert.ok(source.includes('taskConfig'));
+  assert.ok(source.includes('task_config'));
+  assert.ok(source.includes('updateTaskOnErrorTodoRule'));
   assert.ok(source.includes('tasks.store.updateRuleFailed'));
 });
 

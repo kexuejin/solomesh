@@ -55,31 +55,48 @@ export const RuntimeModelSelectionSchema = z
     { message: 'At least one of agentRuntime/modelProvider/model must be provided' },
   );
 
-export const TaskWorkflowRulesSchema = z
+const CompetitorGitTaskConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    repo: z.string().trim().min(1).max(300).optional(),
+    branch: z.string().trim().min(1).max(128).optional(),
+    lookback_commits: z.number().int().min(1).max(500).optional(),
+  })
+  .passthrough();
+
+const CompetitorGitTaskStateSchema = z
+  .object({
+    last_sha: z
+      .string()
+      .trim()
+      .regex(/^[0-9a-f]{7,40}$/i)
+      .nullable()
+      .optional(),
+    last_scan_at: z.string().datetime().optional(),
+  })
+  .passthrough();
+
+export const TaskConfigSchema = z
   .object({
     on_error: z
       .object({
         todo_ingest: z.boolean().optional(),
       })
       .optional(),
-    plugin_state: z
+    plugins: z
       .object({
-        competitor_git: z
-          .object({
-            enabled: z.boolean().optional(),
-            repo: z.string().trim().min(1).max(300).optional(),
-            branch: z.string().trim().min(1).max(128).optional(),
-            last_sha: z
-              .string()
-              .trim()
-              .regex(/^[0-9a-f]{7,40}$/i)
-              .nullable()
-              .optional(),
-            lookback_commits: z.number().int().min(1).max(500).optional(),
-            last_scan_at: z.string().datetime().optional(),
-          })
-          .passthrough()
-          .optional(),
+        competitor_git: CompetitorGitTaskConfigSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export const TaskStateSchema = z
+  .object({
+    plugins: z
+      .object({
+        competitor_git: CompetitorGitTaskStateSchema.optional(),
       })
       .passthrough()
       .optional(),
@@ -93,7 +110,7 @@ export const TaskPatchSchema = z.object({
   context_mode: z.enum(['group', 'isolated']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).nullable().optional(),
-  workflow_rules: TaskWorkflowRulesSchema.nullable().optional(),
+  task_config: TaskConfigSchema.nullable().optional(),
   status: z.enum(['active', 'paused']).optional(),
   next_run: z.string().optional(),
 });
@@ -169,7 +186,7 @@ export const TaskCreateSchema = z.object({
   context_mode: z.enum(['group', 'isolated']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).optional(),
-  workflow_rules: TaskWorkflowRulesSchema.optional(),
+  task_config: TaskConfigSchema.optional(),
 }).superRefine((data, ctx) => {
   const execType = data.execution_type || 'agent';
   if (execType === 'agent' && !data.prompt?.trim()) {

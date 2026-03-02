@@ -30,7 +30,7 @@ import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { hasScriptCapacity, runScript } from './script-runner.js';
 import { ingestTodo } from './todo-core.js';
-import { RegisteredGroup, ScheduledTask, TaskWorkflowRules } from './types.js';
+import { RegisteredGroup, ScheduledTask, TaskState } from './types.js';
 
 export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
@@ -61,11 +61,11 @@ export interface CompetitorGitCursorConfig {
 }
 
 export function shouldIngestAutomationErrorTodo(
-  task: Pick<ScheduledTask, 'workflow_rules'>,
+  task: Pick<ScheduledTask, 'task_config'>,
   error: string | null,
 ): boolean {
   if (!error) return false;
-  return task.workflow_rules?.on_error?.todo_ingest === true;
+  return task.task_config?.on_error?.todo_ingest === true;
 }
 
 function normalizeGitSha(value: unknown): string | null {
@@ -94,18 +94,20 @@ function parsePromptCompetitorGitHints(prompt: string): {
 }
 
 export function getCompetitorGitCursorConfig(
-  task: Pick<ScheduledTask, 'workflow_rules' | 'prompt'>,
+  task: Pick<ScheduledTask, 'task_config' | 'task_state' | 'prompt'>,
 ): CompetitorGitCursorConfig | null {
-  const state = task.workflow_rules?.plugin_state?.competitor_git;
-  if (state?.enabled === false) return null;
+  const config = task.task_config?.plugins?.competitor_git;
+  if (config?.enabled === false) return null;
   const hint = parsePromptCompetitorGitHints(task.prompt);
-  const repo = (state?.repo ?? hint.repo ?? '').trim();
+  const repo = (config?.repo ?? hint.repo ?? '').trim();
   if (!repo) return null;
 
-  const branchRaw = (state?.branch ?? hint.branch ?? '').trim();
+  const branchRaw = (config?.branch ?? hint.branch ?? '').trim();
   const branch = branchRaw || 'main';
-  const lastSha = normalizeGitSha(state?.last_sha ?? null);
-  const lookbackRaw = Number(state?.lookback_commits ?? hint.lookbackCommits);
+  const lastSha = normalizeGitSha(
+    task.task_state?.plugins?.competitor_git?.last_sha ?? null,
+  );
+  const lookbackRaw = Number(config?.lookback_commits ?? hint.lookbackCommits);
   const lookbackCommits =
     Number.isFinite(lookbackRaw) && lookbackRaw > 0
       ? Math.min(500, Math.max(1, Math.floor(lookbackRaw)))
@@ -165,27 +167,23 @@ function updateCompetitorGitCursorState(
 
   const nextSha = extractCompetitorGitNextSha(result);
   const nowIso = new Date().toISOString();
-  const currentRules = task.workflow_rules ?? {};
-  const currentState = currentRules.plugin_state?.competitor_git ?? {};
-  const existingSha = normalizeGitSha(currentState.last_sha ?? null);
+  const currentState = task.task_state ?? {};
+  const currentPluginState = currentState.plugins?.competitor_git ?? {};
+  const existingSha = normalizeGitSha(currentPluginState.last_sha ?? null);
   const resolvedSha = nextSha ?? existingSha;
 
-  const nextRules: TaskWorkflowRules = {
-    ...currentRules,
-    plugin_state: {
-      ...(currentRules.plugin_state ?? {}),
+  const nextState: TaskState = {
+    ...currentState,
+    plugins: {
+      ...(currentState.plugins ?? {}),
       competitor_git: {
-        ...currentState,
-        enabled: currentState.enabled ?? true,
-        repo: config.repo,
-        branch: config.branch,
-        lookback_commits: config.lookbackCommits,
+        ...currentPluginState,
         last_sha: resolvedSha,
         last_scan_at: nowIso,
       },
     },
   };
-  updateTask(task.id, { workflow_rules: nextRules });
+  updateTask(task.id, { task_state: nextState });
 
   if (nextSha && nextSha !== existingSha) {
     logger.info(

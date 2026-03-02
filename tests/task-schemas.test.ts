@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TaskCreateSchema, TaskPatchSchema } from '../src/schemas.js';
+import { TaskCreateSchema, TaskPatchSchema, TaskStateSchema } from '../src/schemas.js';
 
 test('TaskCreateSchema accepts script task with empty prompt and valid script_command', () => {
   const parsed = TaskCreateSchema.safeParse({
@@ -53,9 +53,9 @@ test('TaskPatchSchema accepts execution_type and script_command fields', () => {
   }
 });
 
-test('TaskPatchSchema accepts explicit workflow todo rule fields', () => {
+test('TaskPatchSchema accepts explicit task_config todo rule fields', () => {
   const parsed = TaskPatchSchema.safeParse({
-    workflow_rules: {
+    task_config: {
       on_error: {
         todo_ingest: true,
       },
@@ -64,19 +64,18 @@ test('TaskPatchSchema accepts explicit workflow todo rule fields', () => {
 
   assert.equal(parsed.success, true);
   if (parsed.success) {
-    assert.equal(parsed.data.workflow_rules?.on_error?.todo_ingest, true);
+    assert.equal(parsed.data.task_config?.on_error?.todo_ingest, true);
   }
 });
 
-test('TaskPatchSchema accepts competitor_git plugin state fields', () => {
+test('TaskPatchSchema accepts competitor_git plugin config fields', () => {
   const parsed = TaskPatchSchema.safeParse({
-    workflow_rules: {
-      plugin_state: {
+    task_config: {
+      plugins: {
         competitor_git: {
           enabled: true,
           repo: 'https://github.com/example/competitor',
           branch: 'main',
-          last_sha: 'abc1234',
           lookback_commits: 80,
         },
       },
@@ -85,26 +84,23 @@ test('TaskPatchSchema accepts competitor_git plugin state fields', () => {
 
   assert.equal(parsed.success, true);
   if (parsed.success) {
-    assert.equal(parsed.data.workflow_rules?.plugin_state?.competitor_git?.repo, 'https://github.com/example/competitor');
-    assert.equal(parsed.data.workflow_rules?.plugin_state?.competitor_git?.last_sha, 'abc1234');
+    assert.equal(parsed.data.task_config?.plugins?.competitor_git?.repo, 'https://github.com/example/competitor');
+    assert.equal(parsed.data.task_config?.plugins?.competitor_git?.lookback_commits, 80);
   }
 });
 
-test('TaskPatchSchema rejects invalid competitor_git last_sha', () => {
-  const parsed = TaskPatchSchema.safeParse({
-    workflow_rules: {
-      plugin_state: {
+test('TaskStateSchema rejects invalid competitor_git last_sha', () => {
+  const parsed = TaskStateSchema.safeParse({
+    plugins: {
         competitor_git: {
-          repo: 'https://github.com/example/competitor',
           last_sha: 'not-a-sha',
         },
-      },
     },
   });
 
   assert.equal(parsed.success, false);
   if (!parsed.success) {
     const paths = parsed.error.issues.map((i) => i.path.join('.'));
-    assert.ok(paths.includes('workflow_rules.plugin_state.competitor_git.last_sha'));
+    assert.ok(paths.includes('plugins.competitor_git.last_sha'));
   }
 });

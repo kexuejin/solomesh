@@ -7,34 +7,36 @@ function read(relPath: string): string {
   return fs.readFileSync(path.join(process.cwd(), relPath), 'utf8');
 }
 
-test('scheduled_tasks schema uses workflow_rules column', () => {
+test('scheduled_tasks schema uses task_config/task_state columns', () => {
   const source = read('src/db.ts');
 
-  assert.ok(source.includes('workflow_rules TEXT'));
-  assert.ok(source.includes("ensureColumn('scheduled_tasks', 'workflow_rules', 'TEXT')"));
-  assert.ok(source.includes("'workflow_rules'"));
+  assert.ok(source.includes('task_config TEXT'));
+  assert.ok(source.includes('task_state TEXT'));
+  assert.ok(source.includes("ensureColumn('scheduled_tasks', 'task_config', 'TEXT')"));
+  assert.ok(source.includes("ensureColumn('scheduled_tasks', 'task_state', 'TEXT')"));
+  assert.ok(source.includes("'task_config'"));
+  assert.ok(source.includes("'task_state'"));
 });
 
-test('legacy todo_auto_create rows are mapped to on_error todo rule', () => {
+test('db no longer carries legacy todo_auto_create/workflow_rules migration path', () => {
   const source = read('src/db.ts');
 
-  assert.ok(source.includes('todo_auto_create'));
-  assert.ok(source.includes('SET workflow_rules = ?'));
-  assert.ok(source.includes('on_error'));
-  assert.ok(source.includes('todo_ingest'));
+  assert.ok(!source.includes('todo_auto_create'));
+  assert.ok(!source.includes('workflow_rules'));
 });
 
-test('tasks route accepts workflow_rules in create payload', () => {
+test('tasks route accepts task_config in create payload', () => {
   const source = read('src/routes/tasks.ts');
 
-  assert.ok(source.includes('workflow_rules'));
-  assert.ok(source.includes('workflow_rules: workflow_rules ?? null'));
+  assert.ok(source.includes('task_config'));
+  assert.ok(source.includes('task_config: task_config ?? null'));
+  assert.ok(source.includes('task_state: null'));
 });
 
-test('task scheduler checks explicit workflow_rules on_error switch only', () => {
+test('task scheduler checks explicit task_config on_error switch only', () => {
   const source = read('src/task-scheduler.ts');
 
   assert.ok(source.includes('shouldIngestAutomationErrorTodo'));
-  assert.ok(source.includes('task.workflow_rules?.on_error?.todo_ingest === true'));
+  assert.ok(source.includes('task.task_config?.on_error?.todo_ingest === true'));
   assert.ok(!source.includes('shouldIngestAutomationTodo'));
 });

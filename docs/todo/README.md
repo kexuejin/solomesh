@@ -28,7 +28,7 @@
 
 ## 当前自动化规则落地
 
-- 字段：`workflow_rules.on_error.todo_ingest`
+- 字段：`task_config.on_error.todo_ingest`
 - 创建入口：自动化创建表单
 - 编辑入口：自动化任务详情
 - 生效行为：任务执行失败时写入 Todo（通过统一 `todo.ingest`）
@@ -36,20 +36,30 @@
 
 ## 轻量 Git 增量游标（不新增表）
 
-- 复用字段：`scheduled_tasks.workflow_rules.plugin_state.competitor_git`
+- 复用字段：
+  - 配置：`scheduled_tasks.task_config.plugins.competitor_git`
+  - 状态：`scheduled_tasks.task_state.plugins.competitor_git`
 - 示例：
 
 ```json
 {
-  "on_error": { "todo_ingest": true },
-  "plugin_state": {
-    "competitor_git": {
-      "enabled": true,
-      "repo": "https://github.com/example/competitor",
-      "branch": "main",
-      "last_sha": "abc1234",
-      "lookback_commits": 50,
-      "last_scan_at": "2026-03-02T12:00:00.000Z"
+  "task_config": {
+    "on_error": { "todo_ingest": true },
+    "plugins": {
+      "competitor_git": {
+        "enabled": true,
+        "repo": "https://github.com/example/competitor",
+        "branch": "main",
+        "lookback_commits": 50
+      }
+    }
+  },
+  "task_state": {
+    "plugins": {
+      "competitor_git": {
+        "last_sha": "abc1234",
+        "last_scan_at": "2026-03-02T12:00:00.000Z"
+      }
     }
   }
 }
@@ -67,7 +77,7 @@
 - 内置 Automation 模板：
   - `competitor-watch`
   - `project-recommendation`
-  - 默认开启失败规则：`workflow_rules.on_error.todo_ingest=true`
+  - 默认开启失败规则：`task_config.on_error.todo_ingest=true`
 - 内置 Skill（Plugin 示例）：
   - `container/skills/competitor-tracker/SKILL.md`
   - `container/skills/project-recommender/SKILL.md`

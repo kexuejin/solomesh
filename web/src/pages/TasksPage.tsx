@@ -36,7 +36,7 @@ export function TasksPage() {
     contextMode: 'group' | 'isolated';
     executionType: 'agent' | 'script';
     scriptCommand: string;
-    workflowRules: {
+    taskConfig: {
       on_error?: {
         todo_ingest?: boolean;
       };
@@ -51,7 +51,7 @@ export function TasksPage() {
       data.contextMode,
       data.executionType,
       data.scriptCommand,
-      data.workflowRules,
+      data.taskConfig,
     );
     setShowCreateForm(false);
   };

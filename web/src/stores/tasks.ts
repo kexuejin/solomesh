@@ -13,7 +13,8 @@ export interface ScheduledTask {
   context_mode: 'group' | 'isolated';
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
-  workflow_rules?: TaskWorkflowRules | null;
+  task_config?: TaskConfig | null;
+  task_state?: TaskState | null;
   next_run: string | null;
   last_run?: string | null;
   last_result?: string | null;
@@ -21,9 +22,30 @@ export interface ScheduledTask {
   created_at: string;
 }
 
-export interface TaskWorkflowRules {
+export interface CompetitorGitTaskPluginConfig {
+  enabled?: boolean;
+  repo?: string;
+  branch?: string;
+  lookback_commits?: number;
+}
+
+export interface CompetitorGitTaskPluginState {
+  last_sha?: string | null;
+  last_scan_at?: string;
+}
+
+export interface TaskConfig {
   on_error?: {
     todo_ingest?: boolean;
+  };
+  plugins?: {
+    competitor_git?: CompetitorGitTaskPluginConfig;
+  };
+}
+
+export interface TaskState {
+  plugins?: {
+    competitor_git?: CompetitorGitTaskPluginState;
   };
 }
 
@@ -52,10 +74,14 @@ interface TasksState {
     contextMode: 'group' | 'isolated',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
-    workflowRules?: TaskWorkflowRules | null,
+    taskConfig?: TaskConfig | null,
   ) => Promise<void>;
   updateTaskStatus: (id: string, status: 'active' | 'paused') => Promise<void>;
-  updateTaskWorkflowRule: (id: string, enabled: boolean) => Promise<void>;
+  updateTaskConfig: (
+    id: string,
+    taskConfig: TaskConfig | null,
+  ) => Promise<void>;
+  updateTaskOnErrorTodoRule: (id: string, enabled: boolean) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   loadLogs: (taskId: string) => Promise<void>;
 }
@@ -79,6 +105,51 @@ function normalizeOnceScheduleValue(value: string): string {
     return new Date(parsed).toISOString();
   }
   return new Date(trimmed).toISOString();
+}
+
+function hasOwnKeys(value: object | null | undefined): boolean {
+  if (!value) return false;
+  return Object.keys(value).length > 0;
+}
+
+function normalizeTaskConfig(
+  config: TaskConfig | null | undefined,
+): TaskConfig | null {
+  if (!config) return null;
+
+  const onError = config.on_error?.todo_ingest === true
+    ? { on_error: { todo_ingest: true } }
+    : {};
+
+  const competitorRaw = config.plugins?.competitor_git;
+  const competitor = competitorRaw
+    ? {
+      ...(typeof competitorRaw.enabled === 'boolean'
+        ? { enabled: competitorRaw.enabled }
+        : {}),
+      ...(typeof competitorRaw.repo === 'string' && competitorRaw.repo.trim()
+        ? { repo: competitorRaw.repo.trim() }
+        : {}),
+      ...(typeof competitorRaw.branch === 'string' && competitorRaw.branch.trim()
+        ? { branch: competitorRaw.branch.trim() }
+        : {}),
+      ...(typeof competitorRaw.lookback_commits === 'number'
+        && Number.isFinite(competitorRaw.lookback_commits)
+        && competitorRaw.lookback_commits > 0
+        ? { lookback_commits: Math.max(1, Math.floor(competitorRaw.lookback_commits)) }
+        : {}),
+    }
+    : null;
+
+  const pluginState = competitor && hasOwnKeys(competitor)
+    ? { plugins: { competitor_git: competitor } }
+    : {};
+
+  const merged: TaskConfig = {
+    ...onError,
+    ...pluginState,
+  };
+  return hasOwnKeys(merged) ? merged : null;
 }
 
 export const useTasksStore = create<TasksState>((set, get) => ({
@@ -109,7 +180,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     contextMode: 'group' | 'isolated',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
-    workflowRules?: TaskWorkflowRules | null,
+    taskConfig?: TaskConfig | null,
   ) => {
     try {
       const normalizedScheduleValue =
@@ -131,8 +202,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       if (scriptCommand) {
         body.script_command = scriptCommand;
       }
-      if (workflowRules !== undefined) {
-        body.workflow_rules = workflowRules;
+      if (taskConfig !== undefined) {
+        body.task_config = normalizeTaskConfig(taskConfig);
       }
       await api.post('/api/tasks', body);
       set({ error: null });
@@ -152,21 +223,32 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     }
   },
 
-  updateTaskWorkflowRule: async (id: string, enabled: boolean) => {
+  updateTaskConfig: async (id: string, taskConfig: TaskConfig | null) => {
     try {
       await api.patch(`/api/tasks/${id}`, {
-        workflow_rules: enabled
-          ? {
-            on_error: {
-              todo_ingest: true,
-            },
-          }
-          : null,
+        task_config: normalizeTaskConfig(taskConfig),
       });
       set({ error: null });
       await get().loadTasks();
     } catch (err) {
       set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.updateRuleFailed') });
+    }
+  },
+
+  updateTaskOnErrorTodoRule: async (id: string, enabled: boolean) => {
+    const task = get().tasks.find((item) => item.id === id);
+    const current = task?.task_config ?? null;
+    const next = normalizeTaskConfig({
+      ...(current ?? {}),
+      on_error: enabled
+        ? { todo_ingest: true }
+        : undefined,
+    });
+
+    try {
+      await get().updateTaskConfig(id, next);
+    } catch {
+      set({ error: getStoreMessage('tasks.store.updateRuleFailed') });
     }
   },
 

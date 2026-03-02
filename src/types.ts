@@ -119,7 +119,8 @@ export interface ScheduledTask {
   prompt: string;
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
-  workflow_rules?: TaskWorkflowRules | null;
+  task_config?: TaskConfig | null;
+  task_state?: TaskState | null;
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
@@ -131,20 +132,31 @@ export interface ScheduledTask {
   created_by?: string;
 }
 
-export interface TaskWorkflowRules {
+export interface TaskConfig {
   on_error?: {
     todo_ingest?: boolean;
   };
-  plugin_state?: {
+  plugins?: {
     competitor_git?: {
       enabled?: boolean;
       repo?: string;
       branch?: string;
-      last_sha?: string | null;
       lookback_commits?: number;
+    };
+    [pluginId: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface TaskState {
+  plugins?: {
+    competitor_git?: {
+      last_sha?: string | null;
       last_scan_at?: string;
     };
+    [pluginId: string]: unknown;
   };
+  [key: string]: unknown;
 }
 
 export interface TaskRunLog {

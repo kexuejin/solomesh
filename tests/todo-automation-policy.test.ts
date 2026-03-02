@@ -12,7 +12,7 @@ test('missing error skips automation todo ingest', () => {
   assert.equal(
     shouldIngestAutomationErrorTodo(
       {
-        workflow_rules: {
+        task_config: {
           on_error: { todo_ingest: true },
         },
       },
@@ -26,7 +26,7 @@ test('error without explicit on_error.todo_ingest rule skips ingest', () => {
   assert.equal(
     shouldIngestAutomationErrorTodo(
       {
-        workflow_rules: {},
+        task_config: {},
       },
       'task failed',
     ),
@@ -38,7 +38,7 @@ test('error with explicit on_error.todo_ingest ingests todo', () => {
   assert.equal(
     shouldIngestAutomationErrorTodo(
       {
-        workflow_rules: {
+        task_config: {
           on_error: { todo_ingest: true },
         },
       },
@@ -48,17 +48,23 @@ test('error with explicit on_error.todo_ingest ingests todo', () => {
   );
 });
 
-test('competitor_git config can be read from workflow_rules', () => {
+test('competitor_git config can be read from task_config + task_state', () => {
   const config = getCompetitorGitCursorConfig({
     prompt: '请追踪竞品更新',
-    workflow_rules: {
-      plugin_state: {
+    task_config: {
+      plugins: {
         competitor_git: {
           enabled: true,
           repo: 'https://github.com/example/competitor',
           branch: 'develop',
-          last_sha: 'abc1234',
           lookback_commits: 120,
+        },
+      },
+    },
+    task_state: {
+      plugins: {
+        competitor_git: {
+          last_sha: 'abc1234',
         },
       },
     },
@@ -71,14 +77,25 @@ test('competitor_git config can be read from workflow_rules', () => {
   assert.equal(config?.lookbackCommits, 120);
 });
 
-test('competitor_git config falls back to prompt hints', () => {
+test('missing competitor_git task_config returns null', () => {
+  const config = getCompetitorGitCursorConfig({
+    prompt: '无配置',
+    task_config: null,
+    task_state: null,
+  });
+
+  assert.equal(config, null);
+});
+
+test('competitor_git config can fall back to prompt hints', () => {
   const config = getCompetitorGitCursorConfig({
     prompt: [
       'repo: https://github.com/example/competitor',
       'branch: main',
       'lookback_commits: 60',
     ].join('\n'),
-    workflow_rules: null,
+    task_config: null,
+    task_state: null,
   });
 
   assert.ok(config);

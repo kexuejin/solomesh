@@ -62,14 +62,14 @@ test('scenario 3: scheduled automation templates include todo-oriented presets',
 test('scenario 4: automation failure ingest only runs with explicit on_error rule', () => {
   assert.equal(
     shouldIngestAutomationErrorTodo(
-      { workflow_rules: null },
+      { task_config: null },
       'task failed',
     ),
     false,
   );
   assert.equal(
     shouldIngestAutomationErrorTodo(
-      { workflow_rules: { on_error: { todo_ingest: true } } },
+      { task_config: { on_error: { todo_ingest: true } } },
       'task failed',
     ),
     true,
