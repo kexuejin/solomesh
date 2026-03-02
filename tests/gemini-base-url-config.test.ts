@@ -22,5 +22,8 @@ test('runtime config supports gemini base url field', () => {
 
 test('settings runtime page includes gemini base url input', () => {
   const runtimeSection = read('web/src/components/settings/RuntimeSection.tsx');
-  assert.ok(runtimeSection.includes('GOOGLE_GEMINI_BASE_URL'));
+  assert.ok(runtimeSection.includes('value={geminiBaseUrl}'));
+  assert.ok(runtimeSection.includes('onChange={(e) => setGeminiBaseUrl(e.target.value)}'));
+  assert.ok(runtimeSection.includes("t('setupProviders.runtime.generic.geminiBaseUrlLabel')"));
+  assert.ok(runtimeSection.includes("t('setupProviders.runtime.generic.geminiBaseUrlPlaceholder')"));
 });

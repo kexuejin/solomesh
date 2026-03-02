@@ -6,7 +6,7 @@
 
 - 需求文档：`workflow-driven-todo-requirements.md`
 - 实现文档：`workflow-driven-todo-implementation.md`
-- 实施计划：`../plans/2026-03-02-workflow-driven-todo-implementation.md`
+- 实施计划：`workflow-driven-todo-implementation.md`（见文档第 10 节分阶段实施建议）
 
 ## 适用范围
 

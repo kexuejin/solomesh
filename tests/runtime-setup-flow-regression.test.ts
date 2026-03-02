@@ -13,10 +13,13 @@ function count(haystack: string, needle: string): number {
 
 test('runtime settings page keeps default-runtime switch as an explicit action', () => {
   const runtimeSection = read('web/src/components/settings/RuntimeSection.tsx');
+  const messages = read('web/src/i18n/messages.ts');
 
   assert.ok(runtimeSection.includes('const handleSaveDefaultRuntime = async () => {'));
-  assert.ok(runtimeSection.includes('切换上方 Runtime 仅用于编辑对应 Provider 配置；默认 Runtime 不会自动改变。'));
-  assert.ok(runtimeSection.includes('设为默认 Runtime（${currentRuntime.label}）'));
+  assert.ok(runtimeSection.includes("t('settings.runtime.switchHint')"));
+  assert.ok(messages.includes("switchHint: '切换上方 Runtime 仅用于编辑对应 Provider 配置；默认 Runtime 不会自动改变。'"));
+  assert.ok(runtimeSection.includes("t('settings.runtime.setDefault', { label: currentRuntime.label })"));
+  assert.ok(messages.includes("setDefault: '设为默认 Runtime（{{label}}）'"));
   assert.ok(runtimeSection.includes('disabled={loading || saving || applying || config?.agentRuntime === engineMode}'));
 
   // Editing provider credentials should not implicitly switch global runtime.
@@ -26,12 +29,14 @@ test('runtime settings page keeps default-runtime switch as an explicit action',
 
 test('setup page supports preparing Claude/Codex/Gemini credentials in one save', () => {
   const setupPage = read('web/src/pages/SetupProvidersPage.tsx');
+  const messages = read('web/src/i18n/messages.ts');
 
   assert.ok(setupPage.includes('const wantsClaude ='));
   assert.ok(setupPage.includes('const wantsCodex ='));
   assert.ok(setupPage.includes('const wantsGemini ='));
   assert.ok(setupPage.includes('if (!wantsClaude && !wantsCodex && !wantsGemini) {'));
-  assert.ok(setupPage.includes('请至少配置一个 Runtime 的凭据后再继续'));
+  assert.ok(setupPage.includes("setError(t('setupProviders.errors.runtimeRequired'));"));
+  assert.ok(messages.includes("runtimeRequired: '请至少配置一个 Runtime 的凭据后再继续'"));
 
   assert.ok(setupPage.includes('buildOfficialOauthSecretsPayload'));
   assert.ok(setupPage.includes('buildOfficialSetupTokenSecretsPayload'));
@@ -39,7 +44,9 @@ test('setup page supports preparing Claude/Codex/Gemini credentials in one save'
   assert.ok(setupPage.includes('buildCodexSecretsPayload'));
   assert.ok(setupPage.includes('buildGeminiSecretsPayload'));
 
-  assert.ok(setupPage.includes('可先切换到 Claude/Codex/Gemini 分别填写凭据，本页保存时会将已填写项一起提交，不会互相清空。'));
+  assert.ok(setupPage.includes("t('setupProviders.runtime.multiRuntimeHint')"));
+  assert.ok(messages.includes('multiRuntimeHint:'));
+  assert.ok(messages.includes('可先切换到 Claude/Codex/Gemini 分别填写凭据，本页保存时会将已填写项一起提交，不会互相清空。'));
   assert.equal(count(setupPage, 'agentRuntime:'), 1);
   assert.ok(setupPage.includes('await api.put(getRuntimeConfigEndpoint(), { agentRuntime: engineMode });'));
 });

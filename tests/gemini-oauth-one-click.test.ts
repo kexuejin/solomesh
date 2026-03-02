@@ -30,7 +30,7 @@ test('settings runtime page wires Gemini one-click OAuth flow', () => {
 
   assert.ok(source.includes("'/api/config/runtime/gemini/oauth/start'"));
   assert.ok(source.includes("'/api/config/runtime/gemini/oauth/callback'"));
-  assert.ok(source.includes('一键登录 Google'));
+  assert.ok(source.includes("t('settings.runtime.gemini.oneClickLogin')"));
 });
 
 test('host mode exports GEMINI_CLI_HOME as home root path', () => {
