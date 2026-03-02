@@ -75,39 +75,20 @@ function normalizeGitSha(value: unknown): string | null {
   return trimmed.toLowerCase();
 }
 
-function parsePromptCompetitorGitHints(prompt: string): {
-  repo?: string;
-  branch?: string;
-  lookbackCommits?: number;
-} {
-  const repo =
-    prompt.match(/^\s*(?:repo|repo_url)\s*[:=]\s*(\S+)/im)?.[1]?.trim() || '';
-  const branch =
-    prompt.match(/^\s*branch\s*[:=]\s*([^\s]+)/im)?.[1]?.trim() || '';
-  const lookbackRaw = prompt.match(/^\s*lookback_commits\s*[:=]\s*(\d+)/im)?.[1];
-  const lookback = lookbackRaw ? Number.parseInt(lookbackRaw, 10) : NaN;
-  return {
-    ...(repo ? { repo } : {}),
-    ...(branch ? { branch } : {}),
-    ...(Number.isFinite(lookback) && lookback > 0 ? { lookbackCommits: lookback } : {}),
-  };
-}
-
 export function getCompetitorGitCursorConfig(
-  task: Pick<ScheduledTask, 'task_config' | 'task_state' | 'prompt'>,
+  task: Pick<ScheduledTask, 'task_config' | 'task_state'>,
 ): CompetitorGitCursorConfig | null {
   const config = task.task_config?.plugins?.competitor_git;
   if (config?.enabled === false) return null;
-  const hint = parsePromptCompetitorGitHints(task.prompt);
-  const repo = (config?.repo ?? hint.repo ?? '').trim();
+  const repo = (config?.repo ?? '').trim();
   if (!repo) return null;
 
-  const branchRaw = (config?.branch ?? hint.branch ?? '').trim();
+  const branchRaw = (config?.branch ?? '').trim();
   const branch = branchRaw || 'main';
   const lastSha = normalizeGitSha(
     task.task_state?.plugins?.competitor_git?.last_sha ?? null,
   );
-  const lookbackRaw = Number(config?.lookback_commits ?? hint.lookbackCommits);
+  const lookbackRaw = Number(config?.lookback_commits);
   const lookbackCommits =
     Number.isFinite(lookbackRaw) && lookbackRaw > 0
       ? Math.min(500, Math.max(1, Math.floor(lookbackRaw)))

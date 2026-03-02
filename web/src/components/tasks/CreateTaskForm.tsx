@@ -18,6 +18,7 @@ import {
   type ScheduleType,
 } from './automation-presets';
 import { useI18n } from '../../i18n';
+import type { TaskConfig } from '../../stores/tasks';
 
 interface Group {
   jid: string;
@@ -38,11 +39,7 @@ interface CreateTaskFormProps {
     contextMode: ContextMode;
     executionType: 'agent' | 'script';
     scriptCommand: string;
-    taskConfig: {
-      on_error?: {
-        todo_ingest?: boolean;
-      };
-    } | null;
+    taskConfig: TaskConfig | null;
   }) => Promise<void>;
   onClose: () => void;
 }
@@ -238,6 +235,7 @@ export function CreateTaskForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [onErrorTodoIngest, setOnErrorTodoIngest] = useState(false);
+  const [templateTaskConfig, setTemplateTaskConfig] = useState<TaskConfig | null>(null);
 
   useEffect(() => {
     if (formData.groupFolder || groups.length === 0) return;
@@ -279,6 +277,7 @@ export function CreateTaskForm({
     setIntervalUnit(schedule.intervalUnit);
     setIntervalWeekdays(schedule.intervalWeekdays);
     setOnErrorTodoIngest(template.defaultOnErrorTodoIngest ?? false);
+    setTemplateTaskConfig(template.defaultTaskConfig ?? null);
 
     setErrors((prev) => {
       const next = { ...prev };
@@ -290,7 +289,10 @@ export function CreateTaskForm({
 
   const handleTemplateChoiceChange = (value: string) => {
     setTemplateChoice(value);
-    if (value === TEMPLATE_NONE) return;
+    if (value === TEMPLATE_NONE) {
+      setTemplateTaskConfig(null);
+      return;
+    }
     const template = templates.find((item) => item.id === value);
     if (template) applyTemplate(template);
   };
@@ -379,19 +381,40 @@ export function CreateTaskForm({
 
     setSubmitting(true);
     try {
+      const nextTaskConfig: TaskConfig = templateTaskConfig
+        ? { ...templateTaskConfig }
+        : {};
+      if (onErrorTodoIngest) {
+        const existingOnError =
+          nextTaskConfig.on_error
+            && typeof nextTaskConfig.on_error === 'object'
+            && !Array.isArray(nextTaskConfig.on_error)
+            ? nextTaskConfig.on_error as Record<string, unknown>
+            : {};
+        nextTaskConfig.on_error = {
+          ...existingOnError,
+          todo_ingest: true,
+        };
+      } else if (
+        nextTaskConfig.on_error
+        && typeof nextTaskConfig.on_error === 'object'
+        && !Array.isArray(nextTaskConfig.on_error)
+      ) {
+        const onErrorConfig = { ...(nextTaskConfig.on_error as Record<string, unknown>) };
+        delete onErrorConfig.todo_ingest;
+        if (Object.keys(onErrorConfig).length > 0) {
+          nextTaskConfig.on_error = onErrorConfig;
+        } else {
+          delete nextTaskConfig.on_error;
+        }
+      }
       await onSubmit({
         ...formData,
         prompt: formData.prompt.trim(),
         scriptCommand: formData.scriptCommand.trim(),
         scheduleType,
         scheduleValue,
-        taskConfig: onErrorTodoIngest
-          ? {
-            on_error: {
-              todo_ingest: true,
-            },
-          }
-          : null,
+        taskConfig: Object.keys(nextTaskConfig).length > 0 ? nextTaskConfig : null,
       });
     } catch (error) {
       console.error('Failed to create task:', error);

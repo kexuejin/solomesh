@@ -181,6 +181,8 @@ Content-Type: application/json
 - 当前失败分支规则载体：`task_config.on_error.todo_ingest`。
 - Task API 创建/更新任务时通过 `task_config` 传入规则（`POST /api/tasks`、`PATCH /api/tasks/:id`）。
 - 前端当前支持：创建自动化时配置该规则，任务详情可开启/关闭该规则。
+- 对于插件专用配置（如 `plugins.competitor_git`），由模板/Workflow 写入 `task_config`，不在通用 Task 表单内写死字段。
+- 调度执行仅依赖结构化 `task_config/task_state`，不依赖 prompt 文本中的参数 hint。
 
 ### 7.3 Plugin（Skill/MCP）
 

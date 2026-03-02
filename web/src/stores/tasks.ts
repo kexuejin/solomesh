@@ -22,31 +22,18 @@ export interface ScheduledTask {
   created_at: string;
 }
 
-export interface CompetitorGitTaskPluginConfig {
-  enabled?: boolean;
-  repo?: string;
-  branch?: string;
-  lookback_commits?: number;
-}
-
-export interface CompetitorGitTaskPluginState {
-  last_sha?: string | null;
-  last_scan_at?: string;
-}
-
 export interface TaskConfig {
   on_error?: {
     todo_ingest?: boolean;
+    [key: string]: unknown;
   };
-  plugins?: {
-    competitor_git?: CompetitorGitTaskPluginConfig;
-  };
+  plugins?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface TaskState {
-  plugins?: {
-    competitor_git?: CompetitorGitTaskPluginState;
-  };
+  plugins?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface TaskRunLog {
@@ -112,44 +99,41 @@ function hasOwnKeys(value: object | null | undefined): boolean {
   return Object.keys(value).length > 0;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function normalizeTaskConfig(
   config: TaskConfig | null | undefined,
 ): TaskConfig | null {
-  if (!config) return null;
+  if (!config || !isPlainObject(config)) return null;
 
-  const onError = config.on_error?.todo_ingest === true
-    ? { on_error: { todo_ingest: true } }
-    : {};
-
-  const competitorRaw = config.plugins?.competitor_git;
-  const competitor = competitorRaw
-    ? {
-      ...(typeof competitorRaw.enabled === 'boolean'
-        ? { enabled: competitorRaw.enabled }
-        : {}),
-      ...(typeof competitorRaw.repo === 'string' && competitorRaw.repo.trim()
-        ? { repo: competitorRaw.repo.trim() }
-        : {}),
-      ...(typeof competitorRaw.branch === 'string' && competitorRaw.branch.trim()
-        ? { branch: competitorRaw.branch.trim() }
-        : {}),
-      ...(typeof competitorRaw.lookback_commits === 'number'
-        && Number.isFinite(competitorRaw.lookback_commits)
-        && competitorRaw.lookback_commits > 0
-        ? { lookback_commits: Math.max(1, Math.floor(competitorRaw.lookback_commits)) }
-        : {}),
+  const normalized: TaskConfig = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (value !== undefined) {
+      normalized[key] = value;
     }
-    : null;
+  }
 
-  const pluginState = competitor && hasOwnKeys(competitor)
-    ? { plugins: { competitor_git: competitor } }
-    : {};
+  if (config.on_error?.todo_ingest === true) {
+    const currentOnError = isPlainObject(normalized.on_error)
+      ? normalized.on_error
+      : {};
+    normalized.on_error = {
+      ...currentOnError,
+      todo_ingest: true,
+    };
+  } else if (isPlainObject(normalized.on_error)) {
+    const nextOnError = { ...normalized.on_error };
+    delete nextOnError.todo_ingest;
+    if (hasOwnKeys(nextOnError)) {
+      normalized.on_error = nextOnError;
+    } else {
+      delete normalized.on_error;
+    }
+  }
 
-  const merged: TaskConfig = {
-    ...onError,
-    ...pluginState,
-  };
-  return hasOwnKeys(merged) ? merged : null;
+  return hasOwnKeys(normalized) ? normalized : null;
 }
 
 export const useTasksStore = create<TasksState>((set, get) => ({

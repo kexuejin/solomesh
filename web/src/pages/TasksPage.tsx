@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/ui/button';
 import { getAutomationTemplates } from '@/components/tasks/automation-presets';
 import { useI18n } from '../i18n';
+import type { TaskConfig } from '../stores/tasks';
 
 export function TasksPage() {
   const { t } = useI18n();
@@ -36,11 +37,7 @@ export function TasksPage() {
     contextMode: 'group' | 'isolated';
     executionType: 'agent' | 'script';
     scriptCommand: string;
-    taskConfig: {
-      on_error?: {
-        todo_ingest?: boolean;
-      };
-    } | null;
+    taskConfig: TaskConfig | null;
   }) => {
     await createTask(
       data.groupFolder,

@@ -1654,7 +1654,7 @@ export const zhCN = {
         name: '竞品追踪',
         summary: '巡检竞品功能与定价页变更，生成待跟进清单。',
         cadence: '工作日 11:00',
-        prompt: 'repo: https://github.com/example/competitor\nbranch: main\nlookback_commits: 50\n\n追踪目标竞品最近24小时的功能、定价、公告与发布动态；提炼对当前项目有影响的变更项，输出“变化点 / 影响评估 / 建议动作”，并给出可写入 Todo 的候选条目。',
+        prompt: '追踪目标竞品最近24小时的功能、定价、公告与发布动态；提炼对当前项目有影响的变更项，输出“变化点 / 影响评估 / 建议动作”，并给出可写入 Todo 的候选条目。',
       },
       projectRecommendation: {
         name: '项目推荐',
@@ -3983,7 +3983,7 @@ export const en = {
         name: 'Competitor Watch',
         summary: 'Track competitor feature and pricing changes for follow-up.',
         cadence: 'Weekdays 11:00',
-        prompt: 'repo: https://github.com/example/competitor\nbranch: main\nlookback_commits: 50\n\nTrack competitor feature, pricing, announcement, and release updates over the last 24 hours; summarize change / impact / recommended action, and output todo-ready candidate items.',
+        prompt: 'Track competitor feature, pricing, announcement, and release updates over the last 24 hours; summarize change / impact / recommended action, and output todo-ready candidate items.',
       },
       projectRecommendation: {
         name: 'Project Recommendation',

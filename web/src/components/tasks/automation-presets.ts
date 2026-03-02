@@ -1,4 +1,5 @@
 import type { MessageKey } from '../../i18n';
+import type { TaskConfig } from '@/stores/tasks';
 
 export type ScheduleType = 'cron' | 'interval' | 'once';
 export type ContextMode = 'group' | 'isolated';
@@ -13,6 +14,7 @@ export interface AutomationTemplate {
   scheduleValue: string;
   contextMode: ContextMode;
   defaultOnErrorTodoIngest?: boolean;
+  defaultTaskConfig?: TaskConfig;
 }
 
 export interface SchedulePreset {
@@ -44,6 +46,7 @@ interface AutomationTemplateDefinition {
   scheduleValue: string;
   contextMode: ContextMode;
   defaultOnErrorTodoIngest?: boolean;
+  defaultTaskConfig?: TaskConfig;
 }
 
 interface SchedulePresetDefinition {
@@ -137,6 +140,16 @@ const AUTOMATION_TEMPLATE_DEFS: AutomationTemplateDefinition[] = [
     scheduleValue: '0 11 * * 1-5',
     contextMode: 'isolated',
     defaultOnErrorTodoIngest: true,
+    defaultTaskConfig: {
+      plugins: {
+        competitor_git: {
+          enabled: true,
+          repo: 'https://github.com/example/competitor',
+          branch: 'main',
+          lookback_commits: 50,
+        },
+      },
+    },
   },
   {
     id: 'project-recommendation',
@@ -166,6 +179,7 @@ export function getAutomationTemplates(
     ...(def.defaultOnErrorTodoIngest === true
       ? { defaultOnErrorTodoIngest: true }
       : {}),
+    ...(def.defaultTaskConfig ? { defaultTaskConfig: def.defaultTaskConfig } : {}),
   }));
 }
 

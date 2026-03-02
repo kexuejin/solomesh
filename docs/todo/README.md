@@ -39,6 +39,10 @@
 - 复用字段：
   - 配置：`scheduled_tasks.task_config.plugins.competitor_git`
   - 状态：`scheduled_tasks.task_state.plugins.competitor_git`
+- 配置入口约束：
+  - 通过内置模板/Workflow 在创建任务时注入 `task_config` 默认值
+  - 通用 Task 创建/编辑表单不新增业务专用字段
+  - 调度器只读取 `task_config/task_state`，不再从 prompt 文本解析 hint
 - 示例：
 
 ```json

@@ -50,7 +50,6 @@ test('error with explicit on_error.todo_ingest ingests todo', () => {
 
 test('competitor_git config can be read from task_config + task_state', () => {
   const config = getCompetitorGitCursorConfig({
-    prompt: '请追踪竞品更新',
     task_config: {
       plugins: {
         competitor_git: {
@@ -79,7 +78,6 @@ test('competitor_git config can be read from task_config + task_state', () => {
 
 test('missing competitor_git task_config returns null', () => {
   const config = getCompetitorGitCursorConfig({
-    prompt: '无配置',
     task_config: null,
     task_state: null,
   });
@@ -87,22 +85,19 @@ test('missing competitor_git task_config returns null', () => {
   assert.equal(config, null);
 });
 
-test('competitor_git config can fall back to prompt hints', () => {
+test('competitor_git config does not fall back to prompt hints', () => {
   const config = getCompetitorGitCursorConfig({
-    prompt: [
-      'repo: https://github.com/example/competitor',
-      'branch: main',
-      'lookback_commits: 60',
-    ].join('\n'),
-    task_config: null,
+    task_config: {
+      plugins: {
+        competitor_git: {
+          enabled: true,
+        },
+      },
+    },
     task_state: null,
   });
 
-  assert.ok(config);
-  assert.equal(config?.repo, 'https://github.com/example/competitor');
-  assert.equal(config?.branch, 'main');
-  assert.equal(config?.lookbackCommits, 60);
-  assert.equal(config?.lastSha, null);
+  assert.equal(config, null);
 });
 
 test('build prompt and parse competitor_git next sha marker', () => {
