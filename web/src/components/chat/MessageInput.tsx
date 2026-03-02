@@ -1,6 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   ArrowUp,
   Brush,
   FileUp,
@@ -24,6 +31,11 @@ import {
   type WorkflowTemplateSuggestionSource,
 } from '@/lib/workflow-directive';
 import { useI18n } from '../../i18n';
+import {
+  DEFAULT_RUNTIME_DEFINITIONS,
+  normalizeRuntimeDefinitions,
+  type RuntimeDefinition,
+} from '../../runtime-definitions';
 
 interface PendingFile {
   /** Display name: relative path for folder uploads, file name otherwise */
@@ -40,6 +52,14 @@ interface PendingImage {
 /** Max size per image is 5MB. */
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 type OperationPermissionMode = 'default' | 'bypass';
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+
+export interface MessageInputSendOptions {
+  operationPermissionMode?: OperationPermissionMode;
+  agentRuntimeOverride?: ProviderId;
+  modelOverride?: string;
+  reasoningEffort?: ReasoningEffort;
+}
 
 interface OperationPermissionModeOption {
   value: OperationPermissionMode;
@@ -53,11 +73,182 @@ const DEFAULT_PERMISSION_MODE_BY_PROVIDER: Record<ProviderId, OperationPermissio
   gemini: 'default',
 };
 
+const PROVIDER_OPTIONS: ProviderId[] = ['claude', 'codex', 'gemini'];
+const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
+const MODEL_AUTO_OPTION_VALUE = '__auto__';
+const CLAUDE_MODEL_ALIAS_TO_ID: Record<string, string> = {
+  opus: 'claude-opus-4-6',
+  sonnet: 'claude-sonnet-4-6',
+  haiku: 'claude-haiku-4-5',
+};
+const DEFAULT_MODEL_OVERRIDE_BY_PROVIDER: Record<ProviderId, string> = {
+  claude: '',
+  codex: '',
+  gemini: '',
+};
+const DEFAULT_REASONING_EFFORT_BY_PROVIDER: Record<ProviderId, ReasoningEffort> = {
+  claude: 'medium',
+  codex: 'medium',
+  gemini: 'medium',
+};
+const RUNTIME_DEFINITIONS_CACHE_KEY = 'solomesh:chat:runtime-definitions:v4';
+const RUNTIME_DEFINITIONS_CACHE_TTL_MS = 30 * 60 * 1000;
+const RUNTIME_CONTROL_SELECTIONS_CACHE_KEY = 'solomesh:chat:runtime-controls:v1';
+
+interface RuntimeDefinitionsCachePayload {
+  ts: number;
+  runtimes: unknown;
+}
+
+interface RuntimeControlSelections {
+  modelOverrideByProvider: Record<ProviderId, string>;
+  reasoningEffortByProvider: Record<ProviderId, ReasoningEffort>;
+  permissionModeByProvider: Record<ProviderId, OperationPermissionMode>;
+}
+
+interface RuntimeControlSelectionsCachePayload {
+  modelOverrideByProvider?: unknown;
+  reasoningEffortByProvider?: unknown;
+  permissionModeByProvider?: unknown;
+}
+
+function isObjectRecord(input: unknown): input is Record<string, unknown> {
+  return !!input && typeof input === 'object' && !Array.isArray(input);
+}
+
+function getDefaultRuntimeControlSelections(): RuntimeControlSelections {
+  return {
+    modelOverrideByProvider: { ...DEFAULT_MODEL_OVERRIDE_BY_PROVIDER },
+    reasoningEffortByProvider: { ...DEFAULT_REASONING_EFFORT_BY_PROVIDER },
+    permissionModeByProvider: { ...DEFAULT_PERMISSION_MODE_BY_PROVIDER },
+  };
+}
+
+function normalizeRuntimeModelOverride(provider: ProviderId, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (provider !== 'claude') return trimmed;
+  return CLAUDE_MODEL_ALIAS_TO_ID[trimmed] ?? trimmed;
+}
+
+function normalizeModelOverrideByProvider(input: unknown): Record<ProviderId, string> {
+  const normalized = { ...DEFAULT_MODEL_OVERRIDE_BY_PROVIDER };
+  if (!isObjectRecord(input)) return normalized;
+  for (const provider of PROVIDER_OPTIONS) {
+    const value = input[provider];
+    if (typeof value === 'string') {
+      normalized[provider] = normalizeRuntimeModelOverride(provider, value);
+    }
+  }
+  return normalized;
+}
+
+function normalizeReasoningEffortByProvider(input: unknown): Record<ProviderId, ReasoningEffort> {
+  const normalized = { ...DEFAULT_REASONING_EFFORT_BY_PROVIDER };
+  if (!isObjectRecord(input)) return normalized;
+  for (const provider of PROVIDER_OPTIONS) {
+    const value = input[provider];
+    if (
+      typeof value === 'string'
+      && REASONING_EFFORT_OPTIONS.includes(value as ReasoningEffort)
+    ) {
+      normalized[provider] = value as ReasoningEffort;
+    }
+  }
+  return normalized;
+}
+
+function normalizePermissionModeByProvider(input: unknown): Record<ProviderId, OperationPermissionMode> {
+  const normalized = { ...DEFAULT_PERMISSION_MODE_BY_PROVIDER };
+  if (!isObjectRecord(input)) return normalized;
+  for (const provider of PROVIDER_OPTIONS) {
+    const value = input[provider];
+    if (value === 'default' || value === 'bypass') {
+      normalized[provider] = value;
+    }
+  }
+  return normalized;
+}
+
+function readRuntimeControlSelectionsCache(): RuntimeControlSelections | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(RUNTIME_CONTROL_SELECTIONS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RuntimeControlSelectionsCachePayload;
+    if (!isObjectRecord(parsed)) return null;
+    return {
+      modelOverrideByProvider: normalizeModelOverrideByProvider(parsed.modelOverrideByProvider),
+      reasoningEffortByProvider: normalizeReasoningEffortByProvider(parsed.reasoningEffortByProvider),
+      permissionModeByProvider: normalizePermissionModeByProvider(parsed.permissionModeByProvider),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeRuntimeControlSelectionsCache(selections: RuntimeControlSelections): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      RUNTIME_CONTROL_SELECTIONS_CACHE_KEY,
+      JSON.stringify(selections),
+    );
+  } catch {
+    // Best effort cache
+  }
+}
+
+function hasExpectedRuntimeCatalog(runtimes: RuntimeDefinition[]): boolean {
+  const codex = runtimes.find((item) => item.id === 'codex');
+  const claude = runtimes.find((item) => item.id === 'claude');
+  if (!codex || !claude) return false;
+  return codex.supportedModels.includes('gpt-5.3-codex')
+    && claude.supportedModels.includes('claude-opus-4-6');
+}
+
+function readRuntimeDefinitionsCache(): {
+  runtimes: RuntimeDefinition[];
+  isFresh: boolean;
+} | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(RUNTIME_DEFINITIONS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RuntimeDefinitionsCachePayload;
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.ts !== 'number') {
+      return null;
+    }
+    const runtimes = normalizeRuntimeDefinitions(parsed.runtimes);
+    if (runtimes.length === 0) return null;
+    if (!hasExpectedRuntimeCatalog(runtimes)) return null;
+    return {
+      runtimes,
+      isFresh: Date.now() - parsed.ts < RUNTIME_DEFINITIONS_CACHE_TTL_MS,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeRuntimeDefinitionsCache(runtimes: RuntimeDefinition[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const payload: RuntimeDefinitionsCachePayload = {
+      ts: Date.now(),
+      runtimes,
+    };
+    window.localStorage.setItem(RUNTIME_DEFINITIONS_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Best effort cache
+  }
+}
+
 interface MessageInputProps {
   onSend: (
     content: string,
     attachments?: Array<{ data: string; mimeType: string }>,
-    operationPermissionMode?: OperationPermissionMode,
+    options?: MessageInputSendOptions,
   ) => void;
   groupJid?: string;
   disabled?: boolean;
@@ -122,8 +313,26 @@ export function MessageInput({
   const [commandSuggestions, setCommandSuggestions] = useState<WorkflowCommandSuggestion[]>([]);
   const [commandActiveIndex, setCommandActiveIndex] = useState(0);
   const [workflowTemplateSuggestions, setWorkflowTemplateSuggestions] = useState<WorkflowTemplateSuggestionSource[]>([]);
+  const [runtimeDefinitions, setRuntimeDefinitions] = useState<RuntimeDefinition[]>(
+    DEFAULT_RUNTIME_DEFINITIONS,
+  );
+  const initialRuntimeControlSelectionsRef = useRef<RuntimeControlSelections | null>(null);
+  if (!initialRuntimeControlSelectionsRef.current) {
+    initialRuntimeControlSelectionsRef.current =
+      readRuntimeControlSelectionsCache() ?? getDefaultRuntimeControlSelections();
+  }
+  const initialRuntimeControlSelections = initialRuntimeControlSelectionsRef.current;
+  const [selectedRuntime, setSelectedRuntime] = useState<ProviderId>(
+    currentProvider ?? 'claude',
+  );
+  const [modelOverrideByProvider, setModelOverrideByProvider] = useState<Record<ProviderId, string>>(
+    initialRuntimeControlSelections.modelOverrideByProvider,
+  );
+  const [reasoningEffortByProvider, setReasoningEffortByProvider] = useState<Record<ProviderId, ReasoningEffort>>(
+    initialRuntimeControlSelections.reasoningEffortByProvider,
+  );
   const [permissionModeByProvider, setPermissionModeByProvider] = useState<Record<ProviderId, OperationPermissionMode>>(
-    { ...DEFAULT_PERMISSION_MODE_BY_PROVIDER },
+    initialRuntimeControlSelections.permissionModeByProvider,
   );
   const permissionModeOptionsByProvider: Record<ProviderId, OperationPermissionModeOption[]> = {
     claude: [
@@ -172,6 +381,50 @@ export function MessageInput({
       ? requested
       : DEFAULT_PERMISSION_MODE_BY_PROVIDER[provider];
   };
+
+  useEffect(() => {
+    if (!currentProvider) return;
+    setSelectedRuntime(currentProvider);
+  }, [currentProvider]);
+
+  useEffect(() => {
+    writeRuntimeControlSelectionsCache({
+      modelOverrideByProvider,
+      reasoningEffortByProvider,
+      permissionModeByProvider,
+    });
+  }, [modelOverrideByProvider, reasoningEffortByProvider, permissionModeByProvider]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = readRuntimeDefinitionsCache();
+    if (cached?.runtimes.length) {
+      setRuntimeDefinitions(cached.runtimes);
+      if (cached.isFresh) {
+        return () => {
+          cancelled = true;
+        };
+      }
+    }
+    const loadRuntimeDefinitions = async () => {
+      try {
+        const data = await api.get<{ runtimes: unknown }>('/api/config/runtimes');
+        if (cancelled) return;
+        const normalized = normalizeRuntimeDefinitions(data.runtimes);
+        setRuntimeDefinitions(normalized);
+        writeRuntimeDefinitionsCache(normalized);
+      } catch {
+        if (cancelled) return;
+        if (!cached?.runtimes.length) {
+          setRuntimeDefinitions(DEFAULT_RUNTIME_DEFINITIONS);
+        }
+      }
+    };
+    void loadRuntimeDefinitions();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,14 +684,26 @@ export function MessageInput({
       : undefined;
 
     const messageProvider = parseProviderDirectiveInput(message).provider
+      ?? selectedRuntime
       ?? currentProvider
       ?? 'claude';
     const operationPermissionMode = getResolvedPermissionMode(
       messageProvider,
       permissionModeByProvider[messageProvider],
     );
+    const normalizedModelOverride = modelOverrideByProvider[messageProvider]?.trim() || '';
+    const modelOverride = normalizedModelOverride || undefined;
+    const reasoningEffort =
+      messageProvider === 'codex' || messageProvider === 'gemini'
+        ? reasoningEffortByProvider[messageProvider]
+      : undefined;
 
-    onSend(message, attachments, operationPermissionMode);
+    onSend(message, attachments, {
+      operationPermissionMode,
+      agentRuntimeOverride: messageProvider,
+      modelOverride,
+      reasoningEffort,
+    });
     setContent('');
     closeMention();
     closeCommand();
@@ -628,7 +893,12 @@ export function MessageInput({
   const hasContent = content.trim().length > 0;
   const canSend = hasContent || pendingFiles.length > 0 || pendingImages.length > 0;
   const directiveProvider = parseProviderDirectiveInput(content).provider;
-  const activePermissionProvider: ProviderId = directiveProvider ?? currentProvider ?? 'claude';
+  const activePermissionProvider: ProviderId =
+    directiveProvider ?? selectedRuntime ?? currentProvider ?? 'claude';
+  const activeRuntimeDefinition = runtimeDefinitions.find(
+    (item) => item.id === activePermissionProvider,
+  ) || DEFAULT_RUNTIME_DEFINITIONS.find((item) => item.id === activePermissionProvider)
+    || DEFAULT_RUNTIME_DEFINITIONS[0];
   const permissionModeOptions = permissionModeOptionsByProvider[activePermissionProvider];
   const selectedPermissionMode = getResolvedPermissionMode(
     activePermissionProvider,
@@ -637,6 +907,19 @@ export function MessageInput({
   const selectedPermissionModeOption = permissionModeOptions.find(
     (item) => item.value === selectedPermissionMode,
   ) ?? permissionModeOptions[0];
+  const runtimeSupportsModelOverride = activeRuntimeDefinition.capabilities.supportsModelOverride;
+  const runtimeSupportsReasoningEffort =
+    activePermissionProvider === 'codex' || activePermissionProvider === 'gemini';
+  const modelOverrideValue = modelOverrideByProvider[activePermissionProvider] || '';
+  const modelSelectValue = modelOverrideValue || MODEL_AUTO_OPTION_VALUE;
+  const modelOptions = (() => {
+    const baseOptions = activeRuntimeDefinition.supportedModels;
+    if (modelOverrideValue && !baseOptions.includes(modelOverrideValue)) {
+      return [modelOverrideValue, ...baseOptions];
+    }
+    return baseOptions;
+  })();
+  const activeReasoningEffort = reasoningEffortByProvider[activePermissionProvider];
   const workflowRunning =
     workflowContext?.status === 'running'
     && !!workflowContext.templateId;
@@ -1005,36 +1288,151 @@ export function MessageInput({
           </div>
 
           <div className="border-t border-border/70 px-3 pb-2.5 pt-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium text-muted-foreground">
-                {t('chat.messageInput.permission.title')}
-              </span>
-              <div className="flex items-center gap-1 rounded-[10px] border border-border/70 bg-muted/20 p-1">
-                {permissionModeOptions.map((option) => {
-                  const active = option.value === selectedPermissionMode;
-                  return (
-                    <button
-                      key={`${activePermissionProvider}-${option.value}`}
-                      type="button"
-                      onClick={() => {
-                        setPermissionModeByProvider((prev) => ({
-                          ...prev,
-                          [activePermissionProvider]: getResolvedPermissionMode(
-                            activePermissionProvider,
-                            option.value,
-                          ),
-                        }));
-                      }}
-                      className={`cursor-pointer rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                        active
-                          ? 'bg-card text-primary shadow-sm'
-                          : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
-                      }`}
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground">Runtime</span>
+                <Select
+                  value={selectedRuntime}
+                  onValueChange={(value) => setSelectedRuntime(value as ProviderId)}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="h-7 min-w-[112px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent
+                    position="popper"
+                    side="top"
+                    align="start"
+                    className="min-w-[160px]"
+                  >
+                    {PROVIDER_OPTIONS.map((provider) => (
+                      <SelectItem key={`runtime-${provider}`} value={provider} className="text-xs">
+                        {getMessageProviderLabel(provider) ?? provider}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {runtimeSupportsModelOverride && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-muted-foreground">Model</span>
+                  <Select
+                    value={modelSelectValue}
+                    onValueChange={(value) => {
+                      setModelOverrideByProvider((prev) => ({
+                        ...prev,
+                        [activePermissionProvider]:
+                          value === MODEL_AUTO_OPTION_VALUE ? '' : value,
+                      }));
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="h-7 min-w-[150px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
                     >
-                      {option.label}
-                    </button>
-                  );
-                })}
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent
+                      position="popper"
+                      side="top"
+                      align="start"
+                      className="min-w-[220px]"
+                    >
+                      <SelectItem value={MODEL_AUTO_OPTION_VALUE} className="text-xs">
+                        Auto ({activeRuntimeDefinition.defaultModel})
+                      </SelectItem>
+                      {modelOptions.map((model) => (
+                        <SelectItem key={`model-${activePermissionProvider}-${model}`} value={model} className="text-xs">
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {runtimeSupportsReasoningEffort && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-muted-foreground">Reasoning</span>
+                  <Select
+                    value={activeReasoningEffort}
+                    onValueChange={(value) => {
+                      setReasoningEffortByProvider((prev) => ({
+                        ...prev,
+                        [activePermissionProvider]: value as ReasoningEffort,
+                      }));
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="h-7 min-w-[96px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent
+                      position="popper"
+                      side="top"
+                      align="start"
+                      className="min-w-[140px]"
+                    >
+                      {REASONING_EFFORT_OPTIONS.map((level) => (
+                        <SelectItem key={`reasoning-${level}`} value={level} className="text-xs">
+                          {level === 'low'
+                            ? '低'
+                            : level === 'medium'
+                              ? '中'
+                              : level === 'high'
+                                ? '高'
+                                : '超高'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {t('chat.messageInput.permission.title')}
+                </span>
+                <Select
+                  value={selectedPermissionMode}
+                  onValueChange={(value) => {
+                    setPermissionModeByProvider((prev) => ({
+                      ...prev,
+                      [activePermissionProvider]: getResolvedPermissionMode(
+                        activePermissionProvider,
+                        value as OperationPermissionMode,
+                      ),
+                    }));
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="h-7 min-w-[118px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent
+                    position="popper"
+                    side="top"
+                    align="start"
+                    className="min-w-[180px]"
+                  >
+                    {permissionModeOptions.map((option) => (
+                      <SelectItem
+                        key={`${activePermissionProvider}-${option.value}`}
+                        value={option.value}
+                        className="text-xs"
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="mt-1 text-[11px] text-muted-foreground">

@@ -338,6 +338,9 @@ export type WsMessageIn =
       attachments?: MessageAttachment[];
       agentId?: string;
       operationPermissionMode?: 'default' | 'bypass';
+      agentRuntimeOverride?: 'claude' | 'codex' | 'gemini';
+      modelOverride?: string;
+      reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     }
   | { type: 'terminal_start'; chatJid: string; cols: number; rows: number }
   | { type: 'terminal_input'; chatJid: string; data: string }

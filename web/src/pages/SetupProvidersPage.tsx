@@ -121,7 +121,7 @@ export function SetupProvidersPage() {
   // Codex mode
   const [codexApiKey, setCodexApiKey] = useState('');
   const [codexBaseUrl, setCodexBaseUrl] = useState('');
-  const [codexModel, setCodexModel] = useState('gpt-5-codex');
+  const [codexModel, setCodexModel] = useState('gpt-5.3-codex');
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiBaseUrl, setGeminiBaseUrl] = useState('');
   const [geminiModel, setGeminiModel] = useState('gemini-2.5-pro');
@@ -280,7 +280,7 @@ export function SetupProvidersPage() {
     const codexTouched =
       !!codexApiKey.trim() ||
       !!codexBaseUrl.trim() ||
-      (!!codexModelValue && codexModelValue !== 'gpt-5-codex');
+      (!!codexModelValue && codexModelValue !== 'gpt-5.3-codex');
     const geminiTouched =
       !!geminiApiKey.trim() ||
       !!geminiBaseUrl.trim() ||
@@ -433,7 +433,7 @@ export function SetupProvidersPage() {
       if (wantsCodex) {
         await api.put(getRuntimeConfigEndpoint(), {
           codexBaseUrl: codexBaseUrl.trim(),
-          codexModel: codexModelValue || 'gpt-5-codex',
+          codexModel: codexModelValue || 'gpt-5.3-codex',
         });
         await api.put(
           getRuntimeSecretsEndpoint(),

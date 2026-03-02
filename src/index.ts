@@ -165,6 +165,10 @@ import {
   type OperationPermissionMode,
 } from './operation-permission-mode.js';
 import {
+  getChatRequestedRunOverrides,
+  type ReasoningEffort,
+} from './chat-run-overrides.js';
+import {
   buildProviderHandoffPrompt,
   selectProviderHandoffContextMessages,
   resolveProviderHandoffTransition,
@@ -1857,9 +1861,14 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const workflowState = getRunningWorkflowState(chatJid);
   const workflowStageProvider = providerPreflight.provider ?? getWorkflowStageProvider(workflowState);
   const directiveResolved = resolveProviderDirectiveMessages(pendingMessages);
+  const requestedRunOverrides = getChatRequestedRunOverrides(chatJid);
+  const requestedRuntimeOverride = requestedRunOverrides?.agentRuntimeOverride;
+  const requestedModelOverride = requestedRunOverrides?.modelOverride;
+  const requestedReasoningEffort = requestedRunOverrides?.reasoningEffort;
   const persistedProvider = chatProviderSelections[chatJid] ?? null;
   const pendingHandoffFrom = chatProviderPendingHandoffFrom[chatJid] ?? null;
   const directiveProvider = directiveResolved.providerOverride;
+  const runtimeOverrideRequest = directiveProvider ?? requestedRuntimeOverride ?? null;
   const defaultProvider = resolveEffectiveProvider(effectiveGroup);
   const workflowAwareDefaultProvider = workflowStageProvider ?? defaultProvider;
   const isWorkflowStageActive = !!workflowStageProvider;
@@ -1867,17 +1876,17 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     ? workflowAwareDefaultProvider
     : (persistedProvider ?? workflowAwareDefaultProvider);
   if (
-    directiveProvider
+    runtimeOverrideRequest
     && !isWorkflowStageActive
-    && persistedProvider !== directiveProvider
+    && persistedProvider !== runtimeOverrideRequest
   ) {
-    if (directiveProvider !== activeProvider) {
+    if (runtimeOverrideRequest !== activeProvider) {
       chatProviderPendingHandoffFrom[chatJid] = activeProvider;
     }
-    chatProviderSelections[chatJid] = directiveProvider;
+    chatProviderSelections[chatJid] = runtimeOverrideRequest;
     saveState();
   }
-  const selectedProvider = directiveProvider ?? workflowStageProvider ?? persistedProvider;
+  const selectedProvider = runtimeOverrideRequest ?? workflowStageProvider ?? persistedProvider;
   const providerOverride = selectedProvider ?? undefined;
   const effectiveProvider = resolveEffectiveProvider(effectiveGroup, providerOverride);
   const requestedOperationPermissionMode = getChatRequestedOperationPermissionMode(chatJid);
@@ -1909,7 +1918,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   }
 
   const handoffTransition = resolveProviderHandoffTransition({
-    directiveProvider,
+    directiveProvider: runtimeOverrideRequest,
     persistedProvider: isWorkflowStageActive ? null : persistedProvider,
     defaultProvider: workflowAwareDefaultProvider,
     pendingFromProvider: pendingHandoffFrom,
@@ -1953,6 +1962,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       messageCount: missedMessages.length,
       providerOverride: providerOverride ?? null,
       operationPermissionMode,
+      modelOverride: requestedModelOverride ?? null,
+      reasoningEffort: requestedReasoningEffort ?? null,
       shouldReplyToFeishu,
       imageCount: images.length,
       shared,
@@ -2153,6 +2164,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     },
     imagesForAgent,
     operationPermissionMode,
+    requestedModelOverride,
+    requestedReasoningEffort,
   );
 
   await setTyping(chatJid, false);
@@ -2420,6 +2433,8 @@ async function runAgent(
   onOutput?: (output: ContainerOutput) => Promise<void>,
   images?: Array<{ data: string; mimeType?: string }>,
   operationPermissionMode?: OperationPermissionMode,
+  modelOverride?: string,
+  reasoningEffort?: ReasoningEffort,
 ): Promise<{ status: 'success' | 'error'; error?: string }> {
   const isHome = !!group.is_home;
   // For the agent-runner: isMain means this is an admin home container (full privileges)
@@ -2473,7 +2488,7 @@ async function runAgent(
   try {
     const executionMode = group.executionMode || 'container';
 
-    const onProcessCb = (proc: ChildProcess, identifier: string) => {
+  const onProcessCb = (proc: ChildProcess, identifier: string) => {
       // 宿主机模式：containerName 传 null，走 process.kill() 路径
       const containerName = executionMode === 'container' ? identifier : null;
       queue.registerProcess(
@@ -2484,6 +2499,9 @@ async function runAgent(
         identifier,
         undefined,
         resolvedOperationPermissionMode,
+        effectiveProvider,
+        modelOverride,
+        reasoningEffort,
       );
     };
 
@@ -2503,6 +2521,8 @@ async function runAgent(
           isAdminHome,
           images,
           operationPermissionMode: resolvedOperationPermissionMode,
+          modelOverride,
+          reasoningEffort,
         },
         onProcessCb,
         wrappedOnOutput,
@@ -2521,6 +2541,8 @@ async function runAgent(
           isAdminHome,
           images,
           operationPermissionMode: resolvedOperationPermissionMode,
+          modelOverride,
+          reasoningEffort,
         },
         onProcessCb,
         wrappedOnOutput,
@@ -3185,9 +3207,14 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
   const workflowState = getRunningWorkflowState(virtualChatJid);
   const workflowStageProvider = providerPreflight.provider ?? getWorkflowStageProvider(workflowState);
   const directiveResolved = resolveProviderDirectiveMessages(pendingMessages);
+  const requestedRunOverrides = getChatRequestedRunOverrides(virtualChatJid);
+  const requestedRuntimeOverride = requestedRunOverrides?.agentRuntimeOverride;
+  const requestedModelOverride = requestedRunOverrides?.modelOverride;
+  const requestedReasoningEffort = requestedRunOverrides?.reasoningEffort;
   const persistedProvider = chatProviderSelections[virtualChatJid] ?? null;
   const pendingHandoffFrom = chatProviderPendingHandoffFrom[virtualChatJid] ?? null;
   const directiveProvider = directiveResolved.providerOverride;
+  const runtimeOverrideRequest = directiveProvider ?? requestedRuntimeOverride ?? null;
   const defaultProvider = resolveEffectiveProvider(effectiveGroup);
   const workflowAwareDefaultProvider = workflowStageProvider ?? defaultProvider;
   const isWorkflowStageActive = !!workflowStageProvider;
@@ -3195,17 +3222,17 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
     ? workflowAwareDefaultProvider
     : (persistedProvider ?? workflowAwareDefaultProvider);
   if (
-    directiveProvider
+    runtimeOverrideRequest
     && !isWorkflowStageActive
-    && persistedProvider !== directiveProvider
+    && persistedProvider !== runtimeOverrideRequest
   ) {
-    if (directiveProvider !== activeProvider) {
+    if (runtimeOverrideRequest !== activeProvider) {
       chatProviderPendingHandoffFrom[virtualChatJid] = activeProvider;
     }
-    chatProviderSelections[virtualChatJid] = directiveProvider;
+    chatProviderSelections[virtualChatJid] = runtimeOverrideRequest;
     saveState();
   }
-  const selectedProvider = directiveProvider ?? workflowStageProvider ?? persistedProvider;
+  const selectedProvider = runtimeOverrideRequest ?? workflowStageProvider ?? persistedProvider;
   const providerOverride = selectedProvider ?? undefined;
   const effectiveProvider = resolveEffectiveProvider(
     effectiveGroup,
@@ -3237,7 +3264,7 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
   }
 
   const handoffTransition = resolveProviderHandoffTransition({
-    directiveProvider,
+    directiveProvider: runtimeOverrideRequest,
     persistedProvider: isWorkflowStageActive ? null : persistedProvider,
     defaultProvider: workflowAwareDefaultProvider,
     pendingFromProvider: pendingHandoffFrom,
@@ -3383,6 +3410,9 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
         identifier,
         agentId,
         operationPermissionMode,
+        effectiveProvider,
+        requestedModelOverride,
+        requestedReasoningEffort,
       );
     };
 
@@ -3397,6 +3427,8 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
       agentId,
       agentName: agent.name,
       agentRuntimeOverride: providerOverride,
+      modelOverride: requestedModelOverride,
+      reasoningEffort: requestedReasoningEffort,
       images: imagesForAgent,
       operationPermissionMode,
     };
@@ -3586,13 +3618,19 @@ async function startMessageLoop(): Promise<void> {
 
           const directiveResolved = resolveProviderDirectiveMessages(workflowMessages);
           const hasProviderDirective = directiveResolved.hasDirective;
+          const requestedRunOverrides = getChatRequestedRunOverrides(chatJid);
+          const requestedRuntimeOverride = requestedRunOverrides?.agentRuntimeOverride;
+          const requestedModelOverride = requestedRunOverrides?.modelOverride;
+          const requestedReasoningEffort = requestedRunOverrides?.reasoningEffort;
           const shared = !group.is_home && isGroupShared(group.folder);
           let formatted = formatMessages(directiveResolved.messages, shared);
           const workflowState = getRunningWorkflowState(chatJid);
           const workflowStageProvider =
             providerPreflight.provider ?? getWorkflowStageProvider(workflowState);
           const persistedProvider = chatProviderSelections[chatJid] ?? null;
-          const selectedProvider = workflowStageProvider ?? persistedProvider;
+          const runtimeOverrideRequest =
+            directiveResolved.providerOverride ?? requestedRuntimeOverride ?? null;
+          const selectedProvider = runtimeOverrideRequest ?? workflowStageProvider ?? persistedProvider;
           const effectiveProvider = resolveEffectiveProvider(
             group,
             selectedProvider ?? undefined,
@@ -3629,7 +3667,12 @@ async function startMessageLoop(): Promise<void> {
             formatted,
             imagesForAgent,
             intent,
-            { operationPermissionMode },
+            {
+              operationPermissionMode,
+              agentRuntimeOverride: runtimeOverrideRequest ?? undefined,
+              modelOverride: requestedModelOverride,
+              reasoningEffort: requestedReasoningEffort,
+            },
           );
           const handledByActiveRunner = sendResult !== 'no_active';
 
@@ -3642,6 +3685,8 @@ async function startMessageLoop(): Promise<void> {
                 sendResult,
                 intent,
                 operationPermissionMode,
+                modelOverride: requestedModelOverride ?? null,
+                reasoningEffort: requestedReasoningEffort ?? null,
               },
               'Piped messages to active container',
             );

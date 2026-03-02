@@ -38,6 +38,8 @@ export interface ContainerInput {
   chatJid: string;
   operationPermissionMode?: 'default' | 'bypass';
   agentRuntimeOverride?: AgentProvider;
+  modelOverride?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   /** @deprecated Use isHome + isAdminHome instead */
   isMain: boolean;
   isHome?: boolean;
@@ -193,6 +195,7 @@ function buildVolumeMounts(
   selectedSkills: string[] | null = null,
   agentId?: string,
   agentRuntimeOverride?: AgentProvider,
+  modelOverride?: string,
 ): VolumeMount[] {
   const mounts: VolumeMount[] = [];
   const projectRoot = process.cwd();
@@ -365,6 +368,15 @@ function buildVolumeMounts(
   if (agentRuntimeOverride) {
     containerOverride.agentRuntime = agentRuntimeOverride;
   }
+  const normalizedModelOverride = modelOverride?.trim();
+  if (normalizedModelOverride) {
+    const runtimeForModel = containerOverride.agentRuntime || globalConfig.agentRuntime;
+    if (runtimeForModel === 'codex') {
+      containerOverride.codexModel = normalizedModelOverride;
+    } else if (runtimeForModel === 'gemini') {
+      containerOverride.geminiModel = normalizedModelOverride;
+    }
+  }
   const envLines = buildContainerEnvLines(globalConfig, containerOverride);
   if (envLines.length > 0) {
     const envFilePath = path.join(envDir, 'env');
@@ -464,6 +476,7 @@ export async function runContainerAgent(
     group.selected_skills ?? null,
     input.agentId,
     input.agentRuntimeOverride,
+    input.modelOverride,
   );
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const agentSuffix = input.agentId ? `-${input.agentId.replace(/[^a-zA-Z0-9-]/g, '-')}` : '';
@@ -1181,6 +1194,15 @@ export async function runHostAgent(
   const containerOverride = { ...getContainerEnvConfig(group.folder) };
   if (input.agentRuntimeOverride) {
     containerOverride.agentRuntime = input.agentRuntimeOverride;
+  }
+  const normalizedModelOverride = input.modelOverride?.trim();
+  if (normalizedModelOverride) {
+    const runtimeForModel = containerOverride.agentRuntime || globalConfig.agentRuntime;
+    if (runtimeForModel === 'codex') {
+      containerOverride.codexModel = normalizedModelOverride;
+    } else if (runtimeForModel === 'gemini') {
+      containerOverride.geminiModel = normalizedModelOverride;
+    }
   }
   const envLines = buildContainerEnvLines(globalConfig, containerOverride);
   for (const line of envLines) {

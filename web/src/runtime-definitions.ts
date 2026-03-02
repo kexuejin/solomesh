@@ -17,6 +17,21 @@ export interface RuntimeDefinition {
   label: string;
   description: string;
   capabilities: RuntimeCapabilities;
+  supportedModels: string[];
+  defaultModel: string;
+}
+
+const CLAUDE_MODEL_ALIAS_TO_ID: Record<string, string> = {
+  opus: 'claude-opus-4-6',
+  sonnet: 'claude-sonnet-4-6',
+  haiku: 'claude-haiku-4-5',
+};
+
+function normalizeRuntimeModelId(runtimeId: AgentRuntimeId, model: string): string {
+  const trimmed = model.trim();
+  if (!trimmed) return '';
+  if (runtimeId !== 'claude') return trimmed;
+  return CLAUDE_MODEL_ALIAS_TO_ID[trimmed] ?? trimmed;
 }
 
 export const DEFAULT_RUNTIME_DEFINITIONS: RuntimeDefinition[] = [
@@ -31,17 +46,19 @@ export const DEFAULT_RUNTIME_DEFINITIONS: RuntimeDefinition[] = [
       supportsOAuthLogin: true,
       supportsOfficialAuth: true,
       supportsThirdPartyGateway: true,
-      supportsModelOverride: false,
+      supportsModelOverride: true,
       supportsNativeThinkingStream: true,
       supportsTaskNotificationSynthesis: true,
     },
+    supportedModels: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+    defaultModel: 'claude-opus-4-6',
   },
   {
     id: 'codex',
     label: 'Codex',
     description: 'OpenAI Codex SDK runtime with MCP integration.',
     capabilities: {
-      supportsImages: false,
+      supportsImages: true,
       supportsMemoryFlush: false,
       supportsCustomBaseUrl: true,
       supportsOAuthLogin: false,
@@ -51,6 +68,8 @@ export const DEFAULT_RUNTIME_DEFINITIONS: RuntimeDefinition[] = [
       supportsNativeThinkingStream: true,
       supportsTaskNotificationSynthesis: false,
     },
+    supportedModels: ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.1-codex-max', 'gpt-5.2', 'gpt-5.1-codex-mini'],
+    defaultModel: 'gpt-5.3-codex',
   },
   {
     id: 'gemini',
@@ -67,6 +86,8 @@ export const DEFAULT_RUNTIME_DEFINITIONS: RuntimeDefinition[] = [
       supportsNativeThinkingStream: true,
       supportsTaskNotificationSynthesis: false,
     },
+    supportedModels: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+    defaultModel: 'gemini-2.5-pro',
   },
 ];
 
@@ -84,6 +105,8 @@ interface RuntimeDefinitionLike {
   label?: unknown;
   description?: unknown;
   capabilities?: unknown;
+  supportedModels?: unknown;
+  defaultModel?: unknown;
 }
 
 function isRuntimeDefinitionLike(input: unknown): input is RuntimeDefinitionLike {
@@ -149,6 +172,20 @@ export function normalizeRuntimeDefinitions(input: unknown): RuntimeDefinition[]
               ? rawCapabilities.supportsTaskNotificationSynthesis
               : fallback.capabilities.supportsTaskNotificationSynthesis,
         },
+        supportedModels: (() => {
+          const models = Array.isArray(item.supportedModels)
+            ? item.supportedModels
+              .filter((model): model is string => typeof model === 'string')
+              .map((model) => normalizeRuntimeModelId(item.id, model))
+              .filter((model) => model.length > 0)
+            : [];
+          if (models.length > 0) return Array.from(new Set(models));
+          return fallback.supportedModels;
+        })(),
+        defaultModel:
+          typeof item.defaultModel === 'string' && item.defaultModel.trim().length > 0
+            ? normalizeRuntimeModelId(item.id, item.defaultModel)
+            : fallback.defaultModel,
       } satisfies RuntimeDefinition;
     });
 

@@ -6,7 +6,7 @@ import { canAccessGroup, type Variables, type WebDeps } from '../web-context.js'
 import { authMiddleware, systemConfigMiddleware } from '../middleware/auth.js';
 import {
   getAgentProviderConfiguredMap,
-  listAgentProviderDefinitions,
+  listAgentProviderDefinitionsDynamic,
 } from '../agent-providers.js';
 import {
   RuntimeConfigSchema,
@@ -203,12 +203,12 @@ function isSystemChannelConfigConnectable(
 
 // --- Routes ---
 
-configRoutes.get('/runtimes', authMiddleware, systemConfigMiddleware, (c) => {
+configRoutes.get('/runtimes', authMiddleware, systemConfigMiddleware, async (c) => {
   try {
     const current = getRuntimeProviderConfig();
     const effective = resolveRuntimeProviderConfigWithEnvFallback(current);
     return c.json({
-      runtimes: listAgentProviderDefinitions(effective),
+      runtimes: await listAgentProviderDefinitionsDynamic(effective),
       activeRuntime: current.agentRuntime,
       configuredRuntimes: getAgentProviderConfiguredMap(effective),
     });

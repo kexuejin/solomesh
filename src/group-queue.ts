@@ -2,6 +2,8 @@ import { ChildProcess, exec, execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+import type { AgentProvider } from './agent-providers.js';
+import type { ReasoningEffort } from './chat-run-overrides.js';
 import { DATA_DIR } from './config.js';
 import { getSystemSettings } from './runtime-config.js';
 import { logger } from './logger.js';
@@ -19,6 +21,12 @@ interface QueuedTask {
 const MAX_RETRIES = 5;
 const BASE_RETRY_MS = 5000;
 
+function normalizeModelOverride(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 interface GroupState {
   active: boolean;
   pendingMessages: boolean;
@@ -29,6 +37,9 @@ interface GroupState {
   groupFolder: string | null;
   agentId: string | null;
   operationPermissionMode: OperationPermissionMode | null;
+  agentRuntimeOverride: AgentProvider | null;
+  modelOverride: string | null;
+  reasoningEffort: ReasoningEffort | null;
   retryCount: number;
   restarting: boolean;
 }
@@ -64,6 +75,9 @@ export class GroupQueue {
         groupFolder: null,
         agentId: null,
         operationPermissionMode: null,
+        agentRuntimeOverride: null,
+        modelOverride: null,
+        reasoningEffort: null,
         retryCount: 0,
         restarting: false,
       };
@@ -227,6 +241,9 @@ export class GroupQueue {
     displayName?: string,
     agentId?: string,
     operationPermissionMode?: OperationPermissionMode,
+    agentRuntimeOverride?: AgentProvider,
+    modelOverride?: string,
+    reasoningEffort?: ReasoningEffort,
   ): void {
     const state = this.getGroup(groupJid);
     state.process = proc;
@@ -235,6 +252,9 @@ export class GroupQueue {
     if (groupFolder) state.groupFolder = groupFolder;
     state.agentId = agentId || null;
     state.operationPermissionMode = operationPermissionMode ?? null;
+    state.agentRuntimeOverride = agentRuntimeOverride ?? null;
+    state.modelOverride = normalizeModelOverride(modelOverride);
+    state.reasoningEffort = reasoningEffort ?? null;
   }
 
   /**
@@ -263,7 +283,12 @@ export class GroupQueue {
     text: string,
     images?: Array<{ data: string; mimeType?: string }>,
     intent: MessageIntent = 'continue',
-    options?: { operationPermissionMode?: OperationPermissionMode },
+    options?: {
+      operationPermissionMode?: OperationPermissionMode;
+      agentRuntimeOverride?: AgentProvider;
+      modelOverride?: string;
+      reasoningEffort?: ReasoningEffort;
+    },
   ): SendMessageResult {
     const state = this.resolveActiveState(groupJid);
     if (!state) return 'no_active';
@@ -282,6 +307,63 @@ export class GroupQueue {
           requestedMode,
         },
         'Operation permission mode changed, forcing a new run',
+      );
+      return 'no_active';
+    }
+
+    const hasRuntimeOverride =
+      !!options && Object.prototype.hasOwnProperty.call(options, 'agentRuntimeOverride');
+    const requestedRuntime = options?.agentRuntimeOverride ?? null;
+    if (
+      hasRuntimeOverride
+      && state.agentRuntimeOverride !== requestedRuntime
+    ) {
+      this.closeStdin(groupJid);
+      logger.info(
+        {
+          groupJid,
+          currentRuntime: state.agentRuntimeOverride,
+          requestedRuntime,
+        },
+        'Agent runtime override changed, forcing a new run',
+      );
+      return 'no_active';
+    }
+
+    const hasModelOverride =
+      !!options && Object.prototype.hasOwnProperty.call(options, 'modelOverride');
+    const requestedModel = normalizeModelOverride(options?.modelOverride);
+    if (
+      hasModelOverride
+      && state.modelOverride !== requestedModel
+    ) {
+      this.closeStdin(groupJid);
+      logger.info(
+        {
+          groupJid,
+          currentModel: state.modelOverride,
+          requestedModel,
+        },
+        'Model override changed, forcing a new run',
+      );
+      return 'no_active';
+    }
+
+    const hasReasoningEffort =
+      !!options && Object.prototype.hasOwnProperty.call(options, 'reasoningEffort');
+    const requestedReasoningEffort = options?.reasoningEffort ?? null;
+    if (
+      hasReasoningEffort
+      && state.reasoningEffort !== requestedReasoningEffort
+    ) {
+      this.closeStdin(groupJid);
+      logger.info(
+        {
+          groupJid,
+          currentReasoningEffort: state.reasoningEffort,
+          requestedReasoningEffort,
+        },
+        'Reasoning effort changed, forcing a new run',
       );
       return 'no_active';
     }
@@ -600,6 +682,9 @@ export class GroupQueue {
       state.groupFolder = null;
       state.agentId = null;
       state.operationPermissionMode = null;
+      state.agentRuntimeOverride = null;
+      state.modelOverride = null;
+      state.reasoningEffort = null;
       this.activeCount--;
       if (isHostMode) {
         this.activeHostProcessCount--;
@@ -653,6 +738,9 @@ export class GroupQueue {
       state.groupFolder = null;
       state.agentId = null;
       state.operationPermissionMode = null;
+      state.agentRuntimeOverride = null;
+      state.modelOverride = null;
+      state.reasoningEffort = null;
       this.activeCount--;
       if (isHostMode) {
         this.activeHostProcessCount--;

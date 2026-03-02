@@ -31,12 +31,16 @@ export interface Message {
 }
 
 export type OperationPermissionMode = 'default' | 'bypass';
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface QueuedOutgoingMessage {
   id: string;
   content: string;
   attachments?: Array<{ data: string; mimeType: string }>;
   operationPermissionMode?: OperationPermissionMode;
+  agentRuntimeOverride?: 'claude' | 'codex' | 'gemini';
+  modelOverride?: string;
+  reasoningEffort?: ReasoningEffort;
   createdAt: number;
 }
 
@@ -215,6 +219,9 @@ function createQueuedMessage(
   content: string,
   attachments?: Array<{ data: string; mimeType: string }>,
   operationPermissionMode?: OperationPermissionMode,
+  agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+  modelOverride?: string,
+  reasoningEffort?: ReasoningEffort,
 ): QueuedOutgoingMessage {
   const id =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -227,6 +234,9 @@ function createQueuedMessage(
       ? attachments.map((att) => ({ ...att }))
       : undefined,
     operationPermissionMode,
+    agentRuntimeOverride,
+    modelOverride: typeof modelOverride === 'string' ? modelOverride.trim() : undefined,
+    reasoningEffort,
     createdAt: Date.now(),
   };
 }
@@ -285,12 +295,18 @@ interface ChatState {
     content: string,
     attachments?: Array<{ data: string; mimeType: string }>,
     operationPermissionMode?: OperationPermissionMode,
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+    modelOverride?: string,
+    reasoningEffort?: ReasoningEffort,
   ) => Promise<void>;
   sendMessageNow: (
     jid: string,
     content: string,
     attachments?: Array<{ data: string; mimeType: string }>,
     operationPermissionMode?: OperationPermissionMode,
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+    modelOverride?: string,
+    reasoningEffort?: ReasoningEffort,
   ) => Promise<void>;
   flushQueuedMainMessages: (jid: string) => Promise<void>;
   removeQueuedMainMessage: (jid: string, queuedMessageId: string) => void;
@@ -323,12 +339,18 @@ interface ChatState {
     agentId: string,
     content: string,
     operationPermissionMode?: OperationPermissionMode,
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+    modelOverride?: string,
+    reasoningEffort?: ReasoningEffort,
   ) => void;
   sendAgentMessageNow: (
     jid: string,
     agentId: string,
     content: string,
     operationPermissionMode?: OperationPermissionMode,
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+    modelOverride?: string,
+    reasoningEffort?: ReasoningEffort,
   ) => void;
   flushQueuedAgentMessages: (jid: string, agentId: string) => Promise<void>;
   removeQueuedAgentMessage: (agentId: string, queuedMessageId: string) => void;
@@ -772,6 +794,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     content: string,
     attachments?: Array<{ data: string; mimeType: string }>,
     operationPermissionMode?: OperationPermissionMode,
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+    modelOverride?: string,
+    reasoningEffort?: ReasoningEffort,
   ) => {
     try {
       set((s) => {
@@ -785,12 +810,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content: string;
         attachments?: Array<{ type: 'image'; data: string; mimeType: string }>;
         operationPermissionMode?: OperationPermissionMode;
+        agentRuntimeOverride?: 'claude' | 'codex' | 'gemini';
+        modelOverride?: string;
+        reasoningEffort?: ReasoningEffort;
       } = { chatJid: jid, content };
       if (attachments && attachments.length > 0) {
         body.attachments = attachments.map(att => ({ type: 'image', ...att }));
       }
       if (operationPermissionMode) {
         body.operationPermissionMode = operationPermissionMode;
+      }
+      if (agentRuntimeOverride) {
+        body.agentRuntimeOverride = agentRuntimeOverride;
+      }
+      const normalizedModelOverride = typeof modelOverride === 'string'
+        ? modelOverride.trim()
+        : '';
+      if (normalizedModelOverride) {
+        body.modelOverride = normalizedModelOverride;
+      }
+      if (reasoningEffort) {
+        body.reasoningEffort = reasoningEffort;
       }
 
       const data = await api.post<{ success: boolean; messageId: string; timestamp: string }>('/api/messages', body);
@@ -862,6 +902,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     content: string,
     attachments?: Array<{ data: string; mimeType: string }>,
     operationPermissionMode?: OperationPermissionMode,
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini',
+    modelOverride?: string,
+    reasoningEffort?: ReasoningEffort,
   ) => {
     const state = get();
     const queued = state.queuedMainMessages[jid] || [];
@@ -874,6 +917,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content,
         attachments,
         operationPermissionMode,
+        agentRuntimeOverride,
+        modelOverride,
+        reasoningEffort,
       );
       set((s) => ({
         queuedMainMessages: {
@@ -888,6 +934,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content,
       attachments,
       operationPermissionMode,
+      agentRuntimeOverride,
+      modelOverride,
+      reasoningEffort,
     );
   },
 
@@ -915,6 +964,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         next.content,
         next.attachments,
         next.operationPermissionMode,
+        next.agentRuntimeOverride,
+        next.modelOverride,
+        next.reasoningEffort,
       );
     } finally {
       set((s) => ({
@@ -1761,6 +1813,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     agentId,
     content,
     operationPermissionMode,
+    agentRuntimeOverride,
+    modelOverride,
+    reasoningEffort,
   ) => {
     // Clear agent streaming state before sending
     set((s) => {
@@ -1775,6 +1830,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content,
       agentId,
       operationPermissionMode,
+      agentRuntimeOverride,
+      modelOverride: typeof modelOverride === 'string' ? modelOverride.trim() : undefined,
+      reasoningEffort,
     });
     const directiveProvider = getDirectiveProvider(content);
     const workflowDirective = parseWorkflowDirectiveInput(content);
@@ -1795,7 +1853,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
 
-  sendAgentMessage: (jid, agentId, content, operationPermissionMode) => {
+  sendAgentMessage: (
+    jid,
+    agentId,
+    content,
+    operationPermissionMode,
+    agentRuntimeOverride,
+    modelOverride,
+    reasoningEffort,
+  ) => {
     const state = get();
     const queued = state.queuedAgentMessages[agentId] || [];
     if (
@@ -1807,6 +1873,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content,
         undefined,
         operationPermissionMode,
+        agentRuntimeOverride,
+        modelOverride,
+        reasoningEffort,
       );
       set((s) => ({
         queuedAgentMessages: {
@@ -1816,7 +1885,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
       return;
     }
-    get().sendAgentMessageNow(jid, agentId, content, operationPermissionMode);
+    get().sendAgentMessageNow(
+      jid,
+      agentId,
+      content,
+      operationPermissionMode,
+      agentRuntimeOverride,
+      modelOverride,
+      reasoningEffort,
+    );
   },
 
   flushQueuedAgentMessages: async (jid, agentId) => {
@@ -1843,6 +1920,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         agentId,
         next.content,
         next.operationPermissionMode,
+        next.agentRuntimeOverride,
+        next.modelOverride,
+        next.reasoningEffort,
       );
     } finally {
       set((s) => ({

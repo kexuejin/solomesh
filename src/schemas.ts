@@ -132,11 +132,21 @@ export const MessageAttachmentSchema = z.object({
   mimeType: z.string().regex(/^image\//).optional(),
 });
 
+export const ReasoningEffortSchema = z.enum([
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+]);
+
 export const MessageCreateSchema = z.object({
   chatJid: z.string().min(1),
   content: z.string().optional().default(''),
   attachments: z.array(MessageAttachmentSchema).max(10).optional(),
   operationPermissionMode: z.enum(['default', 'bypass']).optional(),
+  agentRuntimeOverride: z.enum(AGENT_PROVIDER_IDS).optional(),
+  modelOverride: z.string().max(2000).optional(),
+  reasoningEffort: ReasoningEffortSchema.optional(),
 }).superRefine((data, ctx) => {
   const hasContent = data.content.trim().length > 0;
   const hasAttachments = (data.attachments?.length ?? 0) > 0;
