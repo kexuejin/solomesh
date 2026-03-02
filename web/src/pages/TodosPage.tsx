@@ -106,6 +106,20 @@ export function TodosPage() {
     void loadTodoEvents(focusTodoId);
   }, [focusTodoId, loadTodoEvents]);
 
+  useEffect(() => {
+    if (!focusTodoId) return;
+    if (loading) return;
+    if (todos.some((todo) => todo.id === focusTodoId)) return;
+    if (!nextCursor) return;
+    void loadTodos(
+      {
+        ...queryFilters,
+        cursor: nextCursor,
+      },
+      { append: true },
+    );
+  }, [focusTodoId, loading, loadTodos, nextCursor, queryFilters, todos]);
+
   const counts = useMemo(() => {
     const open = todos.filter((todo) => todo.status === 'open').length;
     const inProgress = todos.filter((todo) => todo.status === 'in_progress').length;
