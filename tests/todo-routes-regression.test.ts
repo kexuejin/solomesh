@@ -32,3 +32,14 @@ test('todo routes enforce source-based visibility and non-leaking not-found resp
   assert.ok(routes.includes("extractDecisionItemIdFromEventEvidence"));
   assert.ok(routes.includes("return c.json({ error: 'Todo not found' }, 404);"));
 });
+
+test('todo routes sanitize non-admin source payload and scope metrics', () => {
+  const routes = read('src/routes/todos.ts');
+  assert.ok(routes.includes('buildTodoIngestPayload'));
+  assert.ok(routes.includes("if (user.role !== 'admin')"));
+  assert.ok(routes.includes("source_type: 'manual'"));
+  assert.ok(routes.includes("source_id: `user:${user.id}`"));
+  assert.ok(routes.includes('const effectiveFilters: TodoMetricsFilters ='));
+  assert.ok(routes.includes("authUser.role === 'admin'"));
+  assert.ok(routes.includes("trigger_mode: 'manual'"));
+});

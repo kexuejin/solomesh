@@ -9,6 +9,7 @@ import {
 import { authMiddleware } from '../middleware/auth.js';
 import { TodoIngestSchema, TodoMetricsQuerySchema, TodoQuerySchema } from '../schemas.js';
 import {
+  type TodoMetricsFilters,
   getAllRegisteredGroups,
   getAllTasks,
   getDecisionItemById,
@@ -22,6 +23,45 @@ import { ingestTodo } from '../todo-core.js';
 import type { AuthUser, DecisionItem, Todo, TodoSourceEvent } from '../types.js';
 
 const todosRoutes = new Hono<{ Variables: Variables }>();
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function buildTodoIngestPayload(
+  rawBody: unknown,
+  user: AuthUser,
+): Record<string, unknown> {
+  const body = asRecord(rawBody);
+  if (user.role !== 'admin') {
+    return {
+      ...body,
+      source_type: 'manual',
+      source_id: `user:${user.id}`,
+      trigger_mode: 'manual',
+    };
+  }
+
+  const sourceType =
+    typeof body.source_type === 'string' ? body.source_type : 'manual';
+  return {
+    ...body,
+    source_type: sourceType,
+    source_id:
+      typeof body.source_id === 'string' && body.source_id.trim().length > 0
+        ? body.source_id
+        : `user:${user.id}`,
+    trigger_mode:
+      typeof body.trigger_mode === 'string'
+        ? body.trigger_mode
+        : sourceType === 'automation'
+          ? 'automation'
+          : 'manual',
+  };
+}
 
 function resolveAccessibleWorkspaceFolders(user: AuthUser): Set<string> {
   const registeredGroups = getAllRegisteredGroups();
@@ -137,7 +177,9 @@ function canAccessTodoBySourceEvents(
 
 todosRoutes.post('/ingest', authMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const validation = TodoIngestSchema.safeParse(body);
+  const authUser = c.get('user') as AuthUser;
+  const payload = buildTodoIngestPayload(body, authUser);
+  const validation = TodoIngestSchema.safeParse(payload);
   if (!validation.success) {
     return c.json(
       { error: 'Invalid request body', details: validation.error.format() },
@@ -145,7 +187,6 @@ todosRoutes.post('/ingest', authMiddleware, async (c) => {
     );
   }
 
-  const authUser = c.get('user') as AuthUser;
   const result = ingestTodo(validation.data, authUser.id);
   return c.json(result);
 });
@@ -154,13 +195,7 @@ todosRoutes.post('/', authMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const authUser = c.get('user') as AuthUser;
 
-  const payload = {
-    ...body,
-    source_type: body.source_type ?? 'manual',
-    source_id: body.source_id ?? `user:${authUser.id}`,
-    trigger_mode: body.trigger_mode ?? 'manual',
-  };
-
+  const payload = buildTodoIngestPayload(body, authUser);
   const validation = TodoIngestSchema.safeParse(payload);
   if (!validation.success) {
     return c.json(
@@ -224,7 +259,20 @@ todosRoutes.get('/metrics', authMiddleware, (c) => {
     );
   }
 
-  const metrics = getTodoIngestMetrics(validation.data);
+  const authUser = c.get('user') as AuthUser;
+  const effectiveFilters: TodoMetricsFilters =
+    authUser.role === 'admin'
+      ? validation.data
+      : {
+          date_from: validation.data.date_from,
+          date_to: validation.data.date_to,
+          source_run_id: validation.data.source_run_id,
+          source_type: 'manual',
+          source_id: `user:${authUser.id}`,
+          trigger_mode: 'manual',
+        };
+
+  const metrics = getTodoIngestMetrics(effectiveFilters);
   return c.json({ metrics });
 });
 
