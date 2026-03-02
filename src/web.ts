@@ -49,6 +49,13 @@ import browseRoutes from './routes/browse.js';
 import agentRoutes from './routes/agents.js';
 import mcpServersRoutes from './routes/mcp-servers.js';
 import workflowsRoutes from './routes/workflows.js';
+import remoteAccessRoutes, { injectRemoteAccessDeps } from './routes/remote-access.js';
+import {
+  RemoteAccessKernel,
+  JsonRemoteAccessStateStore,
+  CloudflaredTunnelProviderAdapter,
+  NgrokTunnelProviderAdapter,
+} from './remote-access-kernel/index.js';
 
 // Database and types (only for handleWebUserMessage and broadcast)
 import {
@@ -65,7 +72,20 @@ import {
 } from './db.js';
 import { isSessionExpired } from './auth.js';
 import type { NewMessage, WsMessageOut, WsMessageIn, AuthUser, StreamEvent, UserRole } from './types.js';
-import { WEB_PORT, SESSION_COOKIE_NAME } from './config.js';
+import {
+  APP_NAME,
+  WEB_PORT,
+  SESSION_COOKIE_NAME,
+  REMOTE_ACCESS_ENABLED,
+  REMOTE_ACCESS_DEFAULT_TARGET_URL,
+  REMOTE_ACCESS_STATE_FILE,
+  REMOTE_ACCESS_TOKEN_SECRET,
+  CLOUDFLARED_BIN,
+  NGROK_BIN,
+  NGROK_AUTHTOKEN,
+  NGROK_DOMAIN,
+  REMOTE_ACCESS_AUTO_INSTALL_PROVIDERS,
+} from './config.js';
 import { logger } from './logger.js';
 import { parseProviderDirective } from './provider-directive.js';
 import { analyzeIntent } from './intent-analyzer.js';
@@ -74,6 +94,10 @@ import {
   setChatRequestedOperationPermissionMode,
   type OperationPermissionMode,
 } from './operation-permission-mode.js';
+import {
+  buildWorkspacePublicEntryPath,
+  looksLikeRemoteAccessLinkRequest,
+} from './remote-access-kernel/workspace-linking.js';
 
 // --- App Setup ---
 
@@ -175,6 +199,55 @@ app.use(
 
 let deps: WebDeps | null = null;
 
+export const remoteAccessKernel = new RemoteAccessKernel({
+  tokenSecret: REMOTE_ACCESS_TOKEN_SECRET,
+  stateStore: new JsonRemoteAccessStateStore(REMOTE_ACCESS_STATE_FILE),
+  providerAdapters: [
+    new CloudflaredTunnelProviderAdapter({
+      executable: CLOUDFLARED_BIN,
+    }),
+    new NgrokTunnelProviderAdapter({
+      executable: NGROK_BIN,
+      authtoken: NGROK_AUTHTOKEN || undefined,
+      domain: NGROK_DOMAIN || undefined,
+    }),
+  ],
+});
+injectRemoteAccessDeps({
+  kernel: remoteAccessKernel,
+  enabled: REMOTE_ACCESS_ENABLED,
+  defaultTargetUrl: REMOTE_ACCESS_DEFAULT_TARGET_URL,
+  providerCommands: {
+    cloudflared: CLOUDFLARED_BIN,
+    ngrok: NGROK_BIN,
+  },
+  autoInstallProviders: REMOTE_ACCESS_AUTO_INSTALL_PROVIDERS,
+});
+
+function sendAssistantMessage(chatJid: string, text: string): void {
+  const msgId = crypto.randomUUID();
+  const timestamp = new Date().toISOString();
+  ensureChatExists(chatJid);
+  storeMessageDirect(
+    msgId,
+    chatJid,
+    'solomesh-agent',
+    APP_NAME,
+    text,
+    timestamp,
+    true,
+  );
+  broadcastNewMessage(chatJid, {
+    id: msgId,
+    chat_jid: chatJid,
+    sender: 'solomesh-agent',
+    sender_name: APP_NAME,
+    content: text,
+    timestamp,
+    is_from_me: true,
+  });
+}
+
 // --- Route Mounting ---
 
 app.route('/api/auth', authRoutes);
@@ -186,6 +259,7 @@ app.route('/api/tasks', tasksRoutes);
 app.route('/api/skills', skillsRoutes);
 app.route('/api/mcp-servers', mcpServersRoutes);
 app.route('/api/workflows', workflowsRoutes);
+app.route('/api/remote-access', remoteAccessRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/browse', browseRoutes);
 app.route('/api/groups', agentRoutes); // Agent routes under /api/groups/:jid/agents
@@ -291,6 +365,43 @@ async function handleWebUserMessage(
     is_from_me: false,
     attachments: attachmentsStr,
   });
+
+  if (
+    (!attachments || attachments.length === 0)
+    && looksLikeRemoteAccessLinkRequest(content)
+  ) {
+    if (!REMOTE_ACCESS_ENABLED) {
+      sendAssistantMessage(
+        chatJid,
+        'Remote access is disabled on this server (REMOTE_ACCESS_ENABLED=false).',
+      );
+    } else {
+      try {
+        const link = await remoteAccessKernel.createAccessLink({
+          ttlSeconds: 30 * 60,
+          oneTime: false,
+          path: buildWorkspacePublicEntryPath(group.folder),
+        });
+        sendAssistantMessage(
+          chatJid,
+          `Remote access link for workspace "${group.name}": ${link.url}`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const hint = message.includes('Tunnel is not running')
+          ? 'Start a tunnel in Settings > Remote Access first, then retry.'
+          : message;
+        sendAssistantMessage(
+          chatJid,
+          `Failed to create remote access link for workspace "${group.name}": ${hint}`,
+        );
+      }
+    }
+
+    deps.setLastAgentTimestamp(chatJid, { timestamp, id: messageId });
+    deps.advanceGlobalCursor({ timestamp, id: messageId });
+    return { ok: true, messageId, timestamp };
+  }
 
   const shared = !group.is_home && isGroupShared(group.folder);
   setChatRequestedOperationPermissionMode(chatJid, operationPermissionMode);
@@ -449,16 +560,28 @@ async function handleAgentConversationMessage(
 
 // --- Static Files ---
 
-app.use('/assets/*', serveStatic({ root: './web/dist' }));
+app.use('/assets/*', serveStatic({
+  root: './web/dist',
+  precompressed: true,
+  onFound: (_path, c) => {
+    c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  },
+}));
 app.use(
   '/*',
   serveStatic({
     root: './web/dist',
+    precompressed: true,
     rewriteRequestPath: (p) => {
       // SPA fallback
       if (p.startsWith('/api') || p.startsWith('/ws')) return p;
       if (p.match(/\.\w+$/)) return p; // Has file extension
       return '/index.html';
+    },
+    onFound: (servedPath, c) => {
+      if (servedPath.endsWith('.html')) {
+        c.header('Cache-Control', 'no-cache');
+      }
     },
   }),
 );
@@ -1123,6 +1246,14 @@ export async function shutdownWebServer(): Promise<void> {
   if (statusInterval) {
     clearInterval(statusInterval);
     statusInterval = null;
+  }
+
+  if (REMOTE_ACCESS_ENABLED) {
+    try {
+      await remoteAccessKernel.stopTunnel();
+    } catch {
+      // best effort cleanup
+    }
   }
   // Close all WebSocket connections
   for (const client of wsClients.keys()) {

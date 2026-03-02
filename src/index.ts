@@ -43,6 +43,7 @@ import {
   IPC_POLL_INTERVAL,
   MAIN_GROUP_FOLDER,
   POLL_INTERVAL,
+  REMOTE_ACCESS_ENABLED,
   TIMEZONE,
   validateConfig,
 } from './config.js';
@@ -123,6 +124,7 @@ import {
   broadcastTyping,
   broadcastStreamEvent,
   broadcastAgentStatus,
+  remoteAccessKernel,
   shutdownTerminals,
   shutdownWebServer,
 } from './web.js';
@@ -131,6 +133,10 @@ import { listRuntimePrimaryMemoryFileNames } from './memory-file-alias.js';
 import {
   resolveProviderDirectiveMessages,
 } from './provider-directive.js';
+import {
+  buildWorkspacePublicEntryPath,
+  looksLikeRemoteAccessLinkRequest,
+} from './remote-access-kernel/workspace-linking.js';
 import {
   listImChannelDefinitions,
   parseImChannelFromJid,
@@ -287,6 +293,56 @@ function sendSystemMessage(jid: string, type: string, detail: string): void {
     timestamp,
     is_from_me: true,
   });
+}
+
+async function maybeReplyWorkspaceRemoteAccessLink(
+  chatJid: string,
+  group: RegisteredGroup,
+  messages: NewMessage[],
+): Promise<boolean> {
+  const userMessages = messages.filter(
+    (item) => item.sender !== 'solomesh-agent' && item.sender !== '__system__',
+  );
+  if (userMessages.length === 0) return false;
+  if (userMessages.some((item) => !!item.attachments)) return false;
+  if (userMessages.some((item) => !looksLikeRemoteAccessLinkRequest(item.content))) {
+    return false;
+  }
+
+  if (!REMOTE_ACCESS_ENABLED) {
+    await sendMessage(
+      chatJid,
+      'Remote access is disabled on this server (REMOTE_ACCESS_ENABLED=false).',
+    );
+    return true;
+  }
+
+  try {
+    const link = await remoteAccessKernel.createAccessLink({
+      ttlSeconds: 30 * 60,
+      oneTime: false,
+      path: buildWorkspacePublicEntryPath(group.folder),
+    });
+    await sendMessage(
+      chatJid,
+      `Remote access link for workspace "${group.name}": ${link.url}`,
+    );
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const hint = message.includes('Tunnel is not running')
+      ? 'Start a tunnel in Settings > Remote Access first, then retry.'
+      : message;
+    await sendMessage(
+      chatJid,
+      `Failed to create remote access link for workspace "${group.name}": ${hint}`,
+    );
+    logger.warn(
+      { chatJid, folder: group.folder, err: message },
+      'Failed to auto-reply workspace remote access link',
+    );
+    return true;
+  }
 }
 
 interface WorkflowTemplateEditSystemMessagePayload {
@@ -1794,6 +1850,19 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const workflowResolved = handleWorkflowControlMessages(chatJid, missedMessages);
   const pendingMessages = workflowResolved.messages;
   if (pendingMessages.length === 0) {
+    lastAgentTimestamp[chatJid] = {
+      timestamp: lastProcessed.timestamp,
+      id: lastProcessed.id,
+    };
+    saveState();
+    return true;
+  }
+  const remoteAccessHandled = await maybeReplyWorkspaceRemoteAccessLink(
+    chatJid,
+    group,
+    pendingMessages,
+  );
+  if (remoteAccessHandled) {
     lastAgentTimestamp[chatJid] = {
       timestamp: lastProcessed.timestamp,
       id: lastProcessed.id,
@@ -3526,6 +3595,22 @@ async function startMessageLoop(): Promise<void> {
           const workflowMessages = workflowResolved.messages;
           if (workflowMessages.length === 0) {
             const lastProcessed = messagesToSend[messagesToSend.length - 1];
+            if (lastProcessed) {
+              lastAgentTimestamp[chatJid] = {
+                timestamp: lastProcessed.timestamp,
+                id: lastProcessed.id,
+              };
+              saveState();
+            }
+            continue;
+          }
+          const remoteAccessHandled = await maybeReplyWorkspaceRemoteAccessLink(
+            chatJid,
+            group,
+            workflowMessages,
+          );
+          if (remoteAccessHandled) {
+            const lastProcessed = workflowMessages[workflowMessages.length - 1];
             if (lastProcessed) {
               lastAgentTimestamp[chatJid] = {
                 timestamp: lastProcessed.timestamp,

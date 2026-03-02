@@ -54,6 +54,17 @@ export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 // Web server configuration
 export const WEB_PORT = parseInt(process.env.WEB_PORT || '3000', 10);
 
+// Remote access kernel configuration
+export const REMOTE_ACCESS_ENABLED = process.env.REMOTE_ACCESS_ENABLED === 'true';
+export const REMOTE_ACCESS_DEFAULT_TARGET_URL =
+  process.env.REMOTE_ACCESS_TARGET_URL || `http://127.0.0.1:${WEB_PORT}`;
+export const CLOUDFLARED_BIN = process.env.CLOUDFLARED_BIN || 'cloudflared';
+export const NGROK_BIN = process.env.NGROK_BIN || 'ngrok';
+export const NGROK_AUTHTOKEN = process.env.NGROK_AUTHTOKEN || '';
+export const NGROK_DOMAIN = process.env.NGROK_DOMAIN || '';
+export const REMOTE_ACCESS_AUTO_INSTALL_PROVIDERS =
+  process.env.REMOTE_ACCESS_AUTO_INSTALL_PROVIDERS !== 'false';
+
 // Cookie configuration
 // Production (non-localhost): use __Host- prefix (requires Secure; Path=/; no Domain)
 // Development (localhost): use plain name (no Secure flag needed)
@@ -91,6 +102,13 @@ function getOrCreateSessionSecret(): string {
 }
 
 export const WEB_SESSION_SECRET = getOrCreateSessionSecret();
+export const REMOTE_ACCESS_TOKEN_SECRET =
+  process.env.REMOTE_ACCESS_TOKEN_SECRET || WEB_SESSION_SECRET;
+export const REMOTE_ACCESS_STATE_FILE = path.join(
+  DATA_DIR,
+  'remote-access',
+  'state.json',
+);
 
 // Proxy trust configuration
 // Set TRUST_PROXY=true when behind a reverse proxy (nginx, Cloudflare, etc.)

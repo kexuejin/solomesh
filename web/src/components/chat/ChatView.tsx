@@ -79,6 +79,13 @@ interface UserImSessionsResponse {
   sessions: UserImSession[];
 }
 
+interface RemoteAccessLinkResponse {
+  success: boolean;
+  link: {
+    url: string;
+  };
+}
+
 export function ChatView({ groupJid, onBack }: ChatViewProps) {
   const { t } = useI18n();
   const [mobilePanel, setMobilePanel] = useState<MobilePanel | null>(null);
@@ -99,6 +106,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
   const [workspaceSessions, setWorkspaceSessions] = useState<UserImSession[]>([]);
   const [sessionSavingByJid, setSessionSavingByJid] = useState<Record<string, boolean>>({});
   const [imStatus, setImStatus] = useState<ImChannelStatusItem[] | null>(null);
+  const [creatingRemoteAccessLink, setCreatingRemoteAccessLink] = useState(false);
   const [imBannerDismissed, setImBannerDismissed] = useState(() =>
     localStorage.getItem('im-banner-dismissed') === '1',
   );
@@ -155,6 +163,9 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
   });
 
   const currentUser = useAuthStore(s => s.user);
+  const canManageSystemConfig = !!currentUser && (
+    currentUser.role === 'admin' || currentUser.permissions.includes('manage_system_config')
+  );
   const canUseTerminal = group?.execution_mode !== 'host';
   const isWorkspaceView =
     group.kind === 'home' ||
@@ -401,6 +412,30 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     await resetSession(groupJid);
     setResetLoading(false);
     setShowResetConfirm(false);
+  };
+
+  const handleWorkspaceRemoteAccess = async () => {
+    if (!group?.folder || creatingRemoteAccessLink) return;
+
+    setCreatingRemoteAccessLink(true);
+    try {
+      const data = await api.post<RemoteAccessLinkResponse>('/api/remote-access/links', {
+        ttlSeconds: 30 * 60,
+        oneTime: false,
+        path: '/api/remote-access/public/entry',
+        extraQuery: {
+          path: `/chat/${encodeURIComponent(group.folder)}`,
+        },
+      });
+      const url = data.link.url;
+      await navigator.clipboard.writeText(url).catch(() => undefined);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('chat.view.errors.remoteAccessLinkFailed');
+      window.alert(message);
+    } finally {
+      setCreatingRemoteAccessLink(false);
+    }
   };
 
   // --- Drag resize handlers (mouse + touch) ---
@@ -723,6 +758,18 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
             className="hidden cursor-pointer items-center rounded-lg border border-border/80 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground lg:inline-flex"
           >
             {t('chat.view.bindings.title')}
+          </button>
+        )}
+        {isWorkspaceView && canManageSystemConfig && (
+          <button
+            onClick={() => void handleWorkspaceRemoteAccess()}
+            disabled={creatingRemoteAccessLink}
+            className="hidden cursor-pointer items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-60 lg:inline-flex"
+          >
+            {creatingRemoteAccessLink
+              ? <Loader2 className="size-3.5 animate-spin" />
+              : <Link className="size-3.5" />}
+            {t('chat.view.actions.remoteAccess')}
           </button>
         )}
         {/* Desktop: toggle side panel */}
