@@ -39,6 +39,7 @@ test('workflow directive suggestions use translation keys', () => {
 
   assert.ok(source.includes('descriptionKey'));
   assert.ok(source.includes("chat.workflowDirective.templates.analysisHeavy"));
+  assert.ok(source.includes("chat.workflowDirective.automations.competitorWatch"));
   assert.ok(!/[一-龥]/.test(source), 'workflow-directive should not contain hardcoded Chinese literals');
 });
 

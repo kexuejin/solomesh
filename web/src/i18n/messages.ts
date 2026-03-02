@@ -1348,6 +1348,11 @@ export const zhCN = {
         competitorWatch: '竞品追踪：信号收集 -> 影响评估 -> Todo 输出',
         projectRecommendation: '项目推荐：候选收集 -> 评分筛选 -> Todo 输出',
       },
+      automations: {
+        help: '创建自动化任务（输入后可继续补充参数）',
+        competitorWatch: '创建 competitor-watch 自动化（需 repo 参数）',
+        projectRecommendation: '创建 project-recommendation 自动化',
+      },
       controls: {
         status: '查看当前 workflow 状态',
         next: '手动进入下一阶段',
@@ -3676,6 +3681,11 @@ export const en = {
         reviewGate: 'Review gate: context prep -> deep review -> final decision',
         competitorWatch: 'Competitor watch: signal collection -> impact assessment -> todo emit',
         projectRecommendation: 'Project recommendation: candidate collection -> scoring -> todo emit',
+      },
+      automations: {
+        help: 'Create automation task (continue with args after insert)',
+        competitorWatch: 'Create competitor-watch automation (repo required)',
+        projectRecommendation: 'Create project-recommendation automation',
       },
       controls: {
         status: 'Show current workflow status',
