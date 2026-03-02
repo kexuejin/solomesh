@@ -24,4 +24,5 @@ test('db exports todo repository helpers', () => {
   assert.ok(source.includes('export function insertTodoSourceEvent('));
   assert.ok(source.includes('export function listTodoSourceEvents('));
   assert.ok(source.includes('export function listTodos('));
+  assert.ok(source.includes('export function getTodoIngestMetrics('));
 });

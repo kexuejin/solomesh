@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 
 import type { Variables } from '../web-context.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { TodoIngestSchema, TodoQuerySchema } from '../schemas.js';
+import { TodoIngestSchema, TodoMetricsQuerySchema, TodoQuerySchema } from '../schemas.js';
 import {
+  getTodoIngestMetrics,
   getTodoById,
   listTodoSourceEvents,
   listTodos,
@@ -66,6 +67,19 @@ todosRoutes.get('/', authMiddleware, (c) => {
     todos,
     nextCursor: last ? `${last.last_seen_at}|${last.id}` : null,
   });
+});
+
+todosRoutes.get('/metrics', authMiddleware, (c) => {
+  const validation = TodoMetricsQuerySchema.safeParse(c.req.query());
+  if (!validation.success) {
+    return c.json(
+      { error: 'Invalid query', details: validation.error.format() },
+      400,
+    );
+  }
+
+  const metrics = getTodoIngestMetrics(validation.data);
+  return c.json({ metrics });
 });
 
 todosRoutes.get('/:id/events', authMiddleware, (c) => {

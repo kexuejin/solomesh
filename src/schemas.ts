@@ -146,6 +146,17 @@ export const TodoQuerySchema = z
   })
   .strict();
 
+export const TodoMetricsQuerySchema = z
+  .object({
+    source_type: TodoSourceTypeSchema.optional(),
+    source_id: z.string().max(200).optional(),
+    source_run_id: z.string().max(200).optional(),
+    trigger_mode: TodoTriggerModeSchema.optional(),
+    date_from: z.string().date().optional(),
+    date_to: z.string().date().optional(),
+  })
+  .strict();
+
 // 简单 cron 表达式验证：5 或 6 段，每段允许 * 和常见 cron 语法
 const CRON_REGEX = /^(\S+\s+){4,5}\S+$/;
 

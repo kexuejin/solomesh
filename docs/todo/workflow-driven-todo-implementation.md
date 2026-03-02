@@ -195,6 +195,7 @@ Content-Type: application/json
 - `GET /api/todos?source_type=plugin`
 - `GET /api/todos?source_id=workflow:competitor-watch:emit-todo`
 - `GET /api/todos?source_run_id=run_2026_03_02_0900`
+- `GET /api/todos/metrics?source_type=workflow&date_from=2026-03-01&date_to=2026-03-02`
 
 ## 8. 治理策略
 

@@ -18,5 +18,6 @@ test('todo routes expose ingest/list/events endpoints', () => {
   assert.ok(routes.includes("todosRoutes.post('/ingest'"));
   assert.ok(routes.includes("todosRoutes.post('/'"));
   assert.ok(routes.includes("todosRoutes.get('/'"));
+  assert.ok(routes.includes("todosRoutes.get('/metrics'"));
   assert.ok(routes.includes("todosRoutes.get('/:id/events'"));
 });

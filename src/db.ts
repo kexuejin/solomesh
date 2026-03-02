@@ -1106,6 +1106,34 @@ export interface TodoListFilters {
   cursor?: string;
 }
 
+export interface TodoMetricsFilters {
+  source_type?: TodoSourceType;
+  source_id?: string;
+  source_run_id?: string;
+  trigger_mode?: TodoTriggerMode;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface TodoIngestMetrics {
+  total: number;
+  created: number;
+  merged: number;
+  ignored: number;
+  create_rate: number;
+  merge_rate: number;
+  ignored_rate: number;
+  by_source_type: Record<
+    TodoSourceType,
+    {
+      total: number;
+      created: number;
+      merged: number;
+      ignored: number;
+    }
+  >;
+}
+
 type TodoMergePatch = Pick<
   Todo,
   'occurrence_count' | 'last_seen_at' | 'priority' | 'updated_at'
@@ -1303,6 +1331,112 @@ export function listTodos(filters: TodoListFilters = {}): Todo[] {
     .all(...params, limit) as Array<Record<string, unknown>>;
 
   return rows.map(parseTodoRow);
+}
+
+export function getTodoIngestMetrics(
+  filters: TodoMetricsFilters = {},
+): TodoIngestMetrics {
+  const clauses: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (filters.source_type) {
+    clauses.push('e.source_type = ?');
+    params.push(filters.source_type);
+  }
+  if (filters.source_id) {
+    clauses.push('e.source_id = ?');
+    params.push(filters.source_id);
+  }
+  if (filters.source_run_id) {
+    clauses.push('e.source_run_id = ?');
+    params.push(filters.source_run_id);
+  }
+  if (filters.trigger_mode) {
+    clauses.push('e.trigger_mode = ?');
+    params.push(filters.trigger_mode);
+  }
+  if (filters.date_from) {
+    clauses.push('e.created_at >= ?');
+    params.push(`${filters.date_from}T00:00:00.000Z`);
+  }
+  if (filters.date_to) {
+    const end = new Date(`${filters.date_to}T00:00:00.000Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    clauses.push('e.created_at < ?');
+    params.push(end.toISOString());
+  }
+
+  const whereSql = clauses.join(' AND ');
+  const byActionRows = db
+    .prepare(
+      `
+      SELECT action, COUNT(*) AS total
+      FROM todo_source_events e
+      WHERE ${whereSql}
+      GROUP BY action
+    `,
+    )
+    .all(...params) as Array<{ action: string; total: number }>;
+
+  let total = 0;
+  let created = 0;
+  let merged = 0;
+  let ignored = 0;
+  for (const row of byActionRows) {
+    const count = Number(row.total ?? 0);
+    total += count;
+    if (row.action === 'created') created += count;
+    else if (row.action === 'merged') merged += count;
+    else if (row.action === 'ignored') ignored += count;
+  }
+
+  const bySourceType: TodoIngestMetrics['by_source_type'] = {
+    manual: { total: 0, created: 0, merged: 0, ignored: 0 },
+    automation: { total: 0, created: 0, merged: 0, ignored: 0 },
+    plugin: { total: 0, created: 0, merged: 0, ignored: 0 },
+    workflow: { total: 0, created: 0, merged: 0, ignored: 0 },
+  };
+
+  const bySourceRows = db
+    .prepare(
+      `
+      SELECT source_type, action, COUNT(*) AS total
+      FROM todo_source_events e
+      WHERE ${whereSql}
+      GROUP BY source_type, action
+    `,
+    )
+    .all(...params) as Array<{
+      source_type: TodoSourceType;
+      action: string;
+      total: number;
+    }>;
+
+  for (const row of bySourceRows) {
+    const sourceBucket = bySourceType[row.source_type];
+    if (!sourceBucket) continue;
+    const count = Number(row.total ?? 0);
+    sourceBucket.total += count;
+    if (row.action === 'created') sourceBucket.created += count;
+    else if (row.action === 'merged') sourceBucket.merged += count;
+    else if (row.action === 'ignored') sourceBucket.ignored += count;
+  }
+
+  const safeRate = (count: number): number => {
+    if (total <= 0) return 0;
+    return Number((count / total).toFixed(4));
+  };
+
+  return {
+    total,
+    created,
+    merged,
+    ignored,
+    create_rate: safeRate(created),
+    merge_rate: safeRate(merged),
+    ignored_rate: safeRate(ignored),
+    by_source_type: bySourceType,
+  };
 }
 
 export function countTodoEventsForSourceOnDate(

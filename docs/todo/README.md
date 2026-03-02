@@ -32,6 +32,7 @@
 - 创建入口：自动化创建表单
 - 编辑入口：自动化任务详情
 - 生效行为：任务执行失败时写入 Todo（通过统一 `todo.ingest`）
+- 指标入口：`GET /api/todos/metrics`（支持按来源与日期过滤查看 created/merged 比率）
 
 ## 轻量 Git 增量游标（不新增表）
 

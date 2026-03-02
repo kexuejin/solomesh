@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TodoIngestSchema, TodoQuerySchema } from '../src/schemas.js';
+import {
+  TodoIngestSchema,
+  TodoMetricsQuerySchema,
+  TodoQuerySchema,
+} from '../src/schemas.js';
 
 test('TodoIngestSchema accepts required source fields', () => {
   const parsed = TodoIngestSchema.safeParse({
@@ -44,6 +48,25 @@ test('TodoQuerySchema accepts query filters', () => {
 test('TodoQuerySchema rejects invalid limit', () => {
   const parsed = TodoQuerySchema.safeParse({
     limit: '0',
+  });
+  assert.equal(parsed.success, false);
+});
+
+test('TodoMetricsQuerySchema accepts source/date filters', () => {
+  const parsed = TodoMetricsQuerySchema.safeParse({
+    source_type: 'workflow',
+    source_id: 'workflow:competitor-watch:emit-todo',
+    source_run_id: 'run-2026-03-02-0900',
+    trigger_mode: 'manual',
+    date_from: '2026-03-01',
+    date_to: '2026-03-02',
+  });
+  assert.equal(parsed.success, true);
+});
+
+test('TodoMetricsQuerySchema rejects invalid date format', () => {
+  const parsed = TodoMetricsQuerySchema.safeParse({
+    date_from: '2026/03/01',
   });
   assert.equal(parsed.success, false);
 });
