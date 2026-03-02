@@ -135,6 +135,16 @@ export interface TaskWorkflowRules {
   on_error?: {
     todo_ingest?: boolean;
   };
+  plugin_state?: {
+    competitor_git?: {
+      enabled?: boolean;
+      repo?: string;
+      branch?: string;
+      last_sha?: string | null;
+      lookback_commits?: number;
+      last_scan_at?: string;
+    };
+  };
 }
 
 export interface TaskRunLog {

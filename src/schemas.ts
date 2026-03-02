@@ -62,6 +62,27 @@ export const TaskWorkflowRulesSchema = z
         todo_ingest: z.boolean().optional(),
       })
       .optional(),
+    plugin_state: z
+      .object({
+        competitor_git: z
+          .object({
+            enabled: z.boolean().optional(),
+            repo: z.string().trim().min(1).max(300).optional(),
+            branch: z.string().trim().min(1).max(128).optional(),
+            last_sha: z
+              .string()
+              .trim()
+              .regex(/^[0-9a-f]{7,40}$/i)
+              .nullable()
+              .optional(),
+            lookback_commits: z.number().int().min(1).max(500).optional(),
+            last_scan_at: z.string().datetime().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 

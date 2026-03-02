@@ -67,3 +67,44 @@ test('TaskPatchSchema accepts explicit workflow todo rule fields', () => {
     assert.equal(parsed.data.workflow_rules?.on_error?.todo_ingest, true);
   }
 });
+
+test('TaskPatchSchema accepts competitor_git plugin state fields', () => {
+  const parsed = TaskPatchSchema.safeParse({
+    workflow_rules: {
+      plugin_state: {
+        competitor_git: {
+          enabled: true,
+          repo: 'https://github.com/example/competitor',
+          branch: 'main',
+          last_sha: 'abc1234',
+          lookback_commits: 80,
+        },
+      },
+    },
+  });
+
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.workflow_rules?.plugin_state?.competitor_git?.repo, 'https://github.com/example/competitor');
+    assert.equal(parsed.data.workflow_rules?.plugin_state?.competitor_git?.last_sha, 'abc1234');
+  }
+});
+
+test('TaskPatchSchema rejects invalid competitor_git last_sha', () => {
+  const parsed = TaskPatchSchema.safeParse({
+    workflow_rules: {
+      plugin_state: {
+        competitor_git: {
+          repo: 'https://github.com/example/competitor',
+          last_sha: 'not-a-sha',
+        },
+      },
+    },
+  });
+
+  assert.equal(parsed.success, false);
+  if (!parsed.success) {
+    const paths = parsed.error.issues.map((i) => i.path.join('.'));
+    assert.ok(paths.includes('workflow_rules.plugin_state.competitor_git.last_sha'));
+  }
+});

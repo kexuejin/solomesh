@@ -23,13 +23,14 @@ import {
   getDueTasks,
   getTaskById,
   logTaskRun,
+  updateTask,
   updateTaskAfterRun,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { hasScriptCapacity, runScript } from './script-runner.js';
 import { ingestTodo } from './todo-core.js';
-import { RegisteredGroup, ScheduledTask } from './types.js';
+import { RegisteredGroup, ScheduledTask, TaskWorkflowRules } from './types.js';
 
 export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
@@ -48,6 +49,16 @@ export interface SchedulerDependencies {
 }
 
 const runningTaskIds = new Set<string>();
+const GIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
+const GIT_SHA_CAPTURE_RE =
+  /(?:SOLOMESH_COMPETITOR_GIT_HEAD|competitor_git_next_sha)\s*[:=]\s*([0-9a-f]{7,40})/gi;
+
+export interface CompetitorGitCursorConfig {
+  repo: string;
+  branch: string;
+  lastSha: string | null;
+  lookbackCommits: number;
+}
 
 export function shouldIngestAutomationErrorTodo(
   task: Pick<ScheduledTask, 'workflow_rules'>,
@@ -55,6 +66,140 @@ export function shouldIngestAutomationErrorTodo(
 ): boolean {
   if (!error) return false;
   return task.workflow_rules?.on_error?.todo_ingest === true;
+}
+
+function normalizeGitSha(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!GIT_SHA_PATTERN.test(trimmed)) return null;
+  return trimmed.toLowerCase();
+}
+
+function parsePromptCompetitorGitHints(prompt: string): {
+  repo?: string;
+  branch?: string;
+  lookbackCommits?: number;
+} {
+  const repo =
+    prompt.match(/^\s*(?:repo|repo_url)\s*[:=]\s*(\S+)/im)?.[1]?.trim() || '';
+  const branch =
+    prompt.match(/^\s*branch\s*[:=]\s*([^\s]+)/im)?.[1]?.trim() || '';
+  const lookbackRaw = prompt.match(/^\s*lookback_commits\s*[:=]\s*(\d+)/im)?.[1];
+  const lookback = lookbackRaw ? Number.parseInt(lookbackRaw, 10) : NaN;
+  return {
+    ...(repo ? { repo } : {}),
+    ...(branch ? { branch } : {}),
+    ...(Number.isFinite(lookback) && lookback > 0 ? { lookbackCommits: lookback } : {}),
+  };
+}
+
+export function getCompetitorGitCursorConfig(
+  task: Pick<ScheduledTask, 'workflow_rules' | 'prompt'>,
+): CompetitorGitCursorConfig | null {
+  const state = task.workflow_rules?.plugin_state?.competitor_git;
+  if (state?.enabled === false) return null;
+  const hint = parsePromptCompetitorGitHints(task.prompt);
+  const repo = (state?.repo ?? hint.repo ?? '').trim();
+  if (!repo) return null;
+
+  const branchRaw = (state?.branch ?? hint.branch ?? '').trim();
+  const branch = branchRaw || 'main';
+  const lastSha = normalizeGitSha(state?.last_sha ?? null);
+  const lookbackRaw = Number(state?.lookback_commits ?? hint.lookbackCommits);
+  const lookbackCommits =
+    Number.isFinite(lookbackRaw) && lookbackRaw > 0
+      ? Math.min(500, Math.max(1, Math.floor(lookbackRaw)))
+      : 50;
+
+  return {
+    repo,
+    branch,
+    lastSha,
+    lookbackCommits,
+  };
+}
+
+function buildCompetitorGitRange(config: CompetitorGitCursorConfig): string {
+  if (config.lastSha) return `${config.lastSha}..HEAD`;
+  return `HEAD~${config.lookbackCommits}..HEAD`;
+}
+
+export function buildPromptWithCompetitorGitCursor(
+  basePrompt: string,
+  config: CompetitorGitCursorConfig,
+): string {
+  return [
+    basePrompt.trim(),
+    '',
+    '[competitor-git-cursor]',
+    `repo: ${config.repo}`,
+    `branch: ${config.branch}`,
+    `range: ${buildCompetitorGitRange(config)}`,
+    '请只分析上述 commit 范围内的变更，提炼新功能、优化、修复及影响。',
+    '回复末尾必须附一行：competitor_git_next_sha: <HEAD_SHA>',
+    '[/competitor-git-cursor]',
+  ].join('\n');
+}
+
+export function extractCompetitorGitNextSha(
+  output: string | null | undefined,
+): string | null {
+  if (typeof output !== 'string' || output.trim().length === 0) return null;
+  GIT_SHA_CAPTURE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let last: string | null = null;
+  while ((match = GIT_SHA_CAPTURE_RE.exec(output)) !== null) {
+    last = normalizeGitSha(match[1]);
+  }
+  return last;
+}
+
+function updateCompetitorGitCursorState(
+  task: ScheduledTask,
+  result: string | null,
+  error: string | null,
+): void {
+  if (error) return;
+  const config = getCompetitorGitCursorConfig(task);
+  if (!config) return;
+
+  const nextSha = extractCompetitorGitNextSha(result);
+  const nowIso = new Date().toISOString();
+  const currentRules = task.workflow_rules ?? {};
+  const currentState = currentRules.plugin_state?.competitor_git ?? {};
+  const existingSha = normalizeGitSha(currentState.last_sha ?? null);
+  const resolvedSha = nextSha ?? existingSha;
+
+  const nextRules: TaskWorkflowRules = {
+    ...currentRules,
+    plugin_state: {
+      ...(currentRules.plugin_state ?? {}),
+      competitor_git: {
+        ...currentState,
+        enabled: currentState.enabled ?? true,
+        repo: config.repo,
+        branch: config.branch,
+        lookback_commits: config.lookbackCommits,
+        last_sha: resolvedSha,
+        last_scan_at: nowIso,
+      },
+    },
+  };
+  updateTask(task.id, { workflow_rules: nextRules });
+
+  if (nextSha && nextSha !== existingSha) {
+    logger.info(
+      { taskId: task.id, previousSha: existingSha, nextSha },
+      'Updated competitor_git cursor',
+    );
+    return;
+  }
+  if (!nextSha) {
+    logger.warn(
+      { taskId: task.id },
+      'competitor_git cursor marker missing from task output; cursor not advanced',
+    );
+  }
 }
 
 function computeNextRun(task: ScheduledTask): string | null {
@@ -168,6 +313,10 @@ async function runTask(
 
   let result: string | null = null;
   let error: string | null = null;
+  const competitorGitConfig = getCompetitorGitCursorConfig(task);
+  const agentPrompt = competitorGitConfig
+    ? buildPromptWithCompetitorGitCursor(task.prompt, competitorGitConfig)
+    : task.prompt;
 
   // For group context mode, use the group's current session
   const sessions = deps.getSessions();
@@ -210,7 +359,7 @@ async function runTask(
     const output = await runAgent(
       group,
       {
-        prompt: task.prompt,
+        prompt: agentPrompt,
         sessionId,
         groupFolder: task.group_folder,
         chatJid: groupJid,
@@ -282,6 +431,7 @@ async function runTask(
     error,
   });
   maybeIngestAutomationFailureTodo(task, runAt, error, result);
+  updateCompetitorGitCursorState(task, result, error);
 
   const nextRun = computeNextRun(task);
 
@@ -371,6 +521,7 @@ async function runScriptTask(
     error,
   });
   maybeIngestAutomationFailureTodo(task, runAt, error, result);
+  updateCompetitorGitCursorState(task, result, error);
 
   const nextRun = computeNextRun(task);
   const resultSummary = error

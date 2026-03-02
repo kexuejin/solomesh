@@ -33,6 +33,31 @@
 - 编辑入口：自动化任务详情
 - 生效行为：任务执行失败时写入 Todo（通过统一 `todo.ingest`）
 
+## 轻量 Git 增量游标（不新增表）
+
+- 复用字段：`scheduled_tasks.workflow_rules.plugin_state.competitor_git`
+- 示例：
+
+```json
+{
+  "on_error": { "todo_ingest": true },
+  "plugin_state": {
+    "competitor_git": {
+      "enabled": true,
+      "repo": "https://github.com/example/competitor",
+      "branch": "main",
+      "last_sha": "abc1234",
+      "lookback_commits": 50,
+      "last_scan_at": "2026-03-02T12:00:00.000Z"
+    }
+  }
+}
+```
+
+- 调度器行为：
+  - 成功执行后从结果提取 `competitor_git_next_sha`（或 `SOLOMESH_COMPETITOR_GIT_HEAD`）并回写 `last_sha`
+  - 下次执行按 `last_sha..HEAD` 增量分析
+
 ## 当前内置验证资产
 
 - 内置 Workflow 模板：
