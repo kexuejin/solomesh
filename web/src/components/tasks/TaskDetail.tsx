@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ScheduledTask, useTasksStore } from '../../stores/tasks';
 import { localeForDateTime, useI18n } from '../../i18n';
 
@@ -8,9 +8,10 @@ interface TaskDetailProps {
 
 export function TaskDetail({ task }: TaskDetailProps) {
   const { t, locale } = useI18n();
-  const { logs, loadLogs } = useTasksStore();
+  const { logs, loadLogs, updateTaskWorkflowRule } = useTasksStore();
   const taskLogs = logs[task.id] || [];
   const onErrorTodoRuleEnabled = task.workflow_rules?.on_error?.todo_ingest === true;
+  const [updatingRule, setUpdatingRule] = useState(false);
 
   useEffect(() => {
     loadLogs(task.id);
@@ -57,6 +58,15 @@ export function TaskDetail({ task }: TaskDetailProps) {
       if (!Number.isNaN(parsed.getTime())) return formatDate(parsed.toISOString());
     }
     return task.schedule_value;
+  };
+
+  const handleToggleOnErrorTodoRule = async () => {
+    setUpdatingRule(true);
+    try {
+      await updateTaskWorkflowRule(task.id, !onErrorTodoRuleEnabled);
+    } finally {
+      setUpdatingRule(false);
+    }
   };
 
   return (
@@ -155,10 +165,29 @@ export function TaskDetail({ task }: TaskDetailProps) {
 
         <div>
           <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.onErrorTodoRule')}</div>
-          <div className="text-sm text-foreground">
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-foreground">
+              {onErrorTodoRuleEnabled
+                ? t('tasks.detail.enabled')
+                : t('tasks.detail.disabled')}
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleOnErrorTodoRule}
+              disabled={updatingRule}
+              className="rounded border border-border px-2 py-0.5 text-xs text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {updatingRule
+                ? t('tasks.detail.updatingRule')
+                : onErrorTodoRuleEnabled
+                  ? t('tasks.detail.disableRule')
+                  : t('tasks.detail.enableRule')}
+            </button>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
             {onErrorTodoRuleEnabled
-              ? t('tasks.detail.enabled')
-              : t('tasks.detail.disabled')}
+              ? t('tasks.detail.onErrorTodoRuleEnabledHint')
+              : t('tasks.detail.onErrorTodoRuleDisabledHint')}
           </div>
         </div>
 

@@ -55,6 +55,7 @@ interface TasksState {
     workflowRules?: TaskWorkflowRules | null,
   ) => Promise<void>;
   updateTaskStatus: (id: string, status: 'active' | 'paused') => Promise<void>;
+  updateTaskWorkflowRule: (id: string, enabled: boolean) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   loadLogs: (taskId: string) => Promise<void>;
 }
@@ -63,6 +64,7 @@ type TasksStoreMessageKey =
   | 'tasks.store.loadFailed'
   | 'tasks.store.createFailed'
   | 'tasks.store.updateStatusFailed'
+  | 'tasks.store.updateRuleFailed'
   | 'tasks.store.deleteFailed'
   | 'tasks.store.loadLogsFailed';
 
@@ -147,6 +149,24 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       await get().loadTasks();
     } catch (err) {
       set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.updateStatusFailed') });
+    }
+  },
+
+  updateTaskWorkflowRule: async (id: string, enabled: boolean) => {
+    try {
+      await api.patch(`/api/tasks/${id}`, {
+        workflow_rules: enabled
+          ? {
+            on_error: {
+              todo_ingest: true,
+            },
+          }
+          : null,
+      });
+      set({ error: null });
+      await get().loadTasks();
+    } catch (err) {
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.updateRuleFailed') });
     }
   },
 
