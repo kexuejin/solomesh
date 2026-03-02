@@ -12,6 +12,7 @@ import { ProfileSection } from '../components/settings/ProfileSection';
 import { SecuritySection } from '../components/settings/SecuritySection';
 import { AboutSection } from '../components/settings/AboutSection';
 import { AppearanceSection } from '../components/settings/AppearanceSection';
+import { RemoteAccessSection } from '../components/settings/RemoteAccessSection';
 import { UserChannelsSection } from '../components/settings/UserChannelsSection';
 import { WorkflowSection } from '../components/settings/WorkflowSection';
 import { GroupsPage } from './GroupsPage';
@@ -22,8 +23,8 @@ import { UsersPage } from './UsersPage';
 import { SettingsFeedback } from '../components/settings/SettingsFeedback';
 import type { SettingsTab } from '../components/settings/types';
 
-const VALID_TABS: SettingsTab[] = ['channels', 'runtime', 'registration', 'appearance', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'workflows', 'users', 'about'];
-const SYSTEM_TABS: SettingsTab[] = ['channels', 'runtime', 'registration', 'appearance'];
+const VALID_TABS: SettingsTab[] = ['channels', 'runtime', 'registration', 'appearance', 'remote-access', 'profile', 'my-channels', 'security', 'groups', 'memory', 'skills', 'mcp-servers', 'workflows', 'users', 'about'];
+const SYSTEM_TABS: SettingsTab[] = ['channels', 'runtime', 'registration', 'appearance', 'remote-access'];
 const FULLPAGE_TABS: SettingsTab[] = ['groups', 'memory', 'skills', 'mcp-servers', 'users'];
 
 export function SettingsPage() {
@@ -68,6 +69,7 @@ export function SettingsPage() {
     runtime: 'settings.tabs.runtime',
     registration: 'settings.tabs.registration',
     appearance: 'settings.tabs.appearance',
+    'remote-access': 'settings.tabs.remoteAccess',
     profile: 'settings.tabs.profile',
     'my-channels': 'settings.tabs.myChannels',
     security: 'settings.tabs.security',
@@ -156,6 +158,7 @@ export function SettingsPage() {
                   {activeTab === 'runtime' && <RuntimeSection setNotice={setNotice} setError={setError} />}
                   {activeTab === 'registration' && <RegistrationSection setNotice={setNotice} setError={setError} />}
                   {activeTab === 'appearance' && <AppearanceSection setNotice={setNotice} setError={setError} />}
+                  {activeTab === 'remote-access' && <RemoteAccessSection setNotice={setNotice} setError={setError} />}
                   {activeTab === 'profile' && <ProfileSection setNotice={setNotice} setError={setError} />}
                   {activeTab === 'my-channels' && <UserChannelsSection setNotice={setNotice} setError={setError} />}
                   {activeTab === 'security' && <SecuritySection setNotice={setNotice} setError={setError} />}

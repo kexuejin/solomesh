@@ -149,6 +149,7 @@ export type SettingsTab =
   | 'runtime'
   | 'registration'
   | 'appearance'
+  | 'remote-access'
   | 'profile'
   | 'my-channels'
   | 'security'

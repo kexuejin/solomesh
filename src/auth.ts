@@ -61,8 +61,9 @@ interface AttemptRecord {
 
 const loginAttempts = new Map<string, AttemptRecord>();
 
-// Sliding window: clean old entries every 10 minutes
-setInterval(
+// Sliding window: clean old entries every 10 minutes.
+// Unref so this housekeeping timer does not keep tests/processes alive by itself.
+const loginAttemptsCleanupTimer = setInterval(
   () => {
     const now = Date.now();
     for (const [key, record] of loginAttempts) {
@@ -74,6 +75,7 @@ setInterval(
   },
   10 * 60 * 1000,
 );
+loginAttemptsCleanupTimer.unref();
 
 export function checkLoginRateLimit(
   username: string,

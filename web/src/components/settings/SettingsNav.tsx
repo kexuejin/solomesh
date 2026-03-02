@@ -13,6 +13,7 @@ import {
   Palette,
   MessageSquare,
   GitBranch,
+  Link2,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { SettingsTab } from './types';
@@ -31,6 +32,7 @@ const systemItems: NavItem[] = [
   { key: 'runtime', labelKey: 'settings.tabs.runtime', icon: <ShieldCheck className="w-4 h-4" />, group: 'system' },
   { key: 'registration', labelKey: 'settings.tabs.registration', icon: <UserPlus className="w-4 h-4" />, group: 'system' },
   { key: 'appearance', labelKey: 'settings.tabs.appearance', icon: <Palette className="w-4 h-4" />, group: 'system' },
+  { key: 'remote-access', labelKey: 'settings.tabs.remoteAccess', icon: <Link2 className="w-4 h-4" />, group: 'system' },
 ];
 
 const accountItems: NavItem[] = [
