@@ -47,6 +47,7 @@ test('system chat parser uses i18n keys for user-visible text', () => {
   const source = read('web/src/lib/system-message.ts');
 
   assert.ok(source.includes("chat.system.contextReset"));
+  assert.ok(source.includes("chat.system.automation"));
   assert.ok(source.includes('localizeSystemMessage'));
   assert.ok(!/[一-龥]/.test(source), 'system-message should not contain hardcoded Chinese literals');
 });

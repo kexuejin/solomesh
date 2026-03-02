@@ -65,3 +65,9 @@ test('fallback unknown system message to divider', () => {
   assert.equal(parsed.type, 'divider');
   assert.equal(parsed.content, 'hello:world');
 });
+
+test('parse automation system message to divider', () => {
+  const parsed = parseSystemChatMessage('automation:已创建自动化任务');
+  assert.equal(parsed.type, 'divider');
+  assert.equal(parsed.content, 'Automation: 已创建自动化任务');
+});

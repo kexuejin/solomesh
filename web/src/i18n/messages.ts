@@ -1062,6 +1062,7 @@ export const zhCN = {
       workflowDependencyBlockedInvalid: 'Workflow 依赖阻塞（消息格式异常）',
       workflowRecommend: 'Workflow 推荐：{{content}}',
       workflow: 'Workflow：{{content}}',
+      automation: '自动化：{{content}}',
     },
     containerEnv: {
       secretSource: {
@@ -3392,6 +3393,7 @@ export const en = {
       workflowDependencyBlockedInvalid: 'Workflow dependency blocked (invalid payload)',
       workflowRecommend: 'Workflow recommendation: {{content}}',
       workflow: 'Workflow: {{content}}',
+      automation: 'Automation: {{content}}',
     },
     containerEnv: {
       secretSource: {
