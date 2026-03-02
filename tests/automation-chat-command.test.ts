@@ -72,6 +72,17 @@ test('buildAutomationTaskSpecFromChatCommand requires repo for competitor-watch'
   assert.ok(built.error.includes('repo'));
 });
 
+test('buildAutomationTaskSpecFromChatCommand validates repo url format', () => {
+  const parsed = parseAutomationChatCommandInput('/auto competitor-watch repo=openhands');
+  assert.equal(parsed.command.type, 'create');
+  if (parsed.command.type !== 'create') return;
+
+  const built = buildAutomationTaskSpecFromChatCommand(parsed.command);
+  assert.equal(built.ok, false);
+  if (built.ok) return;
+  assert.ok(built.error.includes('repo'));
+});
+
 test('buildAutomationTaskSpecFromChatCommand supports project-recommendation defaults', () => {
   const parsed = parseAutomationChatCommandInput('/auto project-recommendation');
   assert.equal(parsed.command.type, 'create');

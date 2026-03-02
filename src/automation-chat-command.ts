@@ -155,6 +155,15 @@ function parsePositiveInt(raw: string | undefined): number | null {
   return Math.floor(parsed);
 }
 
+function isLikelyGitRepoUrl(value: string): boolean {
+  const repo = value.trim();
+  if (!repo) return false;
+  if (/^https?:\/\/[^\s/]+\/.+/i.test(repo)) return true;
+  if (/^ssh:\/\/[^\s]+/i.test(repo)) return true;
+  if (/^git@[^\s:]+:[^\s]+/.test(repo)) return true;
+  return false;
+}
+
 function cloneTaskConfig(config: TaskConfig | null | undefined): TaskConfig | null {
   if (!isPlainObject(config)) return null;
   return deepMergeObjects({}, config) as TaskConfig;
@@ -274,6 +283,12 @@ export function buildAutomationTaskSpecFromChatCommand(command: {
       return {
         ok: false,
         error: 'competitor-watch 需要提供 repo（例如 repo=https://github.com/org/repo）',
+      };
+    }
+    if (!isLikelyGitRepoUrl(repo)) {
+      return {
+        ok: false,
+        error: 'repo 格式无效，请提供 git 仓库地址（https://... 或 git@...）',
       };
     }
     const branch = (command.args.branch ?? '').trim() || 'main';
