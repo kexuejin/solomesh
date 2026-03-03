@@ -115,6 +115,18 @@ test('buildGeminiSdkChatCreateParams increases tool-call budget in bypass mode',
   });
 });
 
+test('buildGeminiSdkChatCreateParams skips thinking config for models without thinking-level support', () => {
+  const params = buildGeminiSdkChatCreateParams(
+    'gemini-2.0-flash',
+    [],
+    () => ({ kind: 'mcp-tool' }),
+    'default',
+    'high',
+  );
+
+  assert.deepEqual(params, { model: 'gemini-2.0-flash' });
+});
+
 test('extractGeminiSdkChunkDeltas extracts text delta from chunk.text cumulative stream', () => {
   const first = extractGeminiSdkChunkDeltas(
     { text: 'Hello' },

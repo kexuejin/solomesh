@@ -272,7 +272,14 @@ pre code.hljs {
 
   /* 聊天输入框底部安全区域 */
   .ios-pwa-bottom-safe {
-    padding-bottom: max(env(safe-area-inset-bottom), 34px);
+    padding-bottom: max(env(safe-area-inset-bottom), 12px);
+  }
+}
+
+/* PWA standalone 模式保留更明显的底部手势缓冲 */
+@media (display-mode: standalone) {
+  .ios-pwa-bottom-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 24px);
   }
 }
 

@@ -705,7 +705,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
   return (
     <div ref={containerRef} className="h-full flex flex-col bg-background">
       {/* Header */}
-      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border bg-card px-6">
+      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border bg-card px-3 sm:px-4 lg:px-6">
         {onBack && (
           <button
             onClick={onBack}
@@ -798,7 +798,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
       </div>
 
       {workflowLabel && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-brand-100 bg-brand-50/70 px-4 py-1.5 text-xs text-brand-700">
+        <div className="flex flex-wrap items-center gap-2 border-b border-brand-100 bg-brand-50/70 px-3 py-1.5 text-xs text-brand-700 sm:px-4">
           <span
             className={`inline-flex items-center px-1.5 py-px rounded text-[10px] font-medium ${
               workflowRunning ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-100 text-brand-700'
@@ -860,7 +860,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
 
       {/* IM channel setup banner for home container without IM */}
       {isOwnHome && imStatus && connectedImChannels.length === 0 && !imBannerDismissed && (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50/90 px-4 py-2 text-sm text-amber-800">
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-800 sm:px-4">
           <Link className="h-4 w-4 flex-shrink-0" />
           <span className="min-w-0 flex-1">{t('chat.view.imBanner.message')}</span>
           <button
@@ -1051,7 +1051,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                   return (
                     /* Teammate tab forwards messages via main conversation. */
                     <div className="border-t border-border">
-                      <div className="bg-amber-50/70 px-4 pb-0.5 pt-1.5 text-center text-[10px] text-amber-700">
+                      <div className="bg-amber-50/70 px-3 pb-0.5 pt-1.5 text-center text-[10px] text-amber-700 sm:px-4">
                         {t('chat.view.sdkTask.teammateForwardHint')}
                       </div>
                       <MessageInput
@@ -1076,7 +1076,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
                   );
                 }
                 return (
-                  <div className="border-t border-border px-4 py-2 text-center text-xs text-muted-foreground">
+                  <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground sm:px-4">
                     {isSdkTask
                       ? (activeSdkTask?.status === 'running'
                         ? t('chat.view.sdkTask.onlyMainWhenRunning')

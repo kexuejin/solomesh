@@ -91,7 +91,7 @@ export function SettingsPage() {
   }, [notice]);
 
   return (
-    <div className="min-h-full app-canvas flex flex-col lg:flex-row">
+    <div className="h-full min-h-0 app-canvas flex flex-col lg:flex-row">
       {/* Mobile header */}
       <div className="sticky top-0 z-10 flex h-14 items-center border-b border-sidebar-border bg-card/95 px-4 backdrop-blur lg:hidden">
         <button
@@ -114,7 +114,7 @@ export function SettingsPage() {
         onOpenChange={setNavOpen}
       />
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {FULLPAGE_TABS.includes(activeTab) ? (
           <>
             {activeTab === 'groups' && <GroupsPage />}

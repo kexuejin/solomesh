@@ -1456,6 +1456,10 @@ export const zhCN = {
       mention: {
         switchTo: '切换到 {{provider}}',
       },
+      controls: {
+        show: '高级',
+        hide: '收起',
+      },
       permission: {
         title: '操作权限',
         defaultLabel: '默认权限',
@@ -3884,6 +3888,10 @@ export const en = {
       },
       mention: {
         switchTo: 'Switch to {{provider}}',
+      },
+      controls: {
+        show: 'Advanced',
+        hide: 'Collapse',
       },
       permission: {
         title: 'Operation Permission',

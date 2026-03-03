@@ -8,6 +8,7 @@ import { wsManager } from '../../api/ws';
 export function AppLayout() {
   const location = useLocation();
   const hideMobileTabBar = /^\/chat\/.+/.test(location.pathname);
+  const isChatRoute = location.pathname.startsWith('/chat');
 
   // 应用级别建立 WebSocket 连接，确保所有页面（非仅 ChatView）都有连接
   useEffect(() => {
@@ -22,7 +23,11 @@ export function AppLayout() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <ConnectionBanner />
-        <main className="flex-1 overflow-hidden lg:overflow-auto lg:pb-0">
+        <main
+          className={isChatRoute
+            ? 'flex-1 overflow-hidden lg:overflow-auto lg:pb-0'
+            : 'flex-1 overflow-y-auto overflow-x-hidden lg:overflow-auto lg:pb-0'}
+        >
           <Outlet />
         </main>
       </div>

@@ -288,6 +288,140 @@ function normalizeGeminiModelIds(inputs: unknown[]): string[] {
   return result;
 }
 
+function parseGeminiVersion(
+  model: string,
+): { major: number; minor: number } | null {
+  const match = model.match(/^gemini-(\d+)(?:\.(\d+))?-/);
+  if (!match) return null;
+  return {
+    major: Number.parseInt(match[1] || '0', 10),
+    minor: Number.parseInt(match[2] || '0', 10),
+  };
+}
+
+function getGeminiModelStabilityRank(model: string): number {
+  if (!/-preview|-exp/.test(model)) return 2;
+  if (/-preview/.test(model)) return 1;
+  return 0;
+}
+
+function selectBestGeminiModel(
+  models: string[],
+  predicate: (
+    model: string,
+    version: { major: number; minor: number },
+  ) => boolean,
+): string | null {
+  const ranked = models
+    .map((model, index) => {
+      const version = parseGeminiVersion(model);
+      if (!version || !predicate(model, version)) return null;
+      return {
+        model,
+        index,
+        major: version.major,
+        minor: version.minor,
+        stability: getGeminiModelStabilityRank(model),
+      };
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        model: string;
+        index: number;
+        major: number;
+        minor: number;
+        stability: number;
+      } => !!item,
+    )
+    .sort(
+      (a, b) =>
+        b.major - a.major
+        || b.minor - a.minor
+        || b.stability - a.stability
+        || a.index - b.index,
+    );
+  return ranked[0]?.model ?? null;
+}
+
+function getHighestGeminiMajor(models: string[], minimumMajor: number): number | null {
+  const majors = models
+    .map((model) => parseGeminiVersion(model))
+    .filter((version): version is { major: number; minor: number } => !!version)
+    .map((version) => version.major)
+    .filter((major) => major >= minimumMajor)
+    .sort((a, b) => b - a);
+  return majors[0] ?? null;
+}
+
+export function buildGeminiManualModelCatalog(
+  models: string[],
+  preferredDefaultModel?: string,
+): string[] {
+  const normalizedModels = Array.from(
+    new Set(
+      models
+        .map((model) => normalizeGeminiModelId(model))
+        .filter((model): model is string => !!model),
+    ),
+  );
+  const mergedSet = new Set(normalizedModels);
+  const highestMajorFamily = getHighestGeminiMajor(normalizedModels, 3);
+  const catalog = Array.from(
+    new Set(
+      [
+        selectBestGeminiModel(
+          normalizedModels,
+          (model, version) =>
+            version.major === highestMajorFamily
+            && /-pro(?:$|-)/.test(model),
+        ),
+        selectBestGeminiModel(
+          normalizedModels,
+          (model, version) =>
+            version.major === highestMajorFamily
+            && /-flash(?:$|-)/.test(model)
+            && !/-flash-lite(?:$|-)/.test(model),
+        ),
+        selectBestGeminiModel(
+          normalizedModels,
+          (model, version) =>
+            version.major === 2
+            && version.minor === 5
+            && /-pro(?:$|-)/.test(model),
+        ),
+        selectBestGeminiModel(
+          normalizedModels,
+          (model, version) =>
+            version.major === 2
+            && version.minor === 5
+            && /-flash(?:$|-)/.test(model)
+            && !/-flash-lite(?:$|-)/.test(model),
+        ),
+        selectBestGeminiModel(
+          normalizedModels,
+          (model, version) =>
+            version.major === 2
+            && version.minor === 5
+            && /-flash-lite(?:$|-)/.test(model),
+        ),
+      ].filter((item): item is string => !!item),
+    ),
+  );
+  const preferred = normalizeGeminiModelId(preferredDefaultModel);
+  if (
+    preferred
+    && mergedSet.has(preferred)
+    && !catalog.some((model) => model === preferred)
+  ) {
+    return [preferred, ...catalog];
+  }
+  if (catalog.length > 0) return catalog;
+  if (preferred && mergedSet.has(preferred)) return [preferred];
+  return models;
+}
+
 function buildCodexModelsEndpoint(baseUrl: string | null | undefined): URL {
   const trimmed = typeof baseUrl === 'string' ? baseUrl.trim() : '';
   if (!trimmed) {
@@ -689,12 +823,15 @@ function mergeDynamicModelsForProvider(
         ...definition.supportedModels,
       ]),
     );
+    const supportedModels = provider === 'gemini'
+      ? buildGeminiManualModelCatalog(merged, definition.defaultModel)
+      : merged;
     return {
       ...definition,
-      supportedModels: merged,
-      defaultModel: merged.includes(definition.defaultModel)
+      supportedModels,
+      defaultModel: supportedModels.includes(definition.defaultModel)
         ? definition.defaultModel
-        : merged[0],
+        : supportedModels[0],
     };
   });
 }

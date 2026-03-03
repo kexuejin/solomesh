@@ -23,6 +23,16 @@ test('gemini missing api key should not retry', () => {
   assert.ok(result.userFacingMessage?.includes('GEMINI_API_KEY'));
 });
 
+test('gemini quota exceeded should not retry and should suggest fallback model', () => {
+  const result = decideAgentErrorRetry(
+    'gemini',
+    'status: "RESOURCE_EXHAUSTED"; code: 429; Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro',
+  );
+
+  assert.equal(result.shouldRetry, false);
+  assert.ok(result.userFacingMessage?.includes('gemini-2.5-flash'));
+});
+
 test('unknown gemini transient error keeps retry', () => {
   const result = decideAgentErrorRetry(
     'gemini',

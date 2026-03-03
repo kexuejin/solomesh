@@ -9,6 +9,9 @@ const GEMINI_TERMINAL_ERROR_PATTERNS: RegExp[] = [
   /token pool is empty/i,
   /Gemini 运行时未检测到 GEMINI_API_KEY/i,
   /Gemini API Key 模式未检测到 GEMINI_API_KEY/i,
+  /RESOURCE_EXHAUSTED/i,
+  /quota exceeded/i,
+  /generate_content_free_tier/i,
 ];
 
 export function decideAgentErrorRetry(
@@ -39,6 +42,18 @@ export function decideAgentErrorRetry(
       shouldRetry: false,
       userFacingMessage:
         'Gemini 未配置 GEMINI_API_KEY。请在设置页填写 API Key。',
+    };
+  }
+
+  if (
+    /RESOURCE_EXHAUSTED|quota exceeded|generate_content_free_tier/i.test(
+      errorDetail,
+    )
+  ) {
+    return {
+      shouldRetry: false,
+      userFacingMessage:
+        'Gemini 配额不足（429/RESOURCE_EXHAUSTED）。请在设置中将模型切换为 gemini-2.5-flash，或开通 Gemini 计费后再试。',
     };
   }
 

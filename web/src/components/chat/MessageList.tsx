@@ -318,9 +318,9 @@ export function MessageList({ messages, loading, hasMore, onLoadMore, scrollTrig
     <div className="relative flex-1 overflow-hidden overflow-x-hidden">
       <div
         ref={parentRef}
-        className="h-full overflow-y-auto overflow-x-hidden bg-background py-8"
+        className="h-full overflow-y-auto overflow-x-hidden bg-background py-4 sm:py-8"
       >
-        <div className="mx-auto min-w-0 max-w-4xl px-6">
+        <div className="mx-auto min-w-0 max-w-4xl px-3 sm:px-6">
         {loading && hasMore && (
           <div className="flex justify-center py-4">
             <Loader2 className="animate-spin text-primary" size={24} />

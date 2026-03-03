@@ -105,6 +105,12 @@ function buildGeminiThinkingConfig(
   };
 }
 
+function supportsGeminiThinkingLevel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized.startsWith('gemini-')) return true;
+  return normalized.startsWith('gemini-2.5');
+}
+
 export function buildGeminiSdkClientOptions(
   env: Record<string, string | undefined>,
 ): GeminiSdkClientOptions {
@@ -142,7 +148,9 @@ export function buildGeminiSdkChatCreateParams(
   operationPermissionMode: GeminiOperationPermissionMode = 'default',
   reasoningEffort?: GeminiReasoningEffort,
 ): GeminiSdkChatCreateParams {
-  const thinkingConfig = buildGeminiThinkingConfig(reasoningEffort);
+  const thinkingConfig = supportsGeminiThinkingLevel(model)
+    ? buildGeminiThinkingConfig(reasoningEffort)
+    : undefined;
 
   if (!mcpClients.length) {
     return thinkingConfig

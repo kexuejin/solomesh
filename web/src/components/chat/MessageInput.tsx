@@ -91,7 +91,7 @@ const DEFAULT_REASONING_EFFORT_BY_PROVIDER: Record<ProviderId, ReasoningEffort> 
   codex: 'medium',
   gemini: 'medium',
 };
-const RUNTIME_DEFINITIONS_CACHE_KEY = 'solomesh:chat:runtime-definitions:v4';
+const RUNTIME_DEFINITIONS_CACHE_KEY = 'solomesh:chat:runtime-definitions:v5';
 const RUNTIME_DEFINITIONS_CACHE_TTL_MS = 30 * 60 * 1000;
 const RUNTIME_CONTROL_SELECTIONS_CACHE_KEY = 'solomesh:chat:runtime-controls:v1';
 
@@ -941,8 +941,8 @@ export function MessageInput({
 
   return (
     <div
-      className="ios-pwa-bottom-safe bg-background px-4 pb-6 pt-2 lg:px-8 lg:pb-8 lg:pt-0 max-lg:border-t max-lg:border-border/70 max-lg:bg-card/70 max-lg:backdrop-blur-xl max-lg:saturate-[1.6]"
-      style={{ paddingBottom: `max(1.5rem, var(--keyboard-height, 0px))` }}
+      className="ios-pwa-bottom-safe bg-background px-3 pb-3 pt-2 sm:px-4 sm:pb-4 lg:px-8 lg:pb-8 lg:pt-0 max-lg:border-t max-lg:border-border/70 max-lg:bg-card/70 max-lg:backdrop-blur-xl max-lg:saturate-[1.6]"
+      style={{ paddingBottom: `max(0.75rem, var(--keyboard-height, 0px))` }}
     >
       <div className="mx-auto max-w-4xl">
         {queuedMessages.length > 0 && (
@@ -1288,16 +1288,15 @@ export function MessageInput({
           </div>
 
           <div className="border-t border-border/70 px-3 pb-2.5 pt-2">
-            <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">Runtime</span>
+            <div className="flex flex-wrap items-center gap-2 pb-0.5">
+              <div className="flex min-w-0 items-center">
                 <Select
                   value={selectedRuntime}
                   onValueChange={(value) => setSelectedRuntime(value as ProviderId)}
                 >
                   <SelectTrigger
                     size="sm"
-                    className="h-7 min-w-[112px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
+                    className="h-7 min-w-[84px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px] sm:min-w-[112px]"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -1305,7 +1304,7 @@ export function MessageInput({
                     position="popper"
                     side="top"
                     align="start"
-                    className="min-w-[160px]"
+                    className="min-w-[130px] sm:min-w-[160px]"
                   >
                     {PROVIDER_OPTIONS.map((provider) => (
                       <SelectItem key={`runtime-${provider}`} value={provider} className="text-xs">
@@ -1317,8 +1316,7 @@ export function MessageInput({
               </div>
 
               {runtimeSupportsModelOverride && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">Model</span>
+                <div className="flex min-w-0 items-center">
                   <Select
                     value={modelSelectValue}
                     onValueChange={(value) => {
@@ -1331,7 +1329,7 @@ export function MessageInput({
                   >
                     <SelectTrigger
                       size="sm"
-                      className="h-7 min-w-[150px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
+                      className="h-7 min-w-[120px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px] sm:min-w-[150px]"
                     >
                       <SelectValue />
                     </SelectTrigger>
@@ -1339,7 +1337,7 @@ export function MessageInput({
                       position="popper"
                       side="top"
                       align="start"
-                      className="min-w-[220px]"
+                      className="min-w-[160px] sm:min-w-[220px]"
                     >
                       <SelectItem value={MODEL_AUTO_OPTION_VALUE} className="text-xs">
                         Auto ({activeRuntimeDefinition.defaultModel})
@@ -1355,8 +1353,7 @@ export function MessageInput({
               )}
 
               {runtimeSupportsReasoningEffort && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">Reasoning</span>
+                <div className="flex min-w-0 items-center">
                   <Select
                     value={activeReasoningEffort}
                     onValueChange={(value) => {
@@ -1368,7 +1365,7 @@ export function MessageInput({
                   >
                     <SelectTrigger
                       size="sm"
-                      className="h-7 min-w-[96px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
+                      className="h-7 min-w-[82px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px] sm:min-w-[96px]"
                     >
                       <SelectValue />
                     </SelectTrigger>
@@ -1376,7 +1373,7 @@ export function MessageInput({
                       position="popper"
                       side="top"
                       align="start"
-                      className="min-w-[140px]"
+                      className="min-w-[120px] sm:min-w-[140px]"
                     >
                       {REASONING_EFFORT_OPTIONS.map((level) => (
                         <SelectItem key={`reasoning-${level}`} value={level} className="text-xs">
@@ -1394,10 +1391,7 @@ export function MessageInput({
                 </div>
               )}
 
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">
-                  {t('chat.messageInput.permission.title')}
-                </span>
+              <div className="flex min-w-0 items-center">
                 <Select
                   value={selectedPermissionMode}
                   onValueChange={(value) => {
@@ -1412,7 +1406,7 @@ export function MessageInput({
                 >
                   <SelectTrigger
                     size="sm"
-                    className="h-7 min-w-[118px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px]"
+                    className="h-7 min-w-[96px] rounded-[10px] border-border/70 bg-muted/20 px-2 text-[11px] sm:min-w-[118px]"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -1420,7 +1414,7 @@ export function MessageInput({
                     position="popper"
                     side="top"
                     align="start"
-                    className="min-w-[180px]"
+                    className="min-w-[150px] sm:min-w-[180px]"
                   >
                     {permissionModeOptions.map((option) => (
                       <SelectItem
@@ -1435,7 +1429,7 @@ export function MessageInput({
                 </Select>
               </div>
             </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
+            <div className="mt-1 hidden text-[11px] text-muted-foreground sm:block">
               {selectedPermissionModeOption?.hint}
             </div>
           </div>
