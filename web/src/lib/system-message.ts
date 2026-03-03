@@ -42,7 +42,8 @@ type SystemMessageKey =
   | 'chat.system.workflowTemplateUpdatedInvalid'
   | 'chat.system.workflowDependencyBlockedInvalid'
   | 'chat.system.workflowRecommend'
-  | 'chat.system.workflow';
+  | 'chat.system.workflow'
+  | 'chat.system.automation';
 
 type SystemMessageParams = Record<string, string | number>;
 type SystemMessageTranslator = (key: MessageKey, params?: SystemMessageParams) => string;
@@ -53,6 +54,7 @@ const SYSTEM_MESSAGE_FALLBACK: Record<SystemMessageKey, string> = {
   'chat.system.workflowDependencyBlockedInvalid': 'Workflow dependency blocked (invalid payload)',
   'chat.system.workflowRecommend': 'Workflow recommendation: {{content}}',
   'chat.system.workflow': 'Workflow: {{content}}',
+  'chat.system.automation': 'Automation: {{content}}',
 };
 
 function applyParams(template: string, params?: SystemMessageParams): string {
@@ -241,6 +243,14 @@ export function parseSystemChatMessage(
       type: 'divider',
       content: localizeSystemMessage('chat.system.workflow', t, {
         content: content.slice('workflow:'.length).trim(),
+      }),
+    };
+  }
+  if (content.startsWith('automation:')) {
+    return {
+      type: 'divider',
+      content: localizeSystemMessage('chat.system.automation', t, {
+        content: content.slice('automation:'.length).trim(),
       }),
     };
   }

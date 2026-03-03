@@ -13,7 +13,7 @@ type DotPath<T> = {
       : never;
 }[keyof T & string];
 
-export type MessageKey = DotPath<MessageTree>;
+export type MessageKey = DotPath<MessageTree> | string;
 export type MessageParams = Record<string, string | number>;
 
 export function normalizeUiLocale(input: string | null | undefined): UiLocale | null {

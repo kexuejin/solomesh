@@ -40,7 +40,7 @@ export type AgentRuntimeId =
   | 'claude-code'
   | 'codex'
   | 'opencode'
-  | 'gemini';
+  | 'gemini-cli';
 
 export type ModelProviderId =
   | 'anthropic'
@@ -123,6 +123,8 @@ export interface ScheduledTask {
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
   skill_refs?: string[];
+  task_config?: TaskConfig | null;
+  task_state?: TaskState | null;
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
@@ -134,6 +136,36 @@ export interface ScheduledTask {
   created_by?: string;
 }
 
+export interface TaskConfig {
+  on_error?: {
+    todo_ingest?: boolean;
+  };
+  on_success?: {
+    decision_ingest?: boolean;
+  };
+  plugins?: {
+    competitor_git?: {
+      enabled?: boolean;
+      repo?: string;
+      branch?: string;
+      lookback_commits?: number;
+    };
+    [pluginId: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface TaskState {
+  plugins?: {
+    competitor_git?: {
+      last_sha?: string | null;
+      last_scan_at?: string;
+    };
+    [pluginId: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 export interface TaskRunLog {
   task_id: string;
   run_at: string;
@@ -141,6 +173,64 @@ export interface TaskRunLog {
   status: 'success' | 'error';
   result: string | null;
   error: string | null;
+}
+
+export type TodoPriority = 'low' | 'medium' | 'high' | 'critical';
+export type TodoStatus = 'open' | 'in_progress' | 'done' | 'archived';
+export type TodoSourceType = 'manual' | 'automation' | 'plugin' | 'workflow';
+export type TodoTriggerMode = 'manual' | 'automation';
+export type TodoIngestAction = 'created' | 'merged' | 'ignored';
+export type DecisionItemStatus = 'pending' | 'accepted' | 'ignored';
+export type DecisionItemScopeLevel = 'global' | 'workspace';
+
+export interface Todo {
+  id: string;
+  title: string;
+  description: string | null;
+  status: TodoStatus;
+  priority: TodoPriority | null;
+  dedupe_key: string;
+  occurrence_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TodoSourceEvent {
+  id?: number;
+  todo_id: string;
+  source_type: TodoSourceType;
+  source_id: string;
+  source_run_id: string | null;
+  trigger_mode: TodoTriggerMode | null;
+  action: TodoIngestAction;
+  evidence: string | null;
+  created_at: string;
+}
+
+export interface DecisionItem {
+  id: string;
+  title: string;
+  summary: string | null;
+  status: DecisionItemStatus;
+  scope_level: DecisionItemScopeLevel;
+  scope_id: string | null;
+  priority: TodoPriority | null;
+  source_type: TodoSourceType;
+  source_id: string;
+  source_run_id: string | null;
+  evidence: string | null;
+  suggested_todo_title: string | null;
+  suggested_todo_description: string | null;
+  suggested_todo_priority: TodoPriority | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  accepted_todo_id: string | null;
 }
 
 // --- Auth types ---
@@ -342,7 +432,7 @@ export type WsMessageIn =
       attachments?: MessageAttachment[];
       agentId?: string;
       operationPermissionMode?: 'default' | 'bypass';
-      agentRuntimeOverride?: 'claude' | 'codex' | 'gemini';
+      agentRuntimeOverride?: AgentProvider;
       modelOverride?: string;
       reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     }

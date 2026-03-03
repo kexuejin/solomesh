@@ -1,25 +1,27 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTasksStore } from '../stores/tasks';
 import { useChatStore } from '../stores/chat';
 import { useAuthStore } from '../stores/auth';
 import { TaskCard } from '../components/tasks/TaskCard';
 import { CreateTaskForm } from '../components/tasks/CreateTaskForm';
-import { Plus, RefreshCw, Clock, X } from 'lucide-react';
+import { Plus, RefreshCw, Clock, X, ListChecks } from 'lucide-react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/ui/button';
 import { getAutomationTemplates } from '@/components/tasks/automation-presets';
 import { useI18n } from '../i18n';
+import type { TaskConfig } from '../stores/tasks';
 
 export function TasksPage() {
   const { t } = useI18n();
-  const { tasks, loading, error, loadTasks, createTask, runTaskNow, updateTaskStatus, deleteTask } = useTasksStore();
+  const navigate = useNavigate();
+  const { tasks, loading, error, loadTasks, createTask, updateTaskStatus, deleteTask } = useTasksStore();
   const { groups, loadGroups } = useChatStore();
   const user = useAuthStore((s) => s.user);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null);
-  const [runNowPendingIds, setRunNowPendingIds] = useState<Record<string, boolean>>({});
   const isAdmin = user?.role === 'admin';
   const templates = getAutomationTemplates(t);
 
@@ -35,32 +37,22 @@ export function TasksPage() {
     scheduleType: 'cron' | 'interval' | 'once';
     scheduleValue: string;
     contextMode: 'group' | 'isolated';
-    operationPermissionMode: 'default' | 'bypass';
-    agentRuntimeOverride: 'claude' | 'codex' | 'gemini' | null;
-    executionEnvironment: 'local' | 'worktree';
     executionType: 'agent' | 'script';
     scriptCommand: string;
-    skillRefs: string[];
+    taskConfig: TaskConfig | null;
   }) => {
-    try {
-      await createTask(
-        data.groupFolder,
-        data.chatJid,
-        data.prompt,
-        data.scheduleType,
-        data.scheduleValue,
-        data.contextMode,
-        data.operationPermissionMode,
-        data.agentRuntimeOverride,
-        data.executionEnvironment,
-        data.executionType,
-        data.scriptCommand,
-        data.skillRefs,
-      );
-      setShowCreateForm(false);
-    } catch {
-      // Keep the form open so users can inspect and resolve dependency errors.
-    }
+    await createTask(
+      data.groupFolder,
+      data.chatJid,
+      data.prompt,
+      data.scheduleType,
+      data.scheduleValue,
+      data.contextMode,
+      data.executionType,
+      data.scriptCommand,
+      data.taskConfig,
+    );
+    setShowCreateForm(false);
   };
 
   const handlePause = async (id: string) => {
@@ -78,20 +70,6 @@ export function TasksPage() {
   const handleDelete = async (id: string) => {
     if (confirm(t('tasks.page.confirmDelete'))) {
       await deleteTask(id);
-    }
-  };
-
-  const handleRunNow = async (id: string) => {
-    if (runNowPendingIds[id]) return;
-    setRunNowPendingIds((prev) => ({ ...prev, [id]: true }));
-    try {
-      await runTaskNow(id);
-    } finally {
-      setRunNowPendingIds((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
     }
   };
 
@@ -127,6 +105,10 @@ export function TasksPage() {
                 <Button variant="outline" onClick={loadTasks} disabled={loading}>
                   <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                   {t('tasks.page.refresh')}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/todos')}>
+                  <ListChecks size={18} />
+                  {t('tasks.page.viewTodos')}
                 </Button>
                 <Button onClick={() => openCreateForm()}>
                   <Plus size={18} />
@@ -221,8 +203,6 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
-                      onRunNow={handleRunNow}
-                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}
@@ -240,8 +220,6 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
-                      onRunNow={handleRunNow}
-                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}
@@ -259,8 +237,6 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
-                      onRunNow={handleRunNow}
-                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}

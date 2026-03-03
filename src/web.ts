@@ -49,6 +49,8 @@ import browseRoutes from './routes/browse.js';
 import agentRoutes from './routes/agents.js';
 import mcpServersRoutes from './routes/mcp-servers.js';
 import workflowsRoutes from './routes/workflows.js';
+import todosRoutes from './routes/todos.js';
+import decisionItemsRoutes from './routes/decision-items.js';
 import remoteAccessRoutes, { injectRemoteAccessDeps } from './routes/remote-access.js';
 import {
   RemoteAccessKernel,
@@ -264,6 +266,8 @@ app.route('/api/tasks', tasksRoutes);
 app.route('/api/skills', skillsRoutes);
 app.route('/api/mcp-servers', mcpServersRoutes);
 app.route('/api/workflows', workflowsRoutes);
+app.route('/api/todos', todosRoutes);
+app.route('/api/decision-items', decisionItemsRoutes);
 app.route('/api/remote-access', remoteAccessRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/browse', browseRoutes);

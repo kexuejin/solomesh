@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ScheduledTask, useTasksStore } from '../../stores/tasks';
 import { localeForDateTime, useI18n } from '../../i18n';
 
@@ -8,8 +8,12 @@ interface TaskDetailProps {
 
 export function TaskDetail({ task }: TaskDetailProps) {
   const { t, locale } = useI18n();
-  const { logs, loadLogs } = useTasksStore();
+  const { logs, loadLogs, updateTaskOnErrorTodoRule, updateTaskOnSuccessDecisionRule } = useTasksStore();
   const taskLogs = logs[task.id] || [];
+  const onErrorTodoRuleEnabled = task.task_config?.on_error?.todo_ingest === true;
+  const onSuccessDecisionRuleEnabled = task.task_config?.on_success?.decision_ingest === true;
+  const [updatingOnErrorRule, setUpdatingOnErrorRule] = useState(false);
+  const [updatingOnSuccessRule, setUpdatingOnSuccessRule] = useState(false);
 
   useEffect(() => {
     loadLogs(task.id);
@@ -56,6 +60,24 @@ export function TaskDetail({ task }: TaskDetailProps) {
       if (!Number.isNaN(parsed.getTime())) return formatDate(parsed.toISOString());
     }
     return task.schedule_value;
+  };
+
+  const handleToggleOnErrorTodoRule = async () => {
+    setUpdatingOnErrorRule(true);
+    try {
+      await updateTaskOnErrorTodoRule(task.id, !onErrorTodoRuleEnabled);
+    } finally {
+      setUpdatingOnErrorRule(false);
+    }
+  };
+
+  const handleToggleOnSuccessDecisionRule = async () => {
+    setUpdatingOnSuccessRule(true);
+    try {
+      await updateTaskOnSuccessDecisionRule(task.id, !onSuccessDecisionRuleEnabled);
+    } finally {
+      setUpdatingOnSuccessRule(false);
+    }
   };
 
   return (
@@ -196,6 +218,62 @@ export function TaskDetail({ task }: TaskDetailProps) {
           <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.createdAt')}</div>
           <div className="text-sm text-foreground">
             {formatDate(task.created_at)}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.onErrorTodoRule')}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-foreground">
+              {onErrorTodoRuleEnabled
+                ? t('tasks.detail.enabled')
+                : t('tasks.detail.disabled')}
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleOnErrorTodoRule}
+              disabled={updatingOnErrorRule}
+              className="rounded border border-border px-2 py-0.5 text-xs text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {updatingOnErrorRule
+                ? t('tasks.detail.updatingRule')
+                : onErrorTodoRuleEnabled
+                  ? t('tasks.detail.disableRule')
+                  : t('tasks.detail.enableRule')}
+            </button>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {onErrorTodoRuleEnabled
+              ? t('tasks.detail.onErrorTodoRuleEnabledHint')
+              : t('tasks.detail.onErrorTodoRuleDisabledHint')}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.onSuccessDecisionRule')}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-foreground">
+              {onSuccessDecisionRuleEnabled
+                ? t('tasks.detail.enabled')
+                : t('tasks.detail.disabled')}
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleOnSuccessDecisionRule}
+              disabled={updatingOnSuccessRule}
+              className="rounded border border-border px-2 py-0.5 text-xs text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {updatingOnSuccessRule
+                ? t('tasks.detail.updatingRule')
+                : onSuccessDecisionRuleEnabled
+                  ? t('tasks.detail.disableRule')
+                  : t('tasks.detail.enableRule')}
+            </button>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {onSuccessDecisionRuleEnabled
+              ? t('tasks.detail.onSuccessDecisionRuleEnabledHint')
+              : t('tasks.detail.onSuccessDecisionRuleDisabledHint')}
           </div>
         </div>
 

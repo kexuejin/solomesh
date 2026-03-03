@@ -9,7 +9,7 @@ function read(relPath: string): string {
 
 test('provider env line uses AGENT_RUNTIME key', () => {
   const source = read('src/runtime-config.ts');
-  assert.ok(source.includes('AGENT_RUNTIME=${config.agentRuntime}'));
+  assert.ok(source.includes('AGENT_RUNTIME=${resolved.agentRuntime}'));
   assert.ok(
     source.includes(
       'SOLOMESH_PRIMARY_MEMORY_FILE_NAME=${sanitizeEnvValue(',

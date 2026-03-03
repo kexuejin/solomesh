@@ -1,0 +1,872 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Check, CircleOff, Lightbulb, ListChecks, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+import { PageHeader } from '@/components/common/PageHeader';
+import { EmptyState } from '@/components/common/EmptyState';
+import { SkeletonCardList } from '@/components/common/Skeletons';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { localeForDateTime, useI18n } from '../i18n';
+import {
+  type DecisionItemAcceptOverrides,
+  type DecisionItem,
+  type DecisionItemPriority,
+  type DecisionItemScopeLevel,
+  type DecisionItemStatus,
+  useDecisionItemsStore,
+} from '../stores/decision-items';
+
+type StatusFilter = 'all' | DecisionItemStatus;
+type ScopeFilter = 'all' | DecisionItemScopeLevel;
+type GroupedDecisionSource = {
+  key: string;
+  sourceType: DecisionItem['source_type'];
+  sourceId: string;
+  items: DecisionItem[];
+  stats: {
+    pending: number;
+    accepted: number;
+    ignored: number;
+  };
+};
+
+const STATUS_FILTERS: StatusFilter[] = ['all', 'pending', 'accepted', 'ignored'];
+const SCOPE_FILTERS: ScopeFilter[] = ['all', 'global', 'workspace'];
+const STATUS_ORDER: Record<DecisionItemStatus, number> = {
+  pending: 0,
+  accepted: 1,
+  ignored: 2,
+};
+
+type EditableTodoDraft = {
+  title: string;
+  description: string;
+  priority: DecisionItemPriority | '';
+};
+
+function parseEvidenceText(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function compareDecisionItems(a: DecisionItem, b: DecisionItem): number {
+  const statusDelta = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+  if (statusDelta !== 0) return statusDelta;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
+
+function decisionStatusClass(status: DecisionItemStatus): string {
+  if (status === 'pending') return 'bg-blue-100 text-blue-700';
+  if (status === 'accepted') return 'bg-green-100 text-green-700';
+  return 'bg-amber-100 text-amber-700';
+}
+
+export function DecisionCenterPage() {
+  const { t, locale } = useI18n();
+  const navigate = useNavigate();
+  const { items, nextCursor, loading, error, loadItems, acceptItem, ignoreItem } = useDecisionItemsStore();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
+  const [workspaceFilter, setWorkspaceFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [batchActing, setBatchActing] = useState(false);
+  const [batchAction, setBatchAction] = useState<'accept' | 'ignore' | null>(null);
+  const [batchActingItemId, setBatchActingItemId] = useState<string | null>(null);
+  const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
+  const [copiedTodoId, setCopiedTodoId] = useState<string | null>(null);
+  const [editingTodoDraftByDecisionId, setEditingTodoDraftByDecisionId] = useState<
+    Record<string, EditableTodoDraft>
+  >({});
+
+  const queryFilters = useMemo(
+    () => ({
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      scope_level: scopeFilter === 'all' ? undefined : scopeFilter,
+      scope_id:
+        scopeFilter === 'workspace' && workspaceFilter !== 'all'
+          ? workspaceFilter
+          : undefined,
+      source_id: sourceFilter === 'all' ? undefined : sourceFilter,
+      limit: 100,
+    }),
+    [scopeFilter, sourceFilter, statusFilter, workspaceFilter],
+  );
+
+  useEffect(() => {
+    void loadItems(queryFilters);
+  }, [loadItems, queryFilters]);
+
+  const counts = useMemo(() => {
+    const pending = items.filter((item) => item.status === 'pending').length;
+    const accepted = items.filter((item) => item.status === 'accepted').length;
+    const ignored = items.filter((item) => item.status === 'ignored').length;
+    return {
+      total: items.length,
+      pending,
+      accepted,
+      ignored,
+    };
+  }, [items]);
+
+  const sourceOptions = useMemo(() => {
+    const sourceSet = new Set(items.map((item) => item.source_id));
+    return [...sourceSet].sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const workspaceOptions = useMemo(() => {
+    const workspaceSet = new Set(
+      items
+        .filter((item) => item.scope_level === 'workspace')
+        .map((item) => item.scope_id)
+        .filter((item): item is string => Boolean(item)),
+    );
+    return [...workspaceSet].sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const groupedBySource = useMemo<GroupedDecisionSource[]>(() => {
+    const groups = new Map<
+      string,
+      {
+        sourceType: DecisionItem['source_type'];
+        sourceId: string;
+        items: DecisionItem[];
+      }
+    >();
+    for (const item of items) {
+      const key = `${item.source_type}:${item.source_id}`;
+      const group = groups.get(key) ?? {
+        sourceType: item.source_type,
+        sourceId: item.source_id,
+        items: [],
+      };
+      group.items.push(item);
+      groups.set(key, group);
+    }
+
+    return [...groups.entries()]
+      .map(([key, group]) => {
+        const sortedItems = [...group.items].sort(compareDecisionItems);
+        const pending = sortedItems.filter((item) => item.status === 'pending').length;
+        const accepted = sortedItems.filter((item) => item.status === 'accepted').length;
+        const ignored = sortedItems.filter((item) => item.status === 'ignored').length;
+        return {
+          key,
+          sourceType: group.sourceType,
+          sourceId: group.sourceId,
+          items: sortedItems,
+          stats: {
+            pending,
+            accepted,
+            ignored,
+          },
+        };
+      })
+      .sort((a, b) => {
+        if (a.stats.pending !== b.stats.pending) return b.stats.pending - a.stats.pending;
+        if (a.items.length !== b.items.length) return b.items.length - a.items.length;
+        return a.sourceId.localeCompare(b.sourceId);
+      });
+  }, [items]);
+
+  const filteredGroupedBySource = useMemo<GroupedDecisionSource[]>(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return groupedBySource;
+
+    return groupedBySource
+      .map((group) => {
+        const filteredItems = group.items.filter((item) => {
+          const haystack = [
+            group.sourceId,
+            item.title,
+            item.summary ?? '',
+            item.suggested_todo_title ?? '',
+            item.suggested_todo_description ?? '',
+            item.scope_id ?? '',
+          ]
+            .join('\n')
+            .toLowerCase();
+          return haystack.includes(normalizedQuery);
+        });
+        if (filteredItems.length === 0) return null;
+        return {
+          ...group,
+          items: filteredItems,
+          stats: {
+            pending: filteredItems.filter((item) => item.status === 'pending').length,
+            accepted: filteredItems.filter((item) => item.status === 'accepted').length,
+            ignored: filteredItems.filter((item) => item.status === 'ignored').length,
+          },
+        };
+      })
+      .filter((group): group is GroupedDecisionSource => Boolean(group));
+  }, [groupedBySource, searchQuery]);
+
+  const pendingItemIds = useMemo(
+    () =>
+      filteredGroupedBySource.flatMap((group) =>
+        group.items.filter((item) => item.status === 'pending').map((item) => item.id),
+      ),
+    [filteredGroupedBySource],
+  );
+
+  const selectedPendingSet = useMemo(
+    () => new Set(selectedPendingIds),
+    [selectedPendingIds],
+  );
+
+  const allPendingSelected = pendingItemIds.length > 0 && pendingItemIds.every((id) => selectedPendingSet.has(id));
+
+  useEffect(() => {
+    const pendingSet = new Set(pendingItemIds);
+    setSelectedPendingIds((prev) => prev.filter((id) => pendingSet.has(id)));
+  }, [pendingItemIds]);
+
+  const formatDate = (timestamp: string | null | undefined): string => {
+    if (!timestamp) return '-';
+    const parsed = new Date(timestamp);
+    if (Number.isNaN(parsed.getTime())) return timestamp;
+    return parsed.toLocaleString(localeForDateTime(locale), {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  };
+
+  const handleRefresh = async () => {
+    await loadItems(queryFilters);
+  };
+
+  const handleLoadMore = async () => {
+    if (!nextCursor) return;
+    await loadItems(
+      {
+        ...queryFilters,
+        cursor: nextCursor,
+      },
+      { append: true },
+    );
+  };
+
+  const handleAccept = async (
+    itemId: string,
+    overrides?: DecisionItemAcceptOverrides,
+  ) => {
+    setActingId(itemId);
+    try {
+      await acceptItem(itemId, overrides);
+      setEditingTodoDraftByDecisionId((prev) => {
+        if (!prev[itemId]) return prev;
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const handleIgnore = async (itemId: string) => {
+    setActingId(itemId);
+    try {
+      await ignoreItem(itemId);
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const togglePendingSelection = (itemId: string) => {
+    setSelectedPendingIds((prev) =>
+      prev.includes(itemId)
+        ? prev.filter((id) => id !== itemId)
+        : [...prev, itemId],
+    );
+  };
+
+  const handleToggleSelectAllPending = () => {
+    setSelectedPendingIds(allPendingSelected ? [] : pendingItemIds);
+  };
+
+  const handleBatchAccept = async () => {
+    if (selectedPendingIds.length === 0) return;
+    setBatchActing(true);
+    setBatchAction('accept');
+    setBatchActingItemId(null);
+    const failedIds: string[] = [];
+    for (const itemId of selectedPendingIds) {
+      setBatchActingItemId(itemId);
+      const ok = await acceptItem(itemId);
+      if (!ok) failedIds.push(itemId);
+    }
+    setBatchActingItemId(null);
+    setBatchAction(null);
+    setSelectedPendingIds(failedIds);
+    setBatchActing(false);
+  };
+
+  const handleBatchIgnore = async () => {
+    if (selectedPendingIds.length === 0) return;
+    setBatchActing(true);
+    setBatchAction('ignore');
+    setBatchActingItemId(null);
+    const failedIds: string[] = [];
+    for (const itemId of selectedPendingIds) {
+      setBatchActingItemId(itemId);
+      const ok = await ignoreItem(itemId);
+      if (!ok) failedIds.push(itemId);
+    }
+    setBatchActingItemId(null);
+    setBatchAction(null);
+    setSelectedPendingIds(failedIds);
+    setBatchActing(false);
+  };
+
+  const handleCopyTodoId = async (todoId: string) => {
+    try {
+      await navigator.clipboard.writeText(todoId);
+      setCopiedTodoId(todoId);
+      setTimeout(() => {
+        setCopiedTodoId((prev) => (prev === todoId ? null : prev));
+      }, 1200);
+    } catch {
+      // Ignore clipboard write failures.
+    }
+  };
+
+  const handleStartAcceptWithEdit = (item: DecisionItem) => {
+    setEditingTodoDraftByDecisionId((prev) => ({
+      ...prev,
+      [item.id]: prev[item.id] ?? {
+        title: item.suggested_todo_title ?? item.title,
+        description: item.suggested_todo_description ?? item.summary ?? '',
+        priority: item.suggested_todo_priority ?? item.priority ?? '',
+      },
+    }));
+  };
+
+  const handleCancelAcceptWithEdit = (itemId: string) => {
+    setEditingTodoDraftByDecisionId((prev) => {
+      if (!prev[itemId]) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  };
+
+  const handleDraftChange = (
+    itemId: string,
+    patch: Partial<EditableTodoDraft>,
+  ) => {
+    setEditingTodoDraftByDecisionId((prev) => {
+      const current = prev[itemId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [itemId]: {
+          ...current,
+          ...patch,
+        },
+      };
+    });
+  };
+
+  const handleAcceptWithEdit = async (itemId: string) => {
+    const draft = editingTodoDraftByDecisionId[itemId];
+    if (!draft) return;
+    await handleAccept(itemId, {
+      title: draft.title.trim() || undefined,
+      description: draft.description.trim() || undefined,
+      priority: draft.priority || undefined,
+    });
+  };
+
+  const trimmedSearchQuery = searchQuery.trim();
+  const hasSearchQuery = trimmedSearchQuery.length > 0;
+
+  return (
+    <div className="min-h-full app-canvas p-4 lg:p-6">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div className="rounded-xl border border-border/80 bg-card px-5 py-4">
+          <PageHeader
+            title={t('decisionCenter.page.title')}
+            subtitle={t('decisionCenter.page.subtitle', {
+              total: counts.total,
+              pending: counts.pending,
+              accepted: counts.accepted,
+              ignored: counts.ignored,
+            })}
+            className="mb-4"
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => navigate('/todos')}>
+                  <ListChecks size={18} />
+                  {t('decisionCenter.page.viewTodos')}
+                </Button>
+                <Button variant="outline" onClick={() => void handleRefresh()} disabled={loading}>
+                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                  {t('decisionCenter.page.refresh')}
+                </Button>
+              </div>
+            }
+          />
+
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+            <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2">
+              <div className="text-[11px] text-muted-foreground">{t('decisionCenter.page.total')}</div>
+              <div className="text-base font-semibold text-foreground">{counts.total}</div>
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+              <div className="text-[11px] text-blue-700">{t('decisionCenter.page.pending')}</div>
+              <div className="text-base font-semibold text-blue-700">{counts.pending}</div>
+            </div>
+            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+              <div className="text-[11px] text-green-700">{t('decisionCenter.page.accepted')}</div>
+              <div className="text-base font-semibold text-green-700">{counts.accepted}</div>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <div className="text-[11px] text-amber-700">{t('decisionCenter.page.ignored')}</div>
+              <div className="text-base font-semibold text-amber-700">{counts.ignored}</div>
+            </div>
+          </div>
+        </div>
+
+        <section className="surface-card-soft rounded-xl border border-border/70 bg-card/90 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {STATUS_FILTERS.map((status) => {
+              const active = statusFilter === status;
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                    active
+                      ? 'border-brand-300 bg-brand-50 text-brand-700'
+                      : 'border-border bg-card text-foreground hover:bg-muted/35'
+                  }`}
+                >
+                  {t(`decisionCenter.filters.status.${status}`)}
+                </button>
+              );
+            })}
+
+            <div className="ml-auto flex items-center gap-2">
+              {SCOPE_FILTERS.map((scope) => {
+                const active = scopeFilter === scope;
+                return (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => {
+                      setScopeFilter(scope);
+                      if (scope !== 'workspace') {
+                        setWorkspaceFilter('all');
+                      }
+                    }}
+                    className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                      active
+                        ? 'border-brand-300 bg-brand-50 text-brand-700'
+                        : 'border-border bg-card text-foreground hover:bg-muted/35'
+                    }`}
+                  >
+                    {t(`decisionCenter.filters.scope.${scope}`)}
+                  </button>
+                );
+              })}
+            </div>
+
+            {scopeFilter === 'workspace' && (
+              <select
+                value={workspaceFilter}
+                onChange={(event) => setWorkspaceFilter(event.target.value)}
+                className="min-w-56 rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-foreground"
+              >
+                <option value="all">{t('decisionCenter.filters.workspaceAll')}</option>
+                {workspaceOptions.map((workspaceId) => (
+                  <option key={workspaceId} value={workspaceId}>
+                    {workspaceId}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <select
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value)}
+              className="min-w-56 rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-foreground"
+            >
+              <option value="all">{t('decisionCenter.filters.sourceAll')}</option>
+                {sourceOptions.map((sourceId) => (
+                  <option key={sourceId} value={sourceId}>
+                    {sourceId}
+                  </option>
+                ))}
+              </select>
+
+            <div className="flex min-w-[260px] flex-1 items-center gap-2">
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={t('decisionCenter.filters.searchPlaceholder')}
+                className="h-9"
+              />
+              {searchQuery.trim().length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                >
+                  {t('decisionCenter.filters.clearSearch')}
+                </Button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {error && (
+          <div className="surface-card-soft flex items-center justify-between rounded-xl border border-red-200 bg-red-50/85 p-3">
+            <span className="text-sm text-red-700">{error}</span>
+            <button
+              onClick={() => useDecisionItemsStore.setState({ error: null })}
+              className="rounded p-1 text-red-400 hover:text-red-600"
+              aria-label={t('decisionCenter.page.dismissError')}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {loading && items.length === 0 ? (
+          <SkeletonCardList count={4} />
+        ) : filteredGroupedBySource.length === 0 ? (
+          <EmptyState
+            icon={Lightbulb}
+            title={hasSearchQuery
+              ? t('decisionCenter.page.searchEmptyTitle')
+              : t('decisionCenter.page.emptyTitle')}
+            description={hasSearchQuery
+              ? t('decisionCenter.page.searchEmptyDescription', { query: trimmedSearchQuery })
+              : t('decisionCenter.page.emptyDescription')}
+          />
+        ) : (
+          <div className="space-y-5">
+            {pendingItemIds.length > 0 && (
+              <section className="surface-card-soft rounded-xl border border-border/70 bg-card/90 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-muted-foreground">
+                    {t('decisionCenter.actions.selectedCount', { count: selectedPendingIds.length })}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleToggleSelectAllPending}
+                      disabled={batchActing}
+                    >
+                      {allPendingSelected
+                        ? t('decisionCenter.actions.clearSelection')
+                        : t('decisionCenter.actions.selectAllPending')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void handleBatchAccept()}
+                      disabled={selectedPendingIds.length === 0 || batchActing}
+                    >
+                      {t('decisionCenter.actions.acceptSelected')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleBatchIgnore()}
+                      disabled={selectedPendingIds.length === 0 || batchActing}
+                    >
+                      {t('decisionCenter.actions.ignoreSelected')}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {filteredGroupedBySource.map((group) => (
+              <section key={group.key} className="overflow-hidden rounded-xl border border-border/70 bg-card">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 px-4 py-3">
+                  <div>
+                    <div className="text-xs text-muted-foreground">
+                      {t(`decisionCenter.sourceType.${group.sourceType}`)}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-foreground">{group.sourceId}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {t(`decisionCenter.filters.scope.${group.items[0]?.scope_level ?? 'global'}`)}
+                      {group.items[0]?.scope_id ? ` · ${group.items[0].scope_id}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="rounded-full border border-border/70 bg-muted/40 px-2 py-0.5 text-muted-foreground">
+                      {t('decisionCenter.page.groupCount', { count: group.items.length })}
+                    </span>
+                    {group.stats.pending > 0 && (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700">
+                        {t('decisionCenter.filters.status.pending')}: {group.stats.pending}
+                      </span>
+                    )}
+                    {group.stats.accepted > 0 && (
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
+                        {t('decisionCenter.filters.status.accepted')}: {group.stats.accepted}
+                      </span>
+                    )}
+                    {group.stats.ignored > 0 && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">
+                        {t('decisionCenter.filters.status.ignored')}: {group.stats.ignored}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="divide-y divide-border/60">
+                  {group.items.map((item) => {
+                    const evidenceText = parseEvidenceText(item.evidence);
+                    const itemBatchActing = batchActingItemId === item.id;
+                    const itemAcceptActing = actingId === item.id || (itemBatchActing && batchAction === 'accept');
+                    const itemIgnoreActing = actingId === item.id || (itemBatchActing && batchAction === 'ignore');
+                    const draft = editingTodoDraftByDecisionId[item.id] ?? null;
+                    return (
+                      <article key={item.id} className="p-4 lg:p-5">
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+                          <div className="space-y-3">
+                            <div className="flex items-start gap-2">
+                              {item.status === 'pending' && (
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-4 w-4 rounded border-border"
+                                  checked={selectedPendingSet.has(item.id)}
+                                  onChange={() => togglePendingSelection(item.id)}
+                                  disabled={batchActing}
+                                />
+                              )}
+                              <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                            </div>
+
+                            {item.summary && (
+                              <p className="whitespace-pre-wrap text-sm text-foreground/90">{item.summary}</p>
+                            )}
+
+                            {(item.suggested_todo_title || item.suggested_todo_description) && (
+                              <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-3">
+                                <div className="text-xs font-medium text-brand-700">{t('decisionCenter.item.suggestedTodo')}</div>
+                                <div className="mt-1 text-sm font-medium text-foreground">{item.suggested_todo_title ?? '-'}</div>
+                                {item.suggested_todo_description && (
+                                  <div className="mt-1 whitespace-pre-wrap text-sm text-foreground/90">
+                                    {item.suggested_todo_description}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {draft && (
+                              <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                                <div className="text-xs font-medium text-foreground">
+                                  {t('decisionCenter.item.editableTodoDraft')}
+                                </div>
+                                <div className="mt-2 grid gap-2">
+                                  <label className="grid gap-1 text-xs text-muted-foreground">
+                                    <span>{t('decisionCenter.item.todoTitle')}</span>
+                                    <Input
+                                      value={draft.title}
+                                      onChange={(event) =>
+                                        handleDraftChange(item.id, { title: event.target.value })
+                                      }
+                                      placeholder={item.suggested_todo_title ?? item.title}
+                                    />
+                                  </label>
+                                  <label className="grid gap-1 text-xs text-muted-foreground">
+                                    <span>{t('decisionCenter.item.todoDescription')}</span>
+                                    <Textarea
+                                      value={draft.description}
+                                      onChange={(event) =>
+                                        handleDraftChange(item.id, { description: event.target.value })
+                                      }
+                                      rows={4}
+                                      placeholder={item.suggested_todo_description ?? item.summary ?? ''}
+                                    />
+                                  </label>
+                                  <label className="grid gap-1 text-xs text-muted-foreground">
+                                    <span>{t('decisionCenter.item.todoPriority')}</span>
+                                    <select
+                                      className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                                      value={draft.priority}
+                                      onChange={(event) =>
+                                        handleDraftChange(
+                                          item.id,
+                                          { priority: event.target.value as DecisionItemPriority | '' },
+                                        )
+                                      }
+                                    >
+                                      <option value="">{item.priority ?? '-'}</option>
+                                      <option value="low">{t('todos.filters.priority.low')}</option>
+                                      <option value="medium">{t('todos.filters.priority.medium')}</option>
+                                      <option value="high">{t('todos.filters.priority.high')}</option>
+                                      <option value="critical">{t('todos.filters.priority.critical')}</option>
+                                    </select>
+                                  </label>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => void handleAcceptWithEdit(item.id)}
+                                      disabled={actingId === item.id || batchActing}
+                                    >
+                                      {itemAcceptActing ? (
+                                        <>
+                                          <RefreshCw size={16} className="animate-spin" />
+                                          {t('decisionCenter.actions.processing')}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Check size={16} />
+                                          {t('decisionCenter.actions.confirmAccept')}
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleCancelAcceptWithEdit(item.id)}
+                                      disabled={actingId === item.id || batchActing}
+                                    >
+                                      {t('decisionCenter.actions.cancelEdit')}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {evidenceText && (
+                              <details className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                                <summary className="cursor-pointer text-xs text-muted-foreground">
+                                  {t('decisionCenter.item.evidence')}
+                                </summary>
+                                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs text-foreground">
+                                  {evidenceText}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
+
+                          <div className="space-y-2 lg:min-w-56 lg:text-right">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${decisionStatusClass(item.status)}`}
+                            >
+                              {t(`decisionCenter.filters.status.${item.status}`)}
+                            </span>
+
+                            <div className="space-y-1 text-xs text-muted-foreground">
+                              <div>{t('decisionCenter.item.createdAt', { value: formatDate(item.created_at) })}</div>
+                              <div>{t('decisionCenter.item.priority', { value: item.priority ?? '-' })}</div>
+                              {item.accepted_todo_id && (
+                                <div className="flex items-center gap-2 lg:justify-end">
+                                  <span>{t('decisionCenter.item.todoId', { value: item.accepted_todo_id })}</span>
+                                  <button
+                                    type="button"
+                                    className="rounded border border-border bg-card px-1.5 py-0.5 text-[11px] text-foreground hover:bg-muted/60"
+                                    onClick={() => void handleCopyTodoId(item.accepted_todo_id as string)}
+                                  >
+                                    {copiedTodoId === item.accepted_todo_id
+                                      ? t('decisionCenter.item.copied')
+                                      : t('decisionCenter.item.copyTodoId')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded border border-border bg-card px-1.5 py-0.5 text-[11px] text-foreground hover:bg-muted/60"
+                                    onClick={() => navigate(`/todos?todoId=${encodeURIComponent(item.accepted_todo_id as string)}`)}
+                                  >
+                                    {t('decisionCenter.item.viewTodo')}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {item.status === 'pending' && (
+                              <div className="flex flex-wrap gap-2 lg:justify-end">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleAccept(item.id)}
+                                  disabled={actingId === item.id || batchActing}
+                                >
+                                  {itemAcceptActing ? (
+                                    <>
+                                      <RefreshCw size={16} className="animate-spin" />
+                                      {t('decisionCenter.actions.processing')}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check size={16} />
+                                      {t('decisionCenter.actions.accept')}
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleStartAcceptWithEdit(item)}
+                                  disabled={actingId === item.id || batchActing}
+                                >
+                                  {t('decisionCenter.actions.acceptWithEdit')}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void handleIgnore(item.id)}
+                                  disabled={actingId === item.id || batchActing}
+                                >
+                                  {itemIgnoreActing ? (
+                                    <>
+                                      <RefreshCw size={16} className="animate-spin" />
+                                      {t('decisionCenter.actions.processing')}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CircleOff size={16} />
+                                      {t('decisionCenter.actions.ignore')}
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+
+            {nextCursor && (
+              <div className="flex justify-center">
+                <Button variant="outline" onClick={() => void handleLoadMore()} disabled={loading || batchActing}>
+                  <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                  {t('decisionCenter.page.loadMore')}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

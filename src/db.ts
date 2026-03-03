@@ -19,7 +19,18 @@ import {
   ChannelSessionBinding,
   ScheduledTask,
   SubAgent,
+  TaskConfig,
+  TaskState,
   TaskRunLog,
+  DecisionItem,
+  DecisionItemStatus,
+  DecisionItemScopeLevel,
+  Todo,
+  TodoPriority,
+  TodoSourceEvent,
+  TodoSourceType,
+  TodoStatus,
+  TodoTriggerMode,
   User,
   UserPublic,
   UserStatus,
@@ -29,7 +40,7 @@ import {
   Permission,
   PermissionTemplateKey,
 } from './types.js';
-import { AGENT_PROVIDER_IDS, type AgentProvider } from './agent-providers.js';
+import type { AgentProvider } from './agent-providers.js';
 import { getDefaultPermissions, normalizePermissions } from './permissions.js';
 import { listRuntimePrimaryMemoryFileNames } from './memory-file-alias.js';
 import { parseMessageProvider } from './message-provider.js';
@@ -151,12 +162,10 @@ export function initDatabase(): void {
       schedule_type TEXT NOT NULL,
       schedule_value TEXT NOT NULL,
       context_mode TEXT DEFAULT 'isolated',
-      operation_permission_mode TEXT DEFAULT 'default',
-      agent_runtime_override TEXT,
-      execution_environment TEXT DEFAULT 'local',
       execution_type TEXT DEFAULT 'agent',
       script_command TEXT,
-      skill_refs TEXT,
+      task_config TEXT,
+      task_state TEXT,
       next_run TEXT,
       last_run TEXT,
       last_result TEXT,
@@ -178,6 +187,70 @@ export function initDatabase(): void {
       FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
     );
     CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
+
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      priority TEXT,
+      dedupe_key TEXT NOT NULL,
+      occurrence_count INTEGER NOT NULL DEFAULT 1,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(dedupe_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_todos_status_priority_last_seen
+      ON todos(status, priority, last_seen_at);
+
+    CREATE TABLE IF NOT EXISTS todo_source_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      todo_id TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_run_id TEXT,
+      trigger_mode TEXT,
+      action TEXT NOT NULL,
+      evidence TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (todo_id) REFERENCES todos(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_todo_source_events_todo_created_at
+      ON todo_source_events(todo_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_todo_source_events_source_lookup
+      ON todo_source_events(source_type, source_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS decision_items (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      summary TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      scope_level TEXT NOT NULL DEFAULT 'global',
+      scope_id TEXT,
+      priority TEXT,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_run_id TEXT,
+      evidence TEXT,
+      suggested_todo_title TEXT,
+      suggested_todo_description TEXT,
+      suggested_todo_priority TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      decided_at TEXT,
+      decided_by TEXT,
+      accepted_todo_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_decision_items_status_created_at
+      ON decision_items(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_decision_items_source
+      ON decision_items(source_type, source_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_decision_items_scope
+      ON decision_items(scope_level, scope_id, created_at);
   `);
 
   // State tables (replacing JSON files)
@@ -342,10 +415,10 @@ export function initDatabase(): void {
   ensureColumn('scheduled_tasks', 'created_by', 'TEXT');
   ensureColumn('scheduled_tasks', 'execution_type', "TEXT DEFAULT 'agent'");
   ensureColumn('scheduled_tasks', 'script_command', 'TEXT');
-  ensureColumn('scheduled_tasks', 'skill_refs', 'TEXT');
-  ensureColumn('scheduled_tasks', 'operation_permission_mode', "TEXT DEFAULT 'default'");
-  ensureColumn('scheduled_tasks', 'agent_runtime_override', 'TEXT');
-  ensureColumn('scheduled_tasks', 'execution_environment', "TEXT DEFAULT 'local'");
+  ensureColumn('scheduled_tasks', 'task_config', 'TEXT');
+  ensureColumn('scheduled_tasks', 'task_state', 'TEXT');
+  ensureColumn('decision_items', 'scope_level', "TEXT NOT NULL DEFAULT 'global'");
+  ensureColumn('decision_items', 'scope_id', 'TEXT');
   ensureColumn('registered_groups', 'selected_skills', 'TEXT');
   ensureColumn('sessions', 'agent_id', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('agents', 'kind', "TEXT NOT NULL DEFAULT 'task'");
@@ -405,18 +478,41 @@ export function initDatabase(): void {
     'schedule_type',
     'schedule_value',
     'context_mode',
-    'operation_permission_mode',
-    'agent_runtime_override',
-    'execution_environment',
     'execution_type',
     'script_command',
-    'skill_refs',
+    'task_config',
+    'task_state',
     'next_run',
     'last_run',
     'last_result',
     'status',
     'created_at',
     'created_by',
+  ]);
+  assertSchema('todos', [
+    'id',
+    'title',
+    'description',
+    'status',
+    'priority',
+    'dedupe_key',
+    'occurrence_count',
+    'first_seen_at',
+    'last_seen_at',
+    'created_by',
+    'created_at',
+    'updated_at',
+  ]);
+  assertSchema('todo_source_events', [
+    'id',
+    'todo_id',
+    'source_type',
+    'source_id',
+    'source_run_id',
+    'trigger_mode',
+    'action',
+    'evidence',
+    'created_at',
   ]);
   assertSchema(
     'registered_groups',
@@ -783,94 +879,32 @@ export function getMessagesSince(
     }));
 }
 
-type ScheduledTaskRow = Omit<ScheduledTask, 'skill_refs'> & {
-  skill_refs: string | null;
-};
-
-const TASK_SKILL_REF_RE = /^[\w-]+$/;
-
-function normalizeTaskSkillRefs(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const normalized: string[] = [];
-  const seen = new Set<string>();
-  for (const item of value) {
-    if (typeof item !== 'string') continue;
-    const ref = item.trim().toLowerCase();
-    if (!ref || seen.has(ref)) continue;
-    if (!TASK_SKILL_REF_RE.test(ref)) continue;
-    seen.add(ref);
-    normalized.push(ref);
-    if (normalized.length >= 64) break;
-  }
-  return normalized;
-}
-
-function parseTaskSkillRefs(raw: string | null | undefined): string[] {
-  if (typeof raw !== 'string' || raw.trim().length === 0) return [];
-  try {
-    return normalizeTaskSkillRefs(JSON.parse(raw));
-  } catch {
-    return [];
-  }
-}
-
-function parseTaskOperationPermissionMode(
-  raw: unknown,
-): 'default' | 'bypass' {
-  return raw === 'bypass' ? 'bypass' : 'default';
-}
-
-function parseTaskRuntimeOverride(raw: unknown): AgentProvider | null {
-  if (typeof raw !== 'string') return null;
-  return AGENT_PROVIDER_IDS.includes(raw as AgentProvider)
-    ? (raw as AgentProvider)
-    : null;
-}
-
-function parseTaskExecutionEnvironment(raw: unknown): 'local' | 'worktree' {
-  return raw === 'worktree' ? 'worktree' : 'local';
-}
-
-function parseTaskText(raw: unknown, fallback = ''): string {
-  if (typeof raw === 'string') return raw;
-  if (Buffer.isBuffer(raw)) return raw.toString('utf8');
-  if (raw === null || raw === undefined) return fallback;
-  return String(raw);
-}
-
-function parseTaskNullableText(raw: unknown): string | null {
+function parseTaskJson(raw: unknown): Record<string, unknown> | null {
   if (raw === null || raw === undefined) return null;
-  return parseTaskText(raw);
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return null;
 }
 
-function serializeTaskSkillRefs(skillRefs: string[] | undefined): string | null {
-  const normalized = normalizeTaskSkillRefs(skillRefs);
-  return normalized.length > 0 ? JSON.stringify(normalized) : null;
-}
-
-function mapScheduledTaskRow(row: ScheduledTaskRow): ScheduledTask {
+function parseScheduledTaskRow(row: Record<string, unknown>): ScheduledTask {
   return {
-    ...row,
-    prompt: parseTaskText((row as { prompt?: unknown }).prompt),
-    schedule_value: parseTaskText((row as { schedule_value?: unknown }).schedule_value),
-    script_command: parseTaskNullableText(
-      (row as { script_command?: unknown }).script_command,
-    ),
-    next_run: parseTaskNullableText((row as { next_run?: unknown }).next_run),
-    last_run: parseTaskNullableText((row as { last_run?: unknown }).last_run),
-    last_result: parseTaskNullableText(
-      (row as { last_result?: unknown }).last_result,
-    ),
-    operation_permission_mode: parseTaskOperationPermissionMode(
-      (row as { operation_permission_mode?: unknown }).operation_permission_mode,
-    ),
-    agent_runtime_override: parseTaskRuntimeOverride(
-      (row as { agent_runtime_override?: unknown }).agent_runtime_override,
-    ),
-    execution_environment: parseTaskExecutionEnvironment(
-      (row as { execution_environment?: unknown }).execution_environment,
-    ),
-    skill_refs: parseTaskSkillRefs(row.skill_refs),
+    ...(row as unknown as ScheduledTask),
+    task_config: parseTaskJson(row.task_config) as TaskConfig | null,
+    task_state: parseTaskJson(row.task_state) as TaskState | null,
   };
 }
 
@@ -879,8 +913,12 @@ export function createTask(
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, operation_permission_mode, agent_runtime_override, execution_environment, execution_type, script_command, skill_refs, next_run, status, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (
+      id, group_folder, chat_jid, prompt, schedule_type, schedule_value,
+      context_mode, execution_type, script_command, task_config, task_state,
+      next_run, status, created_at, created_by
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -890,12 +928,10 @@ export function createTask(
     task.schedule_type,
     task.schedule_value,
     task.context_mode || 'isolated',
-    task.operation_permission_mode === 'bypass' ? 'bypass' : 'default',
-    task.agent_runtime_override ?? null,
-    task.execution_environment === 'worktree' ? 'worktree' : 'local',
     task.execution_type || 'agent',
     task.script_command ?? null,
-    serializeTaskSkillRefs(task.skill_refs),
+    task.task_config ? JSON.stringify(task.task_config) : null,
+    task.task_state ? JSON.stringify(task.task_state) : null,
     task.next_run,
     task.status,
     task.created_at,
@@ -905,9 +941,9 @@ export function createTask(
 
 export function getTaskById(id: string): ScheduledTask | undefined {
   const row = db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(id) as
-    | ScheduledTaskRow
+    | Record<string, unknown>
     | undefined;
-  return row ? mapScheduledTaskRow(row) : undefined;
+  return row ? parseScheduledTaskRow(row) : undefined;
 }
 
 export function getTasksForGroup(groupFolder: string): ScheduledTask[] {
@@ -915,15 +951,15 @@ export function getTasksForGroup(groupFolder: string): ScheduledTask[] {
     .prepare(
       'SELECT * FROM scheduled_tasks WHERE group_folder = ? ORDER BY created_at DESC',
     )
-    .all(groupFolder) as ScheduledTaskRow[];
-  return rows.map((row) => mapScheduledTaskRow(row));
+    .all(groupFolder) as Record<string, unknown>[];
+  return rows.map((row) => parseScheduledTaskRow(row));
 }
 
 export function getAllTasks(): ScheduledTask[] {
   const rows = db
     .prepare('SELECT * FROM scheduled_tasks ORDER BY created_at DESC')
-    .all() as ScheduledTaskRow[];
-  return rows.map((row) => mapScheduledTaskRow(row));
+    .all() as Record<string, unknown>[];
+  return rows.map((row) => parseScheduledTaskRow(row));
 }
 
 export function updateTask(
@@ -935,12 +971,10 @@ export function updateTask(
       | 'schedule_type'
       | 'schedule_value'
       | 'context_mode'
-      | 'operation_permission_mode'
-      | 'agent_runtime_override'
-      | 'execution_environment'
       | 'execution_type'
       | 'script_command'
-      | 'skill_refs'
+      | 'task_config'
+      | 'task_state'
       | 'next_run'
       | 'status'
     >
@@ -965,18 +999,6 @@ export function updateTask(
     fields.push('context_mode = ?');
     values.push(updates.context_mode);
   }
-  if (updates.operation_permission_mode !== undefined) {
-    fields.push('operation_permission_mode = ?');
-    values.push(updates.operation_permission_mode === 'bypass' ? 'bypass' : 'default');
-  }
-  if (updates.agent_runtime_override !== undefined) {
-    fields.push('agent_runtime_override = ?');
-    values.push(updates.agent_runtime_override ?? null);
-  }
-  if (updates.execution_environment !== undefined) {
-    fields.push('execution_environment = ?');
-    values.push(updates.execution_environment === 'worktree' ? 'worktree' : 'local');
-  }
   if (updates.execution_type !== undefined) {
     fields.push('execution_type = ?');
     values.push(updates.execution_type);
@@ -985,9 +1007,17 @@ export function updateTask(
     fields.push('script_command = ?');
     values.push(updates.script_command);
   }
-  if (updates.skill_refs !== undefined) {
-    fields.push('skill_refs = ?');
-    values.push(serializeTaskSkillRefs(updates.skill_refs));
+  if (updates.task_config !== undefined) {
+    fields.push('task_config = ?');
+    values.push(
+      updates.task_config ? JSON.stringify(updates.task_config) : null,
+    );
+  }
+  if (updates.task_state !== undefined) {
+    fields.push('task_state = ?');
+    values.push(
+      updates.task_state ? JSON.stringify(updates.task_state) : null,
+    );
   }
   if (updates.next_run !== undefined) {
     fields.push('next_run = ?');
@@ -1039,8 +1069,8 @@ export function getDueTasks(): ScheduledTask[] {
     ORDER BY next_run
   `,
     )
-    .all(now) as ScheduledTaskRow[];
-  return rows.map((row) => mapScheduledTaskRow(row));
+    .all(now) as Record<string, unknown>[];
+  return rows.map((row) => parseScheduledTaskRow(row));
 }
 
 export function updateTaskAfterRun(
@@ -1056,20 +1086,6 @@ export function updateTaskAfterRun(
     WHERE id = ?
   `,
   ).run(nextRun, now, lastResult, nextRun, id);
-}
-
-export function updateTaskAfterManualRun(
-  id: string,
-  lastResult: string,
-): void {
-  const now = new Date().toISOString();
-  db.prepare(
-    `
-    UPDATE scheduled_tasks
-    SET last_run = ?, last_result = ?
-    WHERE id = ?
-  `,
-  ).run(now, lastResult, id);
 }
 
 export function logTaskRun(log: TaskRunLog): void {
@@ -1094,6 +1110,657 @@ export function cleanupOldTaskRunLogs(retentionDays = 30): number {
     `DELETE FROM task_run_logs WHERE run_at < ?`,
   ).run(cutoff);
   return result.changes;
+}
+
+export interface TodoListFilters {
+  status?: TodoStatus;
+  priority?: TodoPriority;
+  source_type?: TodoSourceType;
+  source_id?: string;
+  source_run_id?: string;
+  trigger_mode?: TodoTriggerMode;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface TodoMetricsFilters {
+  source_type?: TodoSourceType;
+  source_id?: string;
+  source_run_id?: string;
+  trigger_mode?: TodoTriggerMode;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface DecisionItemListFilters {
+  status?: DecisionItemStatus;
+  scope_level?: DecisionItemScopeLevel;
+  scope_id?: string;
+  source_type?: TodoSourceType;
+  source_id?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface TodoIngestMetrics {
+  total: number;
+  created: number;
+  merged: number;
+  ignored: number;
+  create_rate: number;
+  merge_rate: number;
+  ignored_rate: number;
+  by_source_type: Record<
+    TodoSourceType,
+    {
+      total: number;
+      created: number;
+      merged: number;
+      ignored: number;
+    }
+  >;
+}
+
+type TodoMergePatch = Pick<
+  Todo,
+  'occurrence_count' | 'last_seen_at' | 'priority' | 'updated_at'
+>;
+
+export function withTransaction<T>(fn: () => T): T {
+  const tx = db.transaction(fn);
+  return tx();
+}
+
+function parseTodoRow(row: Record<string, unknown>): Todo {
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    description:
+      typeof row.description === 'string' ? row.description : null,
+    status: row.status as TodoStatus,
+    priority:
+      row.priority === null || row.priority === undefined
+        ? null
+        : (row.priority as TodoPriority),
+    dedupe_key: String(row.dedupe_key),
+    occurrence_count: Number(row.occurrence_count ?? 1),
+    first_seen_at: String(row.first_seen_at),
+    last_seen_at: String(row.last_seen_at),
+    created_by:
+      typeof row.created_by === 'string' ? row.created_by : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+function parseDecisionItemRow(row: Record<string, unknown>): DecisionItem {
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    summary: typeof row.summary === 'string' ? row.summary : null,
+    status: row.status as DecisionItemStatus,
+    scope_level:
+      row.scope_level === 'workspace'
+        ? 'workspace'
+        : 'global',
+    scope_id: typeof row.scope_id === 'string' ? row.scope_id : null,
+    priority:
+      row.priority === null || row.priority === undefined
+        ? null
+        : (row.priority as TodoPriority),
+    source_type: row.source_type as TodoSourceType,
+    source_id: String(row.source_id),
+    source_run_id:
+      typeof row.source_run_id === 'string' ? row.source_run_id : null,
+    evidence: typeof row.evidence === 'string' ? row.evidence : null,
+    suggested_todo_title:
+      typeof row.suggested_todo_title === 'string'
+        ? row.suggested_todo_title
+        : null,
+    suggested_todo_description:
+      typeof row.suggested_todo_description === 'string'
+        ? row.suggested_todo_description
+        : null,
+    suggested_todo_priority:
+      row.suggested_todo_priority === null
+      || row.suggested_todo_priority === undefined
+        ? null
+        : (row.suggested_todo_priority as TodoPriority),
+    created_by: typeof row.created_by === 'string' ? row.created_by : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+    decided_at: typeof row.decided_at === 'string' ? row.decided_at : null,
+    decided_by: typeof row.decided_by === 'string' ? row.decided_by : null,
+    accepted_todo_id:
+      typeof row.accepted_todo_id === 'string' ? row.accepted_todo_id : null,
+  };
+}
+
+export function getTodoById(id: string): Todo | undefined {
+  const row = db.prepare('SELECT * FROM todos WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? parseTodoRow(row) : undefined;
+}
+
+export function getTodoByDedupeKey(dedupeKey: string): Todo | undefined {
+  const row = db
+    .prepare('SELECT * FROM todos WHERE dedupe_key = ?')
+    .get(dedupeKey) as Record<string, unknown> | undefined;
+  return row ? parseTodoRow(row) : undefined;
+}
+
+export function insertTodo(todo: Todo): void {
+  db.prepare(
+    `
+    INSERT INTO todos (
+      id, title, description, status, priority, dedupe_key, occurrence_count,
+      first_seen_at, last_seen_at, created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    todo.id,
+    todo.title,
+    todo.description,
+    todo.status,
+    todo.priority,
+    todo.dedupe_key,
+    todo.occurrence_count,
+    todo.first_seen_at,
+    todo.last_seen_at,
+    todo.created_by,
+    todo.created_at,
+    todo.updated_at,
+  );
+}
+
+export function updateTodoMerge(todoId: string, patch: TodoMergePatch): void {
+  db.prepare(
+    `
+    UPDATE todos
+    SET occurrence_count = ?, last_seen_at = ?, priority = ?, updated_at = ?
+    WHERE id = ?
+  `,
+  ).run(
+    patch.occurrence_count,
+    patch.last_seen_at,
+    patch.priority,
+    patch.updated_at,
+    todoId,
+  );
+}
+
+export function getDecisionItemById(id: string): DecisionItem | undefined {
+  const row = db
+    .prepare('SELECT * FROM decision_items WHERE id = ?')
+    .get(id) as Record<string, unknown> | undefined;
+  return row ? parseDecisionItemRow(row) : undefined;
+}
+
+function extractDecisionEvidenceFingerprint(
+  evidenceRaw: string | null,
+): string | null {
+  if (!evidenceRaw) return null;
+  try {
+    const parsed = JSON.parse(evidenceRaw) as unknown;
+    if (
+      parsed
+      && typeof parsed === 'object'
+      && !Array.isArray(parsed)
+      && typeof (parsed as { __dedupe_fingerprint?: unknown }).__dedupe_fingerprint === 'string'
+    ) {
+      return (parsed as { __dedupe_fingerprint: string }).__dedupe_fingerprint;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function findRecentPendingDecisionItemByFingerprint(
+  filters: {
+    source_type: TodoSourceType;
+    source_id: string;
+    scope_level: DecisionItemScopeLevel;
+    scope_id?: string | null;
+    fingerprint: string;
+    since: string;
+    limit?: number;
+  },
+): DecisionItem | undefined {
+  const limit = Math.max(1, Math.min(filters.limit ?? 50, 200));
+  const scopeId = filters.scope_level === 'workspace' ? (filters.scope_id ?? null) : null;
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM decision_items d
+      WHERE d.status = 'pending'
+        AND d.source_type = ?
+        AND d.source_id = ?
+        AND d.scope_level = ?
+        AND (
+          (d.scope_id IS NULL AND ? IS NULL)
+          OR d.scope_id = ?
+        )
+        AND d.created_at >= ?
+      ORDER BY d.created_at DESC, d.id DESC
+      LIMIT ?
+    `,
+    )
+    .all(
+      filters.source_type,
+      filters.source_id,
+      filters.scope_level,
+      scopeId,
+      scopeId,
+      filters.since,
+      limit,
+    ) as Array<Record<string, unknown>>;
+
+  for (const row of rows) {
+    const item = parseDecisionItemRow(row);
+    if (extractDecisionEvidenceFingerprint(item.evidence) === filters.fingerprint) {
+      return item;
+    }
+  }
+  return undefined;
+}
+
+export function insertDecisionItem(item: DecisionItem): void {
+  db.prepare(
+    `
+    INSERT INTO decision_items (
+      id, title, summary, status, scope_level, scope_id, priority, source_type, source_id, source_run_id, evidence,
+      suggested_todo_title, suggested_todo_description, suggested_todo_priority,
+      created_by, created_at, updated_at, decided_at, decided_by, accepted_todo_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    item.id,
+    item.title,
+    item.summary,
+    item.status,
+    item.scope_level,
+    item.scope_id,
+    item.priority,
+    item.source_type,
+    item.source_id,
+    item.source_run_id,
+    item.evidence,
+    item.suggested_todo_title,
+    item.suggested_todo_description,
+    item.suggested_todo_priority,
+    item.created_by,
+    item.created_at,
+    item.updated_at,
+    item.decided_at,
+    item.decided_by,
+    item.accepted_todo_id,
+  );
+}
+
+export function updateDecisionItemDecision(
+  id: string,
+  patch: {
+    status: Extract<DecisionItemStatus, 'accepted' | 'ignored'>;
+    decided_at: string;
+    decided_by: string;
+    accepted_todo_id?: string | null;
+  },
+): void {
+  db.prepare(
+    `
+    UPDATE decision_items
+    SET status = ?,
+        decided_at = ?,
+        decided_by = ?,
+        accepted_todo_id = ?,
+        updated_at = ?
+    WHERE id = ?
+  `,
+  ).run(
+    patch.status,
+    patch.decided_at,
+    patch.decided_by,
+    patch.accepted_todo_id ?? null,
+    patch.decided_at,
+    id,
+  );
+}
+
+export function updateDecisionItemPendingMerge(
+  id: string,
+  patch: {
+    title: string;
+    summary: string | null;
+    priority: TodoPriority | null;
+    source_run_id: string | null;
+    evidence: string | null;
+    suggested_todo_title: string | null;
+    suggested_todo_description: string | null;
+    suggested_todo_priority: TodoPriority | null;
+    updated_at: string;
+  },
+): void {
+  db.prepare(
+    `
+    UPDATE decision_items
+    SET title = ?,
+        summary = ?,
+        priority = ?,
+        source_run_id = ?,
+        evidence = ?,
+        suggested_todo_title = ?,
+        suggested_todo_description = ?,
+        suggested_todo_priority = ?,
+        updated_at = ?
+    WHERE id = ? AND status = 'pending'
+  `,
+  ).run(
+    patch.title,
+    patch.summary,
+    patch.priority,
+    patch.source_run_id,
+    patch.evidence,
+    patch.suggested_todo_title,
+    patch.suggested_todo_description,
+    patch.suggested_todo_priority,
+    patch.updated_at,
+    id,
+  );
+}
+
+export function insertTodoSourceEvent(event: TodoSourceEvent): void {
+  db.prepare(
+    `
+    INSERT INTO todo_source_events (
+      todo_id, source_type, source_id, source_run_id, trigger_mode, action, evidence, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    event.todo_id,
+    event.source_type,
+    event.source_id,
+    event.source_run_id,
+    event.trigger_mode,
+    event.action,
+    event.evidence,
+    event.created_at,
+  );
+}
+
+export function listTodoSourceEvents(todoId: string): TodoSourceEvent[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT id, todo_id, source_type, source_id, source_run_id, trigger_mode, action, evidence, created_at
+      FROM todo_source_events
+      WHERE todo_id = ?
+      ORDER BY created_at DESC, id DESC
+    `,
+    )
+    .all(todoId) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    id: Number(row.id),
+    todo_id: String(row.todo_id),
+    source_type: row.source_type as TodoSourceType,
+    source_id: String(row.source_id),
+    source_run_id:
+      typeof row.source_run_id === 'string' ? row.source_run_id : null,
+    trigger_mode:
+      row.trigger_mode === null || row.trigger_mode === undefined
+        ? null
+        : (row.trigger_mode as TodoTriggerMode),
+    action: row.action as TodoSourceEvent['action'],
+    evidence: typeof row.evidence === 'string' ? row.evidence : null,
+    created_at: String(row.created_at),
+  }));
+}
+
+export function listTodos(filters: TodoListFilters = {}): Todo[] {
+  const clauses: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (filters.status) {
+    clauses.push('t.status = ?');
+    params.push(filters.status);
+  }
+  if (filters.priority) {
+    clauses.push('t.priority = ?');
+    params.push(filters.priority);
+  }
+  if (filters.source_type) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.source_type = ?)',
+    );
+    params.push(filters.source_type);
+  }
+  if (filters.source_id) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.source_id = ?)',
+    );
+    params.push(filters.source_id);
+  }
+  if (filters.source_run_id) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.source_run_id = ?)',
+    );
+    params.push(filters.source_run_id);
+  }
+  if (filters.trigger_mode) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM todo_source_events e WHERE e.todo_id = t.id AND e.trigger_mode = ?)',
+    );
+    params.push(filters.trigger_mode);
+  }
+  if (filters.cursor) {
+    const cursor = filters.cursor.trim();
+    const dividerIdx = cursor.lastIndexOf('|');
+    if (dividerIdx > 0) {
+      const cursorTs = cursor.slice(0, dividerIdx);
+      const cursorId = cursor.slice(dividerIdx + 1);
+      if (cursorTs && cursorId) {
+        clauses.push('(t.last_seen_at < ? OR (t.last_seen_at = ? AND t.id < ?))');
+        params.push(cursorTs, cursorTs, cursorId);
+      }
+    }
+  }
+
+  const limit = Math.max(1, Math.min(filters.limit ?? 20, 200));
+  const rows = db
+    .prepare(
+      `
+      SELECT t.*
+      FROM todos t
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY t.last_seen_at DESC, t.id DESC
+      LIMIT ?
+    `,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+
+  return rows.map(parseTodoRow);
+}
+
+export function listDecisionItems(
+  filters: DecisionItemListFilters = {},
+): DecisionItem[] {
+  const clauses: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (filters.status) {
+    clauses.push('d.status = ?');
+    params.push(filters.status);
+  }
+  if (filters.scope_level) {
+    clauses.push('d.scope_level = ?');
+    params.push(filters.scope_level);
+  }
+  if (filters.scope_id) {
+    clauses.push('d.scope_id = ?');
+    params.push(filters.scope_id);
+  }
+  if (filters.source_type) {
+    clauses.push('d.source_type = ?');
+    params.push(filters.source_type);
+  }
+  if (filters.source_id) {
+    clauses.push('d.source_id = ?');
+    params.push(filters.source_id);
+  }
+  if (filters.cursor) {
+    const cursor = filters.cursor.trim();
+    const dividerIdx = cursor.lastIndexOf('|');
+    if (dividerIdx > 0) {
+      const cursorTs = cursor.slice(0, dividerIdx);
+      const cursorId = cursor.slice(dividerIdx + 1);
+      if (cursorTs && cursorId) {
+        clauses.push('(d.created_at < ? OR (d.created_at = ? AND d.id < ?))');
+        params.push(cursorTs, cursorTs, cursorId);
+      }
+    }
+  }
+
+  const limit = Math.max(1, Math.min(filters.limit ?? 50, 200));
+  const rows = db
+    .prepare(
+      `
+      SELECT d.*
+      FROM decision_items d
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY d.created_at DESC, d.id DESC
+      LIMIT ?
+    `,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+
+  return rows.map(parseDecisionItemRow);
+}
+
+export function getTodoIngestMetrics(
+  filters: TodoMetricsFilters = {},
+): TodoIngestMetrics {
+  const clauses: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (filters.source_type) {
+    clauses.push('e.source_type = ?');
+    params.push(filters.source_type);
+  }
+  if (filters.source_id) {
+    clauses.push('e.source_id = ?');
+    params.push(filters.source_id);
+  }
+  if (filters.source_run_id) {
+    clauses.push('e.source_run_id = ?');
+    params.push(filters.source_run_id);
+  }
+  if (filters.trigger_mode) {
+    clauses.push('e.trigger_mode = ?');
+    params.push(filters.trigger_mode);
+  }
+  if (filters.date_from) {
+    clauses.push('e.created_at >= ?');
+    params.push(`${filters.date_from}T00:00:00.000Z`);
+  }
+  if (filters.date_to) {
+    const end = new Date(`${filters.date_to}T00:00:00.000Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    clauses.push('e.created_at < ?');
+    params.push(end.toISOString());
+  }
+
+  const whereSql = clauses.join(' AND ');
+  const byActionRows = db
+    .prepare(
+      `
+      SELECT action, COUNT(*) AS total
+      FROM todo_source_events e
+      WHERE ${whereSql}
+      GROUP BY action
+    `,
+    )
+    .all(...params) as Array<{ action: string; total: number }>;
+
+  let total = 0;
+  let created = 0;
+  let merged = 0;
+  let ignored = 0;
+  for (const row of byActionRows) {
+    const count = Number(row.total ?? 0);
+    total += count;
+    if (row.action === 'created') created += count;
+    else if (row.action === 'merged') merged += count;
+    else if (row.action === 'ignored') ignored += count;
+  }
+
+  const bySourceType: TodoIngestMetrics['by_source_type'] = {
+    manual: { total: 0, created: 0, merged: 0, ignored: 0 },
+    automation: { total: 0, created: 0, merged: 0, ignored: 0 },
+    plugin: { total: 0, created: 0, merged: 0, ignored: 0 },
+    workflow: { total: 0, created: 0, merged: 0, ignored: 0 },
+  };
+
+  const bySourceRows = db
+    .prepare(
+      `
+      SELECT source_type, action, COUNT(*) AS total
+      FROM todo_source_events e
+      WHERE ${whereSql}
+      GROUP BY source_type, action
+    `,
+    )
+    .all(...params) as Array<{
+      source_type: TodoSourceType;
+      action: string;
+      total: number;
+    }>;
+
+  for (const row of bySourceRows) {
+    const sourceBucket = bySourceType[row.source_type];
+    if (!sourceBucket) continue;
+    const count = Number(row.total ?? 0);
+    sourceBucket.total += count;
+    if (row.action === 'created') sourceBucket.created += count;
+    else if (row.action === 'merged') sourceBucket.merged += count;
+    else if (row.action === 'ignored') sourceBucket.ignored += count;
+  }
+
+  const safeRate = (count: number): number => {
+    if (total <= 0) return 0;
+    return Number((count / total).toFixed(4));
+  };
+
+  return {
+    total,
+    created,
+    merged,
+    ignored,
+    create_rate: safeRate(created),
+    merge_rate: safeRate(merged),
+    ignored_rate: safeRate(ignored),
+    by_source_type: bySourceType,
+  };
+}
+
+export function countTodoEventsForSourceOnDate(
+  sourceType: TodoSourceType,
+  sourceId: string,
+  isoDate: string,
+): number {
+  const likePattern = `${isoDate}%`;
+  const row = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+      FROM todo_source_events
+      WHERE source_type = ? AND source_id = ? AND created_at LIKE ?
+    `,
+    )
+    .get(sourceType, sourceId, likePattern) as { total?: number } | undefined;
+  return Number(row?.total ?? 0);
 }
 
 // --- Router state accessors ---

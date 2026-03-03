@@ -68,6 +68,11 @@ const WorkflowStageDependencySchema = z.object({
   onMissing: z.enum(WORKFLOW_DEPENDENCY_ON_MISSING_VALUES).optional().default('guide_user'),
 });
 
+const WorkflowStageTodoIngestSchema = z.object({
+  enabled: z.boolean().optional().default(true),
+  priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+});
+
 const WorkflowStageSchema = z.object({
   id: z
     .string()
@@ -85,6 +90,7 @@ const WorkflowStageSchema = z.object({
   doneKeywords: z.array(z.string().trim().min(1).max(200)).max(24).default([]),
   skillRefs: z.array(z.string().trim().min(1).max(128)).max(64).optional(),
   dependencies: z.array(WorkflowStageDependencySchema).max(64).optional(),
+  todoIngest: WorkflowStageTodoIngestSchema.optional(),
 });
 
 const WorkflowTemplateWriteSchema = z.object({

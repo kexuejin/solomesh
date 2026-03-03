@@ -56,6 +56,16 @@ const WORKFLOW_TEMPLATE_SUGGESTIONS: WorkflowCommandSuggestion[] = [
     label: 'review-gate',
     descriptionKey: 'chat.workflowDirective.templates.reviewGate',
   },
+  {
+    value: '/wf competitor-watch',
+    label: 'competitor-watch',
+    descriptionKey: 'chat.workflowDirective.templates.competitorWatch',
+  },
+  {
+    value: '/wf project-recommendation',
+    label: 'project-recommendation',
+    descriptionKey: 'chat.workflowDirective.templates.projectRecommendation',
+  },
 ];
 
 const WORKFLOW_CONTROL_SUGGESTIONS: WorkflowCommandSuggestion[] = [
@@ -85,6 +95,25 @@ const WORKFLOW_CONTROL_SUGGESTIONS: WorkflowCommandSuggestion[] = [
     descriptionKey: 'chat.workflowDirective.controls.cancel',
   },
 ];
+
+const AUTOMATION_TEMPLATE_SUGGESTIONS: WorkflowCommandSuggestion[] = [
+  {
+    value: '/auto competitor-watch',
+    label: 'competitor-watch',
+    descriptionKey: 'chat.workflowDirective.automations.competitorWatch',
+  },
+  {
+    value: '/auto project-recommendation',
+    label: 'project-recommendation',
+    descriptionKey: 'chat.workflowDirective.automations.projectRecommendation',
+  },
+];
+
+const AUTOMATION_HELP_SUGGESTION: WorkflowCommandSuggestion = {
+  value: '/auto',
+  label: 'auto',
+  descriptionKey: 'chat.workflowDirective.automations.help',
+};
 
 function buildTemplateSuggestions(
   templates?: WorkflowTemplateSuggestionSource[],
@@ -201,6 +230,28 @@ export function getWorkflowCommandSuggestions(
     options.templateIds,
   );
   const text = input.trimStart().toLowerCase();
+
+  if (text.startsWith('/auto') || text.startsWith('/automation')) {
+    const templateSuggestions = [...AUTOMATION_TEMPLATE_SUGGESTIONS];
+    if (text === '/auto' || text === '/automation') {
+      return [AUTOMATION_HELP_SUGGESTION, ...templateSuggestions];
+    }
+
+    const autoPrefix = text.startsWith('/automation ') ? '/automation ' : '/auto ';
+    if (text.startsWith(autoPrefix)) {
+      const query = text.slice(autoPrefix.length).trimStart();
+      if (!query) return templateSuggestions;
+      if (query.endsWith(' ')) return [];
+      const [firstToken, ...rest] = query.split(/\s+/).filter(Boolean);
+      if (rest.length > 0) return [];
+      return templateSuggestions.filter((item) =>
+        item.value.toLowerCase().includes(firstToken),
+      );
+    }
+
+    return [];
+  }
+
   if (!text.startsWith('/wf')) return [];
 
   if (text === '/wf') {

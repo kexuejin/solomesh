@@ -6,7 +6,7 @@ import { localeForDateTime, useI18n } from '../../i18n';
 
 interface TaskCardProps {
   task: ScheduledTask;
-  onRunNow: (id: string) => void;
+  onRunNow?: (id: string) => void;
   isRunNowPending?: boolean;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
@@ -96,7 +96,7 @@ export function TaskCard({
 
   const handleRunNow = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isRunNowPending) return;
+    if (isRunNowPending || !onRunNow) return;
     onRunNow(task.id);
   };
 
@@ -144,7 +144,7 @@ export function TaskCard({
             </div>
 
             {/* Status Badge */}
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
                   task.status
@@ -152,6 +152,16 @@ export function TaskCard({
               >
                 {getStatusLabel(task.status)}
               </span>
+              {task.task_config?.on_error?.todo_ingest === true && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700 border border-brand-200">
+                  {t('tasks.card.onErrorTodo')}
+                </span>
+              )}
+              {task.task_config?.on_success?.decision_ingest === true && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                  {t('tasks.card.onSuccessDecision')}
+                </span>
+              )}
             </div>
           </div>
 
@@ -174,21 +184,23 @@ export function TaskCard({
             )}
 
             {/* Run now */}
-            <button
-              onClick={handleRunNow}
-              disabled={isRunNowPending}
-              className={`p-2 rounded-lg transition-colors ${
-                isRunNowPending
-                  ? 'cursor-not-allowed text-muted-foreground/60'
-                  : 'cursor-pointer text-muted-foreground hover:text-brand-700 hover:bg-brand-50'
-              }`}
-              title={isRunNowPending ? t('tasks.card.actionRunNowPending') : t('tasks.card.actionRunNow')}
-              aria-label={isRunNowPending ? t('tasks.card.actionRunNowPending') : t('tasks.card.actionRunNowAria')}
-            >
-              {isRunNowPending
-                ? <Loader2 className="w-5 h-5 animate-spin" />
-                : <TestTube2 className="w-5 h-5" />}
-            </button>
+            {onRunNow && (
+              <button
+                onClick={handleRunNow}
+                disabled={isRunNowPending}
+                className={`p-2 rounded-lg transition-colors ${
+                  isRunNowPending
+                    ? 'cursor-not-allowed text-muted-foreground/60'
+                    : 'cursor-pointer text-muted-foreground hover:text-brand-700 hover:bg-brand-50'
+                }`}
+                title={isRunNowPending ? t('tasks.card.actionRunNowPending') : t('tasks.card.actionRunNow')}
+                aria-label={isRunNowPending ? t('tasks.card.actionRunNowPending') : t('tasks.card.actionRunNowAria')}
+              >
+                {isRunNowPending
+                  ? <Loader2 className="w-5 h-5 animate-spin" />
+                  : <TestTube2 className="w-5 h-5" />}
+              </button>
+            )}
 
             {/* Delete */}
             <button

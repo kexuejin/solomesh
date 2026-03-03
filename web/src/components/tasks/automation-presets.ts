@@ -1,4 +1,5 @@
 import type { MessageKey } from '../../i18n';
+import type { TaskConfig } from '@/stores/tasks';
 
 export type ScheduleType = 'cron' | 'interval' | 'once';
 export type ContextMode = 'group' | 'isolated';
@@ -12,6 +13,8 @@ export interface AutomationTemplate {
   scheduleType: ScheduleType;
   scheduleValue: string;
   contextMode: ContextMode;
+  defaultOnErrorTodoIngest?: boolean;
+  defaultTaskConfig?: TaskConfig;
 }
 
 export interface SchedulePreset {
@@ -42,6 +45,8 @@ interface AutomationTemplateDefinition {
   scheduleType: ScheduleType;
   scheduleValue: string;
   contextMode: ContextMode;
+  defaultOnErrorTodoIngest?: boolean;
+  defaultTaskConfig?: TaskConfig;
 }
 
 interface SchedulePresetDefinition {
@@ -125,6 +130,46 @@ const AUTOMATION_TEMPLATE_DEFS: AutomationTemplateDefinition[] = [
     scheduleValue: '0 10 * * 1-5',
     contextMode: 'isolated',
   },
+  {
+    id: 'competitor-watch',
+    nameKey: 'tasks.templates.competitorWatch.name',
+    summaryKey: 'tasks.templates.competitorWatch.summary',
+    cadenceKey: 'tasks.templates.competitorWatch.cadence',
+    promptKey: 'tasks.templates.competitorWatch.prompt',
+    scheduleType: 'cron',
+    scheduleValue: '0 11 * * 1-5',
+    contextMode: 'isolated',
+    defaultOnErrorTodoIngest: true,
+    defaultTaskConfig: {
+      on_success: {
+        decision_ingest: true,
+      },
+      plugins: {
+        competitor_git: {
+          enabled: true,
+          repo: 'https://github.com/example/competitor',
+          branch: 'main',
+          lookback_commits: 50,
+        },
+      },
+    },
+  },
+  {
+    id: 'project-recommendation',
+    nameKey: 'tasks.templates.projectRecommendation.name',
+    summaryKey: 'tasks.templates.projectRecommendation.summary',
+    cadenceKey: 'tasks.templates.projectRecommendation.cadence',
+    promptKey: 'tasks.templates.projectRecommendation.prompt',
+    scheduleType: 'cron',
+    scheduleValue: '30 11 * * 1-5',
+    contextMode: 'isolated',
+    defaultOnErrorTodoIngest: true,
+    defaultTaskConfig: {
+      on_success: {
+        decision_ingest: true,
+      },
+    },
+  },
 ];
 
 export function getAutomationTemplates(
@@ -139,6 +184,10 @@ export function getAutomationTemplates(
     scheduleType: def.scheduleType,
     scheduleValue: def.scheduleValue,
     contextMode: def.contextMode,
+    ...(def.defaultOnErrorTodoIngest === true
+      ? { defaultOnErrorTodoIngest: true }
+      : {}),
+    ...(def.defaultTaskConfig ? { defaultTaskConfig: def.defaultTaskConfig } : {}),
   }));
 }
 

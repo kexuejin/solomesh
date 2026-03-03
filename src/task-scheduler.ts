@@ -1,28 +1,16 @@
-import { ChildProcess, execFileSync } from 'child_process';
+import { ChildProcess } from 'child_process';
 import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 import path from 'path';
 
 import {
-  DATA_DIR,
   GROUPS_DIR,
   MAIN_GROUP_FOLDER,
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
-import {
-  AGENT_PROVIDER_IDS,
-  type AgentProvider,
-  isAgentProviderConfigured,
-  normalizeAgentProvider,
-} from './agent-providers.js';
 import { DailySummaryDeps, runDailySummaryIfNeeded } from './daily-summary.js';
-import {
-  getContainerEnvConfig,
-  getRuntimeProviderConfig,
-  getSystemSettings,
-  mergeRuntimeEnvConfig,
-} from './runtime-config.js';
+import { getSystemSettings } from './runtime-config.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -35,13 +23,15 @@ import {
   getDueTasks,
   getTaskById,
   logTaskRun,
-  updateTaskAfterManualRun,
+  updateTask,
   updateTaskAfterRun,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { hasScriptCapacity, runScript } from './script-runner.js';
-import { RegisteredGroup, ScheduledTask } from './types.js';
+import { ingestTodo } from './todo-core.js';
+import { ingestDecisionItem } from './decision-core.js';
+import { RegisteredGroup, ScheduledTask, TaskState } from './types.js';
 
 export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
@@ -60,204 +50,146 @@ export interface SchedulerDependencies {
 }
 
 const runningTaskIds = new Set<string>();
-const SCHEDULED_TASK_RESULT_CLOSE_MS = 5_000;
-const RETRYABLE_RUNTIME_ERROR_RE = /(no available accounts|all accounts rate limited|rate[\s-]*limit|resource_exhausted|too many requests|api error:\s*(429|503)|service unavailable|temporarily unavailable|route family|process exited with code 143|claude code process exited with code 143|日次数额度上限|次数额度上限)/i;
+const GIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
+const GIT_SHA_CAPTURE_RE =
+  /(?:SOLOMESH_COMPETITOR_GIT_HEAD|competitor_git_next_sha)\s*[:=]\s*([0-9a-f]{7,40})/gi;
 
-type TaskExecutionOptions = {
-  advanceSchedule?: boolean;
-};
-
-export type TriggerTaskRunNowResult = {
-  accepted: boolean;
-  queued: boolean;
-  mode: 'agent' | 'script';
-  error?: string;
-};
-
-type TaskExecutionEnvironment = 'local' | 'worktree';
-
-type TaskWorkspaceHandle = {
-  cwd: string;
-  environment: TaskExecutionEnvironment;
-  cleanup?: () => void;
-};
-
-function getProviderDisplayName(provider: AgentProvider): string {
-  if (provider === 'codex') return 'Codex';
-  if (provider === 'gemini') return 'Gemini';
-  return 'Claude';
+export interface CompetitorGitCursorConfig {
+  repo: string;
+  branch: string;
+  lastSha: string | null;
+  lookbackCommits: number;
 }
 
-function resolveTaskRuntimeCandidates(
-  groupFolder: string,
-  preferredRuntimeOverride?: AgentProvider | null,
-): AgentProvider[] {
-  const globalConfig = getRuntimeProviderConfig();
-  const mergedConfig = mergeRuntimeEnvConfig(
-    globalConfig,
-    getContainerEnvConfig(groupFolder),
+export function shouldIngestAutomationErrorTodo(
+  task: Pick<ScheduledTask, 'task_config'>,
+  error: string | null,
+): boolean {
+  if (!error) return false;
+  return task.task_config?.on_error?.todo_ingest === true;
+}
+
+export function shouldIngestAutomationDecisionItem(
+  task: Pick<ScheduledTask, 'task_config'>,
+  error: string | null,
+  result: string | null,
+): boolean {
+  if (error) return false;
+  if (!result || result.trim().length === 0) return false;
+  return task.task_config?.on_success?.decision_ingest === true;
+}
+
+function normalizeGitSha(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!GIT_SHA_PATTERN.test(trimmed)) return null;
+  return trimmed.toLowerCase();
+}
+
+export function getCompetitorGitCursorConfig(
+  task: Pick<ScheduledTask, 'task_config' | 'task_state'>,
+): CompetitorGitCursorConfig | null {
+  const config = task.task_config?.plugins?.competitor_git;
+  if (config?.enabled === false) return null;
+  const repo = (config?.repo ?? '').trim();
+  if (!repo) return null;
+
+  const branchRaw = (config?.branch ?? '').trim();
+  const branch = branchRaw || 'main';
+  const lastSha = normalizeGitSha(
+    task.task_state?.plugins?.competitor_git?.last_sha ?? null,
   );
-  const preferred = normalizeAgentProvider(
-    preferredRuntimeOverride ?? mergedConfig.agentRuntime,
-  );
-  const configured = AGENT_PROVIDER_IDS.filter((provider) =>
-    isAgentProviderConfigured(provider, mergedConfig),
-  );
-  if (configured.length === 0) return [preferred];
-  if (!configured.includes(preferred)) return [preferred, ...configured];
-  return [preferred, ...configured.filter((provider) => provider !== preferred)];
-}
-
-function resolveTaskExecutionEnvironment(task: ScheduledTask): TaskExecutionEnvironment {
-  return task.execution_environment === 'worktree' ? 'worktree' : 'local';
-}
-
-function resolveTaskProjectDir(group: RegisteredGroup, groupFolder: string): string {
-  const fallback = path.join(GROUPS_DIR, groupFolder);
-  const raw = group.customCwd?.trim() || fallback;
-  const absolute = path.isAbsolute(raw) ? raw : path.resolve(raw);
-  if (!fs.existsSync(absolute)) fs.mkdirSync(absolute, { recursive: true });
-  const realPath = fs.realpathSync(absolute);
-  if (!fs.statSync(realPath).isDirectory()) {
-    throw new Error(`Task project directory is not a directory: ${realPath}`);
-  }
-  return realPath;
-}
-
-function isGitWorktreeRepo(cwd: string): boolean {
-  try {
-    const output = execFileSync(
-      'git',
-      ['rev-parse', '--is-inside-work-tree'],
-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-    );
-    return output.trim() === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function createTaskWorktree(projectDir: string, taskId: string): TaskWorkspaceHandle {
-  if (!isGitWorktreeRepo(projectDir)) {
-    throw new Error(
-      `execution_environment=worktree requires a git repository project directory: ${projectDir}`,
-    );
-  }
-
-  const worktreeRoot = path.join(DATA_DIR, 'task-worktrees', taskId);
-  fs.mkdirSync(worktreeRoot, { recursive: true });
-  const worktreeDir = path.join(
-    worktreeRoot,
-    `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  );
-
-  try {
-    execFileSync(
-      'git',
-      ['worktree', 'add', '--detach', worktreeDir, 'HEAD'],
-      { cwd: projectDir, stdio: ['ignore', 'pipe', 'pipe'] },
-    );
-  } catch (error) {
-    throw new Error(
-      `Failed to create git worktree for task ${taskId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  }
+  const lookbackRaw = Number(config?.lookback_commits);
+  const lookbackCommits =
+    Number.isFinite(lookbackRaw) && lookbackRaw > 0
+      ? Math.min(500, Math.max(1, Math.floor(lookbackRaw)))
+      : 50;
 
   return {
-    cwd: worktreeDir,
-    environment: 'worktree',
-    cleanup: () => {
-      try {
-        execFileSync(
-          'git',
-          ['worktree', 'remove', '--force', worktreeDir],
-          { cwd: projectDir, stdio: ['ignore', 'pipe', 'pipe'] },
-        );
-      } catch (error) {
-        logger.warn(
-          { taskId, worktreeDir, error },
-          'Failed to remove task git worktree with git, falling back to filesystem cleanup',
-        );
-        try {
-          fs.rmSync(worktreeDir, { recursive: true, force: true });
-        } catch {
-          // ignore cleanup fallback errors
-        }
-      }
-      try {
-        execFileSync('git', ['worktree', 'prune'], {
-          cwd: projectDir,
-          stdio: ['ignore', 'ignore', 'ignore'],
-        });
-      } catch {
-        // ignore prune errors
-      }
-    },
+    repo,
+    branch,
+    lastSha,
+    lookbackCommits,
   };
 }
 
-function createTaskWorkspaceHandle(
-  task: ScheduledTask,
-  group: RegisteredGroup,
-  executionMode: 'container' | 'host',
-): TaskWorkspaceHandle {
-  const projectDir = resolveTaskProjectDir(group, task.group_folder);
-  const environment = resolveTaskExecutionEnvironment(task);
-  if (environment !== 'worktree') {
-    return {
-      cwd: projectDir,
-      environment: 'local',
-    };
-  }
-  if (executionMode !== 'host') {
-    logger.warn(
-      { taskId: task.id, requestedEnvironment: environment, executionMode },
-      'Task requested worktree environment in non-host mode, falling back to local project directory',
-    );
-    return {
-      cwd: projectDir,
-      environment: 'local',
-    };
-  }
-  return createTaskWorktree(projectDir, task.id);
+function buildCompetitorGitRange(config: CompetitorGitCursorConfig): string {
+  if (config.lastSha) return `${config.lastSha}..HEAD`;
+  return `HEAD~${config.lookbackCommits}..HEAD`;
 }
 
-function resolveTaskTargetGroupJid(
-  task: ScheduledTask,
-  groups: Record<string, RegisteredGroup>,
+export function buildPromptWithCompetitorGitCursor(
+  basePrompt: string,
+  config: CompetitorGitCursorConfig,
+): string {
+  return [
+    basePrompt.trim(),
+    '',
+    '[competitor-git-cursor]',
+    `repo: ${config.repo}`,
+    `branch: ${config.branch}`,
+    `range: ${buildCompetitorGitRange(config)}`,
+    '请只分析上述 commit 范围内的变更，提炼新功能、优化、修复及影响。',
+    '回复末尾必须附一行：competitor_git_next_sha: <HEAD_SHA>',
+    '[/competitor-git-cursor]',
+  ].join('\n');
+}
+
+export function extractCompetitorGitNextSha(
+  output: string | null | undefined,
 ): string | null {
-  let targetGroupJid = task.chat_jid;
-  const directTarget = groups[targetGroupJid];
-  if (!directTarget || directTarget.folder !== task.group_folder) {
-    const sameFolder = Object.entries(groups).filter(
-      ([, group]) => group.folder === task.group_folder,
-    );
-    const preferred =
-      sameFolder.find(([jid]) => jid.startsWith('web:')) ||
-      sameFolder[0];
-    targetGroupJid = preferred?.[0] || '';
+  if (typeof output !== 'string' || output.trim().length === 0) return null;
+  GIT_SHA_CAPTURE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let last: string | null = null;
+  while ((match = GIT_SHA_CAPTURE_RE.exec(output)) !== null) {
+    last = normalizeGitSha(match[1]);
   }
-  return targetGroupJid || null;
+  return last;
 }
 
-function shouldRetryWithFallbackRuntime(
-  runtimeError: string | null | undefined,
-  runtimeResult: string | null | undefined,
-): boolean {
-  const combined = `${runtimeError || ''}\n${runtimeResult || ''}`.trim();
-  if (!combined) return false;
-  return RETRYABLE_RUNTIME_ERROR_RE.test(combined);
-}
+function updateCompetitorGitCursorState(
+  task: ScheduledTask,
+  result: string | null,
+  error: string | null,
+): void {
+  if (error) return;
+  const config = getCompetitorGitCursorConfig(task);
+  if (!config) return;
 
-export function shouldRetryScheduledTaskRuntimeAttempt(
-  runtimeError: string | null | undefined,
-  runtimeResult: string | null | undefined,
-  hasNextRuntime: boolean,
-): boolean {
-  if (!hasNextRuntime) return false;
-  return shouldRetryWithFallbackRuntime(runtimeError, runtimeResult);
+  const nextSha = extractCompetitorGitNextSha(result);
+  const nowIso = new Date().toISOString();
+  const currentState = task.task_state ?? {};
+  const currentPluginState = currentState.plugins?.competitor_git ?? {};
+  const existingSha = normalizeGitSha(currentPluginState.last_sha ?? null);
+  const resolvedSha = nextSha ?? existingSha;
+
+  const nextState: TaskState = {
+    ...currentState,
+    plugins: {
+      ...(currentState.plugins ?? {}),
+      competitor_git: {
+        ...currentPluginState,
+        last_sha: resolvedSha,
+        last_scan_at: nowIso,
+      },
+    },
+  };
+  updateTask(task.id, { task_state: nextState });
+
+  if (nextSha && nextSha !== existingSha) {
+    logger.info(
+      { taskId: task.id, previousSha: existingSha, nextSha },
+      'Updated competitor_git cursor',
+    );
+    return;
+  }
+  if (!nextSha) {
+    logger.warn(
+      { taskId: task.id },
+      'competitor_git cursor marker missing from task output; cursor not advanced',
+    );
+  }
 }
 
 function computeNextRun(task: ScheduledTask): string | null {
@@ -279,11 +211,96 @@ function computeNextRun(task: ScheduledTask): string | null {
   return null;
 }
 
+function maybeIngestAutomationFailureTodo(
+  task: ScheduledTask,
+  runAtIso: string,
+  error: string | null,
+  result: string | null,
+): void {
+  if (!shouldIngestAutomationErrorTodo(task, error)) {
+    return;
+  }
+
+  try {
+    ingestTodo(
+      {
+        title: `Automation task failed: ${task.id}`,
+        description: (error ?? '').slice(0, 4000),
+        priority: 'high',
+        source_type: 'automation',
+        source_id: task.id,
+        source_run_id: runAtIso,
+        trigger_mode: 'automation',
+        evidence: {
+          error,
+          result,
+          schedule_type: task.schedule_type,
+          schedule_value: task.schedule_value,
+        },
+      },
+      'system:scheduler',
+    );
+  } catch (ingestError) {
+    logger.warn(
+      { taskId: task.id, ingestError },
+      'Failed to ingest automation failure todo',
+    );
+  }
+}
+
+function maybeIngestAutomationDecisionItem(
+  task: ScheduledTask,
+  runAtIso: string,
+  error: string | null,
+  result: string | null,
+): void {
+  if (!shouldIngestAutomationDecisionItem(task, error, result)) {
+    return;
+  }
+
+  try {
+    const taskPrompt = task.prompt.trim();
+    const title = taskPrompt.length > 0
+      ? `Automation suggestion: ${taskPrompt.slice(0, 80)}`
+      : `Automation suggestion: ${task.id}`;
+    const scopeLevel =
+      task.group_folder === MAIN_GROUP_FOLDER ? 'global' : 'workspace';
+    const summary = (result ?? '').trim().slice(0, 4000);
+    ingestDecisionItem(
+      {
+        title,
+        summary,
+        scope_level: scopeLevel,
+        scope_id: scopeLevel === 'workspace' ? task.group_folder : undefined,
+        source_type: 'automation',
+        source_id: task.id,
+        source_run_id: runAtIso,
+        evidence: {
+          result,
+          schedule_type: task.schedule_type,
+          schedule_value: task.schedule_value,
+          task_id: task.id,
+        },
+        suggested_todo: {
+          title,
+          description: summary,
+          priority: 'medium',
+        },
+      },
+      'system:scheduler',
+    );
+  } catch (ingestError) {
+    logger.warn(
+      { taskId: task.id, ingestError },
+      'Failed to ingest automation decision item',
+    );
+  }
+}
+
 async function runTask(
   task: ScheduledTask,
   deps: SchedulerDependencies,
   groupJid: string,
-  options: TaskExecutionOptions = {},
 ): Promise<void> {
   runningTaskIds.add(task.id);
   const startTime = Date.now();
@@ -335,7 +352,10 @@ async function runTask(
 
   let result: string | null = null;
   let error: string | null = null;
-  let workspaceHandle: TaskWorkspaceHandle | null = null;
+  const competitorGitConfig = getCompetitorGitCursorConfig(task);
+  const agentPrompt = competitorGitConfig
+    ? buildPromptWithCompetitorGitCursor(task.prompt, competitorGitConfig)
+    : task.prompt;
 
   // For group context mode, use the group's current session
   const sessions = deps.getSessions();
@@ -346,7 +366,7 @@ async function runTask(
   // so the container exits instead of hanging at waitForIpcMessage forever.
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const resetIdleTimer = (timeoutMs = getSystemSettings().idleTimeout) => {
+  const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       logger.debug(
@@ -354,7 +374,7 @@ async function runTask(
         'Scheduled task idle timeout, closing container stdin',
       );
       deps.queue.closeStdin(groupJid);
-    }, timeoutMs);
+    }, getSystemSettings().idleTimeout);
   };
 
   try {
@@ -374,116 +394,56 @@ async function runTask(
     }
     const runAgent =
       executionMode === 'host' ? runHostAgent : runContainerAgent;
-    workspaceHandle = createTaskWorkspaceHandle(task, group, executionMode);
-    const runGroup = executionMode === 'host'
-      ? { ...group, customCwd: workspaceHandle.cwd }
-      : group;
-    const runtimeCandidates = resolveTaskRuntimeCandidates(
-      task.group_folder,
-      task.agent_runtime_override ?? null,
-    );
-    let attemptOutput: ContainerOutput | null = null;
 
-    for (let index = 0; index < runtimeCandidates.length; index += 1) {
-      const runtime = runtimeCandidates[index];
-      const isFallbackAttempt = index > 0;
-      if (isFallbackAttempt) {
-        const fromRuntime = runtimeCandidates[index - 1];
-        const notice =
-          `${deps.assistantName}: 检测到 ${getProviderDisplayName(fromRuntime)} 运行异常，` +
-          `自动切换到 ${getProviderDisplayName(runtime)} 重试（${index + 1}/${runtimeCandidates.length}）。`;
-        try {
-          await deps.sendMessage(groupJid, notice);
-        } catch (notifyErr) {
-          logger.warn(
-            { taskId: task.id, notifyErr },
-            'Failed to send runtime fallback notice',
-          );
+    const output = await runAgent(
+      group,
+      {
+        prompt: agentPrompt,
+        sessionId,
+        groupFolder: task.group_folder,
+        chatJid: groupJid,
+        isMain: isAdminHome,
+        isHome,
+        isAdminHome,
+        isScheduledTask: true,
+      },
+      (proc, identifier) =>
+        deps.onProcess(
+          groupJid,
+          proc,
+          executionMode === 'container' ? identifier : null,
+          task.group_folder,
+          identifier,
+        ),
+      async (streamedOutput: ContainerOutput) => {
+        if (streamedOutput.result) {
+          result = streamedOutput.result;
+          // Forward result to user (strip <internal> tags)
+          const text = streamedOutput.result
+            .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+            .trim();
+          if (text) {
+            await deps.sendMessage(
+              groupJid,
+              `${deps.assistantName}: ${text}`,
+            );
+          }
+          // Only reset idle timer on actual results, not session-update markers
+          resetIdleTimer();
         }
-      }
-
-      attemptOutput = await runAgent(
-        runGroup,
-        {
-          prompt: task.prompt,
-          sessionId: isFallbackAttempt ? undefined : sessionId,
-          groupFolder: task.group_folder,
-          chatJid: groupJid,
-          operationPermissionMode: task.operation_permission_mode === 'bypass'
-            ? 'bypass'
-            : 'default',
-          isMain: isAdminHome,
-          isHome,
-          isAdminHome,
-          isScheduledTask: true,
-          agentRuntimeOverride: runtime,
-        },
-        (proc, identifier) =>
-          deps.onProcess(
-            groupJid,
-            proc,
-            executionMode === 'container' ? identifier : null,
-            task.group_folder,
-            identifier,
-          ),
-        async (streamedOutput: ContainerOutput) => {
-          if (streamedOutput.result) {
-            result = streamedOutput.result;
-            // Forward result to user (strip <internal> tags)
-            const text = streamedOutput.result
-              .replace(/<internal>[\s\S]*?<\/internal>/g, '')
-              .trim();
-            if (text) {
-              await deps.sendMessage(
-                groupJid,
-                `${deps.assistantName}: ${text}`,
-              );
-            }
-          }
-          if (streamedOutput.status === 'success') {
-            // Scheduled tasks are one-shot; close session shortly after final success output.
-            resetIdleTimer(SCHEDULED_TASK_RESULT_CLOSE_MS);
-          } else if (streamedOutput.result) {
-            // Keep legacy idle timeout for non-terminal result markers.
-            resetIdleTimer();
-          }
-          if (streamedOutput.status === 'error') {
-            error = streamedOutput.error || 'Unknown error';
-          }
-        },
-      );
-
-      const hasNext = index < runtimeCandidates.length - 1;
-      const shouldRetry = shouldRetryScheduledTaskRuntimeAttempt(
-        attemptOutput.error,
-        attemptOutput.result,
-        hasNext,
-      );
-      if (!shouldRetry) break;
-
-      const failureReason = attemptOutput.error
-        || attemptOutput.result
-        || 'Unknown runtime failure';
-      logger.warn(
-        {
-          taskId: task.id,
-          runtime,
-          nextRuntime: runtimeCandidates[index + 1],
-          reason: failureReason,
-        },
-        'Scheduled task runtime failed, auto-falling back to next provider',
-      );
-      error = null;
-    }
+        if (streamedOutput.status === 'error') {
+          error = streamedOutput.error || 'Unknown error';
+        }
+      },
+    );
 
     if (idleTimer) clearTimeout(idleTimer);
 
-    if (attemptOutput?.status === 'error') {
-      error = attemptOutput.error || 'Unknown error';
-      if (attemptOutput.result) result = attemptOutput.result;
-    } else if (attemptOutput?.result) {
+    if (output.status === 'error') {
+      error = output.error || 'Unknown error';
+    } else if (output.result) {
       // Messages are sent via MCP tool (IPC), result text is just logged
-      result = attemptOutput.result;
+      result = output.result;
     }
 
     logger.info(
@@ -495,40 +455,31 @@ async function runTask(
     error = err instanceof Error ? err.message : String(err);
     logger.error({ taskId: task.id, error }, 'Task failed');
   } finally {
-    if (workspaceHandle?.cleanup) {
-      try {
-        workspaceHandle.cleanup();
-      } catch (cleanupError) {
-        logger.warn(
-          { taskId: task.id, cleanupError },
-          'Failed to cleanup task workspace',
-        );
-      }
-    }
     runningTaskIds.delete(task.id);
   }
 
   const durationMs = Date.now() - startTime;
+  const runAt = new Date().toISOString();
 
   logTaskRun({
     task_id: task.id,
-    run_at: new Date().toISOString(),
+    run_at: runAt,
     duration_ms: durationMs,
     status: error ? 'error' : 'success',
     result,
     error,
   });
+  maybeIngestAutomationFailureTodo(task, runAt, error, result);
+  maybeIngestAutomationDecisionItem(task, runAt, error, result);
+  updateCompetitorGitCursorState(task, result, error);
+
+  const nextRun = computeNextRun(task);
 
   const resultSummary = error
     ? `Error: ${error}`
     : result
       ? result.slice(0, 200)
       : 'Completed';
-  if (options.advanceSchedule === false) {
-    updateTaskAfterManualRun(task.id, resultSummary);
-    return;
-  }
-  const nextRun = computeNextRun(task);
   updateTaskAfterRun(task.id, nextRun, resultSummary);
 }
 
@@ -536,11 +487,9 @@ async function runScriptTask(
   task: ScheduledTask,
   deps: SchedulerDependencies,
   groupJid: string,
-  options: TaskExecutionOptions = {},
 ): Promise<void> {
   runningTaskIds.add(task.id);
   const startTime = Date.now();
-  let workspaceHandle: TaskWorkspaceHandle | null = null;
 
   logger.info(
     { taskId: task.id, group: task.group_folder, executionType: 'script' },
@@ -572,27 +521,7 @@ async function runScriptTask(
   let error: string | null = null;
 
   try {
-    const groups = deps.registeredGroups();
-    const group = groups[groupJid];
-    if (!group || group.folder !== task.group_folder) {
-      throw new Error(`Group not found for task script execution: ${task.group_folder}`);
-    }
-
-    // Keep host/container mode resolution consistent with agent tasks.
-    let executionMode = group.executionMode || 'container';
-    if (!group.is_home) {
-      const homeSibling = Object.values(groups).find(
-        (g) => g.folder === group.folder && g.is_home,
-      );
-      if (homeSibling) executionMode = homeSibling.executionMode || 'container';
-    }
-    workspaceHandle = createTaskWorkspaceHandle(task, group, executionMode);
-
-    const scriptResult = await runScript(
-      scriptCommand,
-      task.group_folder,
-      workspaceHandle.cwd,
-    );
+    const scriptResult = await runScript(scriptCommand, task.group_folder);
 
     if (scriptResult.timedOut) {
       error = `Script timed out (${Math.round(scriptResult.durationMs / 1000)}s)`;
@@ -617,135 +546,38 @@ async function runScriptTask(
     error = err instanceof Error ? err.message : String(err);
     logger.error({ taskId: task.id, error }, 'Script task failed');
   } finally {
-    if (workspaceHandle?.cleanup) {
-      try {
-        workspaceHandle.cleanup();
-      } catch (cleanupError) {
-        logger.warn(
-          { taskId: task.id, cleanupError },
-          'Failed to cleanup script task workspace',
-        );
-      }
-    }
     runningTaskIds.delete(task.id);
   }
 
   const durationMs = Date.now() - startTime;
+  const runAt = new Date().toISOString();
 
   logTaskRun({
     task_id: task.id,
-    run_at: new Date().toISOString(),
+    run_at: runAt,
     duration_ms: durationMs,
     status: error ? 'error' : 'success',
     result,
     error,
   });
+  maybeIngestAutomationFailureTodo(task, runAt, error, result);
+  maybeIngestAutomationDecisionItem(task, runAt, error, result);
+  updateCompetitorGitCursorState(task, result, error);
 
+  const nextRun = computeNextRun(task);
   const resultSummary = error
     ? `Error: ${error}`
     : result
       ? result.slice(0, 200)
       : 'Completed';
-  if (options.advanceSchedule === false) {
-    updateTaskAfterManualRun(task.id, resultSummary);
-    return;
-  }
-  const nextRun = computeNextRun(task);
   updateTaskAfterRun(task.id, nextRun, resultSummary);
 }
 
-export function triggerTaskRunNow(taskId: string): TriggerTaskRunNowResult {
-  const deps = schedulerDepsRef;
-  if (!deps) {
-    return {
-      accepted: false,
-      queued: false,
-      mode: 'agent',
-      error: 'Scheduler is not ready',
-    };
-  }
-
-  const task = getTaskById(taskId);
-  if (!task) {
-    return {
-      accepted: false,
-      queued: false,
-      mode: 'agent',
-      error: 'Task not found',
-    };
-  }
-
-  const mode: 'agent' | 'script' = task.execution_type === 'script'
-    ? 'script'
-    : 'agent';
-
-  if (runningTaskIds.has(task.id)) {
-    return {
-      accepted: false,
-      queued: false,
-      mode,
-      error: 'Task is already running',
-    };
-  }
-
-  const groups = deps.registeredGroups();
-  const targetGroupJid = resolveTaskTargetGroupJid(task, groups);
-  if (!targetGroupJid) {
-    return {
-      accepted: false,
-      queued: false,
-      mode,
-      error: 'Target group not registered',
-    };
-  }
-
-  if (mode === 'script') {
-    if (!hasScriptCapacity()) {
-      return {
-        accepted: false,
-        queued: false,
-        mode,
-        error: 'Script concurrency limit reached',
-      };
-    }
-    runScriptTask(task, deps, targetGroupJid, { advanceSchedule: false }).catch((err) => {
-      logger.error({ taskId: task.id, err }, 'Unhandled error in manual runScriptTask');
-    });
-    return {
-      accepted: true,
-      queued: false,
-      mode,
-    };
-  }
-
-  // Mark as running before enqueue to prevent duplicate run-now clicks creating duplicate queue items.
-  runningTaskIds.add(task.id);
-  try {
-    deps.queue.enqueueTask(targetGroupJid, task.id, async () => {
-      try {
-        await runTask(task, deps, targetGroupJid, { advanceSchedule: false });
-      } finally {
-        runningTaskIds.delete(task.id);
-      }
-    });
-  } catch (error) {
-    runningTaskIds.delete(task.id);
-    throw error;
-  }
-  return {
-    accepted: true,
-    queued: true,
-    mode,
-  };
-}
-
 let schedulerRunning = false;
-let schedulerDepsRef: SchedulerDependencies | null = null;
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 let lastCleanupTime = 0;
 
 export function startSchedulerLoop(deps: SchedulerDependencies): void {
-  schedulerDepsRef = deps;
   if (schedulerRunning) {
     logger.debug('Scheduler loop already running, skipping duplicate start');
     return;
@@ -795,7 +627,17 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
         }
 
         const groups = deps.registeredGroups();
-        const targetGroupJid = resolveTaskTargetGroupJid(currentTask, groups);
+        let targetGroupJid = currentTask.chat_jid;
+        const directTarget = groups[targetGroupJid];
+        if (!directTarget || directTarget.folder !== currentTask.group_folder) {
+          const sameFolder = Object.entries(groups).filter(
+            ([, group]) => group.folder === currentTask.group_folder,
+          );
+          const preferred =
+            sameFolder.find(([jid]) => jid.startsWith('web:')) ||
+            sameFolder[0];
+          targetGroupJid = preferred?.[0] || '';
+        }
 
         if (!targetGroupJid) {
           logger.error(
@@ -818,7 +660,7 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
           });
         } else {
           deps.queue.enqueueTask(targetGroupJid, currentTask.id, () =>
-            runTask(currentTask, deps, targetGroupJid, { advanceSchedule: true }),
+            runTask(currentTask, deps, targetGroupJid),
           );
         }
       }

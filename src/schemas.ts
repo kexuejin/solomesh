@@ -10,7 +10,7 @@ export const AGENT_RUNTIME_IDS = [
   'claude-code',
   'codex',
   'opencode',
-  'gemini',
+  'gemini-cli',
 ] as const;
 
 export const MODEL_PROVIDER_IDS = [
@@ -23,6 +23,8 @@ export const MODEL_PROVIDER_IDS = [
 
 export const AgentRuntimeIdSchema = z.enum(AGENT_RUNTIME_IDS);
 export const ModelProviderIdSchema = z.enum(MODEL_PROVIDER_IDS);
+export const REASONING_EFFORT_VALUES = ['low', 'medium', 'high', 'xhigh'] as const;
+export const ReasoningEffortSchema = z.enum(REASONING_EFFORT_VALUES);
 
 function isHttpUrlLike(value: string): boolean {
   const trimmed = value.trim();
@@ -55,28 +57,182 @@ export const RuntimeModelSelectionSchema = z
     { message: 'At least one of agentRuntime/modelProvider/model must be provided' },
   );
 
+const CompetitorGitTaskConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    repo: z.string().trim().min(1).max(300).optional(),
+    branch: z.string().trim().min(1).max(128).optional(),
+    lookback_commits: z.number().int().min(1).max(500).optional(),
+  })
+  .passthrough();
+
+const CompetitorGitTaskStateSchema = z
+  .object({
+    last_sha: z
+      .string()
+      .trim()
+      .regex(/^[0-9a-f]{7,40}$/i)
+      .nullable()
+      .optional(),
+    last_scan_at: z.string().datetime().optional(),
+  })
+  .passthrough();
+
+export const TaskConfigSchema = z
+  .object({
+    on_error: z
+      .object({
+        todo_ingest: z.boolean().optional(),
+      })
+      .optional(),
+    on_success: z
+      .object({
+        decision_ingest: z.boolean().optional(),
+      })
+      .optional(),
+    plugins: z
+      .object({
+        competitor_git: CompetitorGitTaskConfigSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export const TaskStateSchema = z
+  .object({
+    plugins: z
+      .object({
+        competitor_git: CompetitorGitTaskStateSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 export const TaskPatchSchema = z.object({
   prompt: z.string().optional(),
   schedule_type: z.enum(['cron', 'interval', 'once']).optional(),
   schedule_value: z.string().optional(),
   context_mode: z.enum(['group', 'isolated']).optional(),
-  operation_permission_mode: z.enum(['default', 'bypass']).optional(),
-  agent_runtime_override: z.union([z.enum(AGENT_PROVIDER_IDS), z.null()]).optional(),
-  execution_environment: z.enum(['local', 'worktree']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).nullable().optional(),
-  skill_refs: z.array(
-    z
-      .string()
-      .trim()
-      .min(1)
-      .max(128)
-      .regex(/^[\w-]+$/)
-      .transform((value) => value.toLowerCase()),
-  ).max(64).optional(),
+  task_config: TaskConfigSchema.nullable().optional(),
   status: z.enum(['active', 'paused']).optional(),
   next_run: z.string().optional(),
 });
+
+export const TODO_PRIORITY_VALUES = ['low', 'medium', 'high', 'critical'] as const;
+export const TODO_STATUS_VALUES = [
+  'open',
+  'in_progress',
+  'done',
+  'archived',
+] as const;
+export const TODO_SOURCE_TYPE_VALUES = [
+  'manual',
+  'automation',
+  'plugin',
+  'workflow',
+] as const;
+export const TODO_TRIGGER_MODE_VALUES = ['manual', 'automation'] as const;
+export const DECISION_ITEM_STATUS_VALUES = [
+  'pending',
+  'accepted',
+  'ignored',
+] as const;
+export const DECISION_ITEM_SCOPE_LEVEL_VALUES = [
+  'global',
+  'workspace',
+] as const;
+
+export const TodoPrioritySchema = z.enum(TODO_PRIORITY_VALUES);
+export const TodoStatusSchema = z.enum(TODO_STATUS_VALUES);
+export const TodoSourceTypeSchema = z.enum(TODO_SOURCE_TYPE_VALUES);
+export const TodoTriggerModeSchema = z.enum(TODO_TRIGGER_MODE_VALUES);
+export const DecisionItemStatusSchema = z.enum(DECISION_ITEM_STATUS_VALUES);
+export const DecisionItemScopeLevelSchema = z.enum(DECISION_ITEM_SCOPE_LEVEL_VALUES);
+
+export const TodoIngestSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    description: z.string().max(4000).optional(),
+    priority: TodoPrioritySchema.optional(),
+    source_type: TodoSourceTypeSchema,
+    source_id: z.string().min(1).max(200),
+    source_run_id: z.string().max(200).optional(),
+    trigger_mode: TodoTriggerModeSchema.optional(),
+    dedupe_key: z.string().max(256).optional(),
+    evidence: z.unknown().optional(),
+    metadata: z.record(z.string().max(200), z.unknown()).optional(),
+  })
+  .strict();
+
+export const TodoQuerySchema = z
+  .object({
+    status: TodoStatusSchema.optional(),
+    priority: TodoPrioritySchema.optional(),
+    source_type: TodoSourceTypeSchema.optional(),
+    source_id: z.string().max(200).optional(),
+    source_run_id: z.string().max(200).optional(),
+    trigger_mode: TodoTriggerModeSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(20),
+    cursor: z.string().max(200).optional(),
+  })
+  .strict();
+
+export const TodoMetricsQuerySchema = z
+  .object({
+    source_type: TodoSourceTypeSchema.optional(),
+    source_id: z.string().max(200).optional(),
+    source_run_id: z.string().max(200).optional(),
+    trigger_mode: TodoTriggerModeSchema.optional(),
+    date_from: z.string().date().optional(),
+    date_to: z.string().date().optional(),
+  })
+  .strict();
+
+export const DecisionItemCreateSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    summary: z.string().max(4000).optional(),
+    scope_level: DecisionItemScopeLevelSchema.optional(),
+    scope_id: z.string().max(200).optional(),
+    priority: TodoPrioritySchema.optional(),
+    source_type: TodoSourceTypeSchema,
+    source_id: z.string().min(1).max(200),
+    source_run_id: z.string().max(200).optional(),
+    evidence: z.unknown().optional(),
+    suggested_todo: z
+      .object({
+        title: z.string().min(1).max(200),
+        description: z.string().max(4000).optional(),
+        priority: TodoPrioritySchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const DecisionItemQuerySchema = z
+  .object({
+    status: DecisionItemStatusSchema.optional(),
+    scope_level: DecisionItemScopeLevelSchema.optional(),
+    scope_id: z.string().max(200).optional(),
+    source_type: TodoSourceTypeSchema.optional(),
+    source_id: z.string().max(200).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+    cursor: z.string().max(200).optional(),
+  })
+  .strict();
+
+export const DecisionItemAcceptSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    description: z.string().trim().max(4000).optional(),
+    priority: TodoPrioritySchema.optional(),
+  })
+  .strict();
 
 // 简单 cron 表达式验证：5 或 6 段，每段允许 * 和常见 cron 语法
 const CRON_REGEX = /^(\S+\s+){4,5}\S+$/;
@@ -88,20 +244,9 @@ export const TaskCreateSchema = z.object({
   schedule_type: z.enum(['cron', 'interval', 'once']),
   schedule_value: z.string().min(1),
   context_mode: z.enum(['group', 'isolated']).optional(),
-  operation_permission_mode: z.enum(['default', 'bypass']).optional(),
-  agent_runtime_override: z.enum(AGENT_PROVIDER_IDS).optional(),
-  execution_environment: z.enum(['local', 'worktree']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).optional(),
-  skill_refs: z.array(
-    z
-      .string()
-      .trim()
-      .min(1)
-      .max(128)
-      .regex(/^[\w-]+$/)
-      .transform((value) => value.toLowerCase()),
-  ).max(64).optional(),
+  task_config: TaskConfigSchema.optional(),
 }).superRefine((data, ctx) => {
   const execType = data.execution_type || 'agent';
   if (execType === 'agent' && !data.prompt?.trim()) {
@@ -155,13 +300,6 @@ export const MessageAttachmentSchema = z.object({
   data: z.string().min(1).max(MAX_IMAGE_BASE64_LENGTH),
   mimeType: z.string().regex(/^image\//).optional(),
 });
-
-export const ReasoningEffortSchema = z.enum([
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-]);
 
 export const MessageCreateSchema = z.object({
   chatJid: z.string().min(1),
@@ -221,7 +359,7 @@ export const RuntimeConfigSchema = z
     codexModel: z.string().max(2000).optional(),
     geminiBaseUrl: z.string().max(2000).optional(),
     geminiModel: z.string().max(2000).optional(),
-    geminiAuthMode: z.enum(['api_key']).optional(),
+    geminiAuthMode: z.enum(['api_key', 'oauth']).optional(),
   })
   .refine(
     (data) =>
@@ -345,6 +483,14 @@ export const RuntimeOAuthCredentialsSchema = z.object({
   scopes: z.array(z.string()).default([]),
 });
 
+export const GeminiOAuthCredentialsSchema = z.object({
+  accessToken: z.string().min(1),
+  refreshToken: z.string().min(1),
+  expiryDate: z.number().nullable().optional(),
+  tokenType: z.string().optional(),
+  scope: z.string().optional(),
+});
+
 export const RuntimeSecretsSchema = z
   .object({
     anthropicAuthToken: z.string().optional(),
@@ -357,6 +503,8 @@ export const RuntimeSecretsSchema = z
     clearCodexApiKey: z.boolean().optional(),
     geminiApiKey: z.string().optional(),
     clearGeminiApiKey: z.boolean().optional(),
+    geminiOAuthCredentials: GeminiOAuthCredentialsSchema.optional(),
+    clearGeminiOAuthCredentials: z.boolean().optional(),
     claudeOAuthCredentials: RuntimeOAuthCredentialsSchema.optional(),
     clearRuntimeOAuthCredentials: z.boolean().optional(),
   })
@@ -377,6 +525,9 @@ export const RuntimeSecretsSchema = z
       const hasGeminiApiKey =
         typeof data.geminiApiKey === 'string' ||
         data.clearGeminiApiKey === true;
+      const hasGeminiOAuthCredentials =
+        data.geminiOAuthCredentials !== undefined ||
+        data.clearGeminiOAuthCredentials === true;
       const hasRuntimeOAuthCredentials =
         data.claudeOAuthCredentials !== undefined ||
         data.clearRuntimeOAuthCredentials === true;
@@ -386,6 +537,7 @@ export const RuntimeSecretsSchema = z
         hasClaudeCodeOauthToken ||
         hasCodexApiKey ||
         hasGeminiApiKey ||
+        hasGeminiOAuthCredentials ||
         hasRuntimeOAuthCredentials
       );
     },
@@ -436,16 +588,12 @@ export const TelegramConfigSchema = z
   .object({
     botToken: z.string().max(2000).optional(),
     clearBotToken: z.boolean().optional(),
-    proxyUrl: z.string().max(2000).optional(),
-    clearProxyUrl: z.boolean().optional(),
     enabled: z.boolean().optional(),
   })
   .refine(
     (data) =>
       typeof data.botToken === 'string' ||
       data.clearBotToken === true ||
-      typeof data.proxyUrl === 'string' ||
-      data.clearProxyUrl === true ||
       typeof data.enabled === 'boolean',
     { message: 'At least one config field must be provided' },
   );
@@ -462,7 +610,7 @@ export const ContainerEnvSchema = z
     codexModel: z.string().max(2000).optional(),
     geminiBaseUrl: z.string().max(2000).optional(),
     geminiModel: z.string().max(2000).optional(),
-    geminiAuthMode: z.enum(['api_key']).optional(),
+    geminiAuthMode: z.enum(['api_key', 'oauth']).optional(),
     anthropicAuthToken: z.string().max(2000).optional(),
     anthropicApiKey: z.string().max(2000).optional(),
     claudeCodeOauthToken: z.string().max(2000).optional(),
