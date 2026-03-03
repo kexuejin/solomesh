@@ -216,6 +216,7 @@ const CHANNEL_CONFIG_DESCRIPTORS: ImChannelDescriptorMap = {
     emptyUserPublicConfig: {
       hasBotToken: false,
       botTokenMasked: null,
+      proxyUrl: '',
       enabled: false,
       updatedAt: null,
     },
