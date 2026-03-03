@@ -1240,6 +1240,12 @@ export async function runHostAgent(
   hostEnv['CODEX_HOME'] = groupCodexDir;
   // 让 SDK 捕获 CLI 的 stderr 输出，便于排查启动失败
   hostEnv['DEBUG_CLAUDE_AGENT_SDK'] = '1';
+  // Third-party gateways may reject Claude first-party telemetry export.
+  // Disable nonessential telemetry to prevent hard process exits on export failures.
+  if (mergedConfig.agentRuntime === 'claude') {
+    hostEnv['DISABLE_TELEMETRY'] = '1';
+    hostEnv['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1';
+  }
   // CLI 禁止 root 用户使用 --dangerously-skip-permissions，
   // 通过 IS_SANDBOX 标记告知 CLI 当前运行在受控环境中以绕过此限制
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
