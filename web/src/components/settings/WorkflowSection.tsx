@@ -44,6 +44,11 @@ interface TemplateAiResponse {
   markdown: string;
 }
 
+interface WorkflowIdeaOptimizeResponse {
+  provider: 'claude' | 'codex' | 'gemini';
+  optimizedIdea: string;
+}
+
 type AiGenerateProvider = 'auto' | 'claude' | 'codex' | 'gemini';
 type LifecycleFilter = 'all' | WorkflowTemplateRecordPublic['lifecycle'];
 type SaveDraftStrategy = 'auto' | 'overwrite' | 'new';
@@ -459,6 +464,7 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
   const [aiIdea, setAiIdea] = useState('');
   const [aiProvider, setAiProvider] = useState<AiGenerateProvider>('auto');
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiIdeaOptimizing, setAiIdeaOptimizing] = useState(false);
   const [aiOptimizeInstruction, setAiOptimizeInstruction] = useState('');
   const [aiOptimizing, setAiOptimizing] = useState(false);
   const [pendingPublishInstall, setPendingPublishInstall] = useState<{
@@ -863,6 +869,34 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
       setError(getErrorMessage(err, t('settings.workflows.errors.aiGenerateFailed')));
     } finally {
       setAiGenerating(false);
+    }
+  };
+
+  const handleOptimizeIdeaWithAi = async () => {
+    const idea = aiIdea.trim();
+    if (idea.length < 8) {
+      setError(t('settings.workflows.errors.aiIdeaTooShort'));
+      return;
+    }
+
+    setAiIdeaOptimizing(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const resp = await api.post<WorkflowIdeaOptimizeResponse>(
+        '/api/workflows/templates/idea-optimize',
+        {
+          idea,
+          ...(aiProvider !== 'auto' ? { provider: aiProvider } : {}),
+        },
+        AI_TEMPLATE_GENERATE_TIMEOUT_MS,
+      );
+      setAiIdea(resp.optimizedIdea);
+      setNotice(t('settings.workflows.notice.aiIdeaOptimized', { provider: resp.provider }));
+    } catch (err) {
+      setError(getErrorMessage(err, t('settings.workflows.errors.aiIdeaOptimizeFailed')));
+    } finally {
+      setAiIdeaOptimizing(false);
     }
   };
 
@@ -1294,12 +1328,26 @@ export function WorkflowSection({ canManageSystemConfig, setNotice, setError }: 
                 {t('settings.workflows.aiGenerate')}
               </Button>
             </div>
-            <Textarea
-              value={aiIdea}
-              onChange={(e) => setAiIdea(e.target.value)}
-              className="min-h-[84px] rounded-xl border-border/75 bg-card/95 text-sm"
-              placeholder={t('settings.workflows.aiIdeaPlaceholder')}
-            />
+            <div className="relative">
+              <Textarea
+                value={aiIdea}
+                onChange={(e) => setAiIdea(e.target.value)}
+                className="min-h-[96px] rounded-xl border-border/75 bg-card/95 pb-11 text-sm"
+                placeholder={t('settings.workflows.aiIdeaPlaceholder')}
+              />
+              <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-end px-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleOptimizeIdeaWithAi}
+                  disabled={aiIdeaOptimizing || aiGenerating}
+                  className="pointer-events-auto h-8 rounded-lg bg-card/95 px-2.5 text-xs sm:text-sm"
+                >
+                  {aiIdeaOptimizing ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  {t('settings.workflows.aiIdeaOptimize')}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -135,6 +135,12 @@ const OptimizeWorkflowTemplateSchema = z.object({
   chatJid: z.string().trim().min(1).max(200).optional(),
 });
 
+const OptimizeWorkflowIdeaSchema = z.object({
+  idea: z.string().trim().min(8).max(4000),
+  provider: z.enum(WORKFLOW_TEMPLATE_PROVIDER_VALUES).optional().default('auto'),
+  chatJid: z.string().trim().min(1).max(200).optional(),
+});
+
 function parseScope(value: string): WorkflowTemplateScope | null {
   if (value === 'global' || value === 'user') return value;
   return null;
@@ -634,6 +640,32 @@ function buildWorkflowTemplateOptimizePrompt(options: {
   ].join('\n');
 }
 
+function buildWorkflowIdeaOptimizePrompt(options: {
+  idea: string;
+}): string {
+  const { idea } = options;
+  return [
+    '你是 Workflow 自动化需求优化助手。',
+    '请将用户输入的自动化需求改写为更清晰、可执行、便于 AI 生成模板的描述。',
+    '输出要求：',
+    '1) 仅输出纯文本，不要 Markdown，不要代码块，不要解释。',
+    '2) 保留用户原意，补充关键目标、阶段建议、依赖约束、验收标准。',
+    '3) 内容长度控制在 120-400 字。',
+    '',
+    `用户原始需求：${idea}`,
+  ].join('\n');
+}
+
+function sanitizeOptimizedIdea(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const withoutFence = trimmed
+    .replace(/^```[a-zA-Z0-9_-]*\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+  return withoutFence.replace(/^优化后(?:的)?需求[：:]\s*/i, '').trim();
+}
+
 interface WorkflowTemplateAiInvocationOptions {
   user: AuthUser;
   provider: AgentProvider;
@@ -979,6 +1011,61 @@ workflowsRoutes.post('/templates/generate', authMiddleware, async (c) => {
     templateId: template.id,
     template,
     markdown: serializeTemplateAsMarkdown(template),
+  });
+});
+
+workflowsRoutes.post('/templates/idea-optimize', authMiddleware, async (c) => {
+  const user = c.get('user') as AuthUser;
+  const body = await c.req.json().catch(() => ({}));
+  const validation = OptimizeWorkflowIdeaSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json(
+      { error: 'Invalid request body', details: validation.error.format() },
+      400,
+    );
+  }
+
+  const payload = validation.data;
+  const config = getRuntimeProviderConfig();
+  const provider: AgentProvider =
+    payload.provider === 'auto'
+      ? config.agentRuntime
+      : payload.provider;
+
+  if (!isAgentProviderConfigured(provider, config)) {
+    return c.json(
+      {
+        error: `Provider ${provider} is not configured`,
+        details: { provider },
+      },
+      400,
+    );
+  }
+
+  const prompt = buildWorkflowIdeaOptimizePrompt({
+    idea: payload.idea,
+  });
+  const aiInvoke = await invokeWorkflowTemplateAi({
+    user,
+    provider,
+    prompt,
+    chatJid: payload.chatJid,
+    agentIdPrefix: 'wf-idea-opt',
+    agentName: 'workflow-idea-optimizer',
+    action: 'optimization',
+  });
+  if (!aiInvoke.ok) {
+    return c.json(aiInvoke.body, aiInvoke.status);
+  }
+
+  const optimizedIdea = sanitizeOptimizedIdea(aiInvoke.rawModelOutput);
+  if (!optimizedIdea) {
+    return c.json({ error: 'AI optimized idea is empty' }, 502);
+  }
+
+  return c.json({
+    provider,
+    optimizedIdea,
   });
 });
 

@@ -3,6 +3,7 @@ import { Clock3, Loader2, Sparkles, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { api } from '../../api/client';
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ import {
   type ScheduleType,
 } from './automation-presets';
 import { useI18n } from '../../i18n';
+import { extractErrorMessage } from '../../lib/error-message';
 
 interface Group {
   jid: string;
@@ -40,6 +42,11 @@ interface CreateTaskFormProps {
     scriptCommand: string;
   }) => Promise<void>;
   onClose: () => void;
+}
+
+interface WorkflowIdeaOptimizeResponse {
+  provider: 'claude' | 'codex' | 'gemini';
+  optimizedIdea: string;
 }
 
 type ScheduleMode = 'daily' | 'interval';
@@ -232,6 +239,7 @@ export function CreateTaskForm({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [optimizingPrompt, setOptimizingPrompt] = useState(false);
 
   useEffect(() => {
     if (formData.groupFolder || groups.length === 0) return;
@@ -401,6 +409,39 @@ export function CreateTaskForm({
     });
   };
 
+  const handleOptimizePromptWithAi = async () => {
+    const prompt = formData.prompt.trim();
+    if (prompt.length < 8) {
+      setErrors((prev) => ({ ...prev, prompt: t('tasks.form.errors.promptOptimizeTooShort') }));
+      return;
+    }
+
+    setOptimizingPrompt(true);
+    try {
+      const resp = await api.post<WorkflowIdeaOptimizeResponse>(
+        '/api/workflows/templates/idea-optimize',
+        {
+          idea: prompt,
+          ...(formData.chatJid ? { chatJid: formData.chatJid } : {}),
+        },
+        600_000,
+      );
+      setFormData((prev) => ({ ...prev, prompt: resp.optimizedIdea }));
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.prompt;
+        return next;
+      });
+    } catch (err) {
+      setErrors((prev) => ({
+        ...prev,
+        prompt: extractErrorMessage(err) ?? t('tasks.form.errors.promptOptimizeFailed'),
+      }));
+    } finally {
+      setOptimizingPrompt(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="surface-card w-full max-w-3xl max-h-[92vh] overflow-y-auto">
@@ -501,15 +542,37 @@ export function CreateTaskForm({
                 : t('tasks.form.prompt')}{' '}
               {formData.executionType === 'agent' && <span className="text-red-500">*</span>}
             </label>
-            <Textarea
-              value={formData.prompt}
-              onChange={(e) => {
-                setFormData({ ...formData, prompt: e.target.value });
-              }}
-              rows={4}
-              className={cn('resize-none', errors.prompt && 'border-red-500')}
-              placeholder={t('tasks.form.promptPlaceholder')}
-            />
+            <div className="relative">
+              <Textarea
+                value={formData.prompt}
+                onChange={(e) => {
+                  setFormData({ ...formData, prompt: e.target.value });
+                  if (errors.prompt) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.prompt;
+                      return next;
+                    });
+                  }
+                }}
+                rows={4}
+                className={cn('resize-none pb-11', errors.prompt && 'border-red-500')}
+                placeholder={t('tasks.form.promptPlaceholder')}
+              />
+              <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-end px-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleOptimizePromptWithAi}
+                  disabled={optimizingPrompt || submitting}
+                  className="pointer-events-auto h-8 rounded-lg bg-card/95 px-2.5 text-xs sm:text-sm"
+                >
+                  {optimizingPrompt ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  {optimizingPrompt ? t('tasks.form.aiOptimizing') : t('tasks.form.aiOptimize')}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('tasks.form.aiOptimizeHint')}</p>
             {errors.prompt && <p className="text-sm text-red-600">{errors.prompt}</p>}
           </div>
 
