@@ -7,9 +7,12 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { localeForDateTime, useI18n } from '../i18n';
 import {
+  type DecisionItemAcceptOverrides,
   type DecisionItem,
+  type DecisionItemPriority,
   type DecisionItemScopeLevel,
   type DecisionItemStatus,
   useDecisionItemsStore,
@@ -35,6 +38,12 @@ const STATUS_ORDER: Record<DecisionItemStatus, number> = {
   pending: 0,
   accepted: 1,
   ignored: 2,
+};
+
+type EditableTodoDraft = {
+  title: string;
+  description: string;
+  priority: DecisionItemPriority | '';
 };
 
 function parseEvidenceText(value: string | null): string | null {
@@ -74,6 +83,9 @@ export function DecisionCenterPage() {
   const [batchActingItemId, setBatchActingItemId] = useState<string | null>(null);
   const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
   const [copiedTodoId, setCopiedTodoId] = useState<string | null>(null);
+  const [editingTodoDraftByDecisionId, setEditingTodoDraftByDecisionId] = useState<
+    Record<string, EditableTodoDraft>
+  >({});
 
   const queryFilters = useMemo(
     () => ({
@@ -247,10 +259,19 @@ export function DecisionCenterPage() {
     );
   };
 
-  const handleAccept = async (itemId: string) => {
+  const handleAccept = async (
+    itemId: string,
+    overrides?: DecisionItemAcceptOverrides,
+  ) => {
     setActingId(itemId);
     try {
-      await acceptItem(itemId);
+      await acceptItem(itemId, overrides);
+      setEditingTodoDraftByDecisionId((prev) => {
+        if (!prev[itemId]) return prev;
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
     } finally {
       setActingId(null);
     }
@@ -321,6 +342,53 @@ export function DecisionCenterPage() {
     } catch {
       // Ignore clipboard write failures.
     }
+  };
+
+  const handleStartAcceptWithEdit = (item: DecisionItem) => {
+    setEditingTodoDraftByDecisionId((prev) => ({
+      ...prev,
+      [item.id]: prev[item.id] ?? {
+        title: item.suggested_todo_title ?? item.title,
+        description: item.suggested_todo_description ?? item.summary ?? '',
+        priority: item.suggested_todo_priority ?? item.priority ?? '',
+      },
+    }));
+  };
+
+  const handleCancelAcceptWithEdit = (itemId: string) => {
+    setEditingTodoDraftByDecisionId((prev) => {
+      if (!prev[itemId]) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  };
+
+  const handleDraftChange = (
+    itemId: string,
+    patch: Partial<EditableTodoDraft>,
+  ) => {
+    setEditingTodoDraftByDecisionId((prev) => {
+      const current = prev[itemId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [itemId]: {
+          ...current,
+          ...patch,
+        },
+      };
+    });
+  };
+
+  const handleAcceptWithEdit = async (itemId: string) => {
+    const draft = editingTodoDraftByDecisionId[itemId];
+    if (!draft) return;
+    await handleAccept(itemId, {
+      title: draft.title.trim() || undefined,
+      description: draft.description.trim() || undefined,
+      priority: draft.priority || undefined,
+    });
   };
 
   const trimmedSearchQuery = searchQuery.trim();
@@ -576,6 +644,7 @@ export function DecisionCenterPage() {
                     const itemBatchActing = batchActingItemId === item.id;
                     const itemAcceptActing = actingId === item.id || (itemBatchActing && batchAction === 'accept');
                     const itemIgnoreActing = actingId === item.id || (itemBatchActing && batchAction === 'ignore');
+                    const draft = editingTodoDraftByDecisionId[item.id] ?? null;
                     return (
                       <article key={item.id} className="p-4 lg:p-5">
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
@@ -606,6 +675,83 @@ export function DecisionCenterPage() {
                                     {item.suggested_todo_description}
                                   </div>
                                 )}
+                              </div>
+                            )}
+
+                            {draft && (
+                              <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                                <div className="text-xs font-medium text-foreground">
+                                  {t('decisionCenter.item.editableTodoDraft')}
+                                </div>
+                                <div className="mt-2 grid gap-2">
+                                  <label className="grid gap-1 text-xs text-muted-foreground">
+                                    <span>{t('decisionCenter.item.todoTitle')}</span>
+                                    <Input
+                                      value={draft.title}
+                                      onChange={(event) =>
+                                        handleDraftChange(item.id, { title: event.target.value })
+                                      }
+                                      placeholder={item.suggested_todo_title ?? item.title}
+                                    />
+                                  </label>
+                                  <label className="grid gap-1 text-xs text-muted-foreground">
+                                    <span>{t('decisionCenter.item.todoDescription')}</span>
+                                    <Textarea
+                                      value={draft.description}
+                                      onChange={(event) =>
+                                        handleDraftChange(item.id, { description: event.target.value })
+                                      }
+                                      rows={4}
+                                      placeholder={item.suggested_todo_description ?? item.summary ?? ''}
+                                    />
+                                  </label>
+                                  <label className="grid gap-1 text-xs text-muted-foreground">
+                                    <span>{t('decisionCenter.item.todoPriority')}</span>
+                                    <select
+                                      className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                                      value={draft.priority}
+                                      onChange={(event) =>
+                                        handleDraftChange(
+                                          item.id,
+                                          { priority: event.target.value as DecisionItemPriority | '' },
+                                        )
+                                      }
+                                    >
+                                      <option value="">{item.priority ?? '-'}</option>
+                                      <option value="low">{t('todos.filters.priority.low')}</option>
+                                      <option value="medium">{t('todos.filters.priority.medium')}</option>
+                                      <option value="high">{t('todos.filters.priority.high')}</option>
+                                      <option value="critical">{t('todos.filters.priority.critical')}</option>
+                                    </select>
+                                  </label>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => void handleAcceptWithEdit(item.id)}
+                                      disabled={actingId === item.id || batchActing}
+                                    >
+                                      {itemAcceptActing ? (
+                                        <>
+                                          <RefreshCw size={16} className="animate-spin" />
+                                          {t('decisionCenter.actions.processing')}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Check size={16} />
+                                          {t('decisionCenter.actions.confirmAccept')}
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleCancelAcceptWithEdit(item.id)}
+                                      disabled={actingId === item.id || batchActing}
+                                    >
+                                      {t('decisionCenter.actions.cancelEdit')}
+                                    </Button>
+                                  </div>
+                                </div>
                               </div>
                             )}
 
@@ -672,6 +818,14 @@ export function DecisionCenterPage() {
                                       {t('decisionCenter.actions.accept')}
                                     </>
                                   )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleStartAcceptWithEdit(item)}
+                                  disabled={actingId === item.id || batchActing}
+                                >
+                                  {t('decisionCenter.actions.acceptWithEdit')}
                                 </Button>
                                 <Button
                                   size="sm"

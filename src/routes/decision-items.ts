@@ -7,7 +7,11 @@ import {
   type Variables,
 } from '../web-context.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { DecisionItemCreateSchema, DecisionItemQuerySchema } from '../schemas.js';
+import {
+  DecisionItemAcceptSchema,
+  DecisionItemCreateSchema,
+  DecisionItemQuerySchema,
+} from '../schemas.js';
 import {
   getAllRegisteredGroups,
   getDecisionItemById,
@@ -86,7 +90,16 @@ decisionItemsRoutes.post('/ingest', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-decisionItemsRoutes.post('/:id/accept', authMiddleware, (c) => {
+decisionItemsRoutes.post('/:id/accept', authMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const validation = DecisionItemAcceptSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json(
+      { error: 'Invalid request body', details: validation.error.format() },
+      400,
+    );
+  }
+
   const authUser = c.get('user') as AuthUser;
   const id = c.req.param('id');
   const item = getDecisionItemById(id);
@@ -95,7 +108,7 @@ decisionItemsRoutes.post('/:id/accept', authMiddleware, (c) => {
   if (!canAccessDecisionItem(authUser, item, accessibleFolders)) {
     return c.json({ error: 'Decision item not found' }, 404);
   }
-  const result = acceptDecisionItem(id, authUser.id);
+  const result = acceptDecisionItem(id, authUser.id, validation.data);
   if (!result.ok) {
     if (result.error === 'not_found') {
       return c.json({ error: 'Decision item not found' }, 404);

@@ -1259,7 +1259,11 @@ async function handleLinkInsightChatCommand(
   sendSystemMessage(
     chatJid,
     'insight',
-    `链接分析完成，已写入决策中心（ID=${decision.decision_item_id}）。\n结论：${analysis.decisionSummary}${pointsPreview}`,
+    `${
+      decision.result === 'merged'
+        ? `链接分析完成，已合并至现有决策建议（ID=${decision.decision_item_id}）。`
+        : `链接分析完成，已写入决策中心（ID=${decision.decision_item_id}）。`
+    }\n结论：${analysis.decisionSummary}${pointsPreview}`,
   );
   return true;
 }

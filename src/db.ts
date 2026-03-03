@@ -1297,6 +1297,76 @@ export function getDecisionItemById(id: string): DecisionItem | undefined {
   return row ? parseDecisionItemRow(row) : undefined;
 }
 
+function extractDecisionEvidenceFingerprint(
+  evidenceRaw: string | null,
+): string | null {
+  if (!evidenceRaw) return null;
+  try {
+    const parsed = JSON.parse(evidenceRaw) as unknown;
+    if (
+      parsed
+      && typeof parsed === 'object'
+      && !Array.isArray(parsed)
+      && typeof (parsed as { __dedupe_fingerprint?: unknown }).__dedupe_fingerprint === 'string'
+    ) {
+      return (parsed as { __dedupe_fingerprint: string }).__dedupe_fingerprint;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function findRecentPendingDecisionItemByFingerprint(
+  filters: {
+    source_type: TodoSourceType;
+    source_id: string;
+    scope_level: DecisionItemScopeLevel;
+    scope_id?: string | null;
+    fingerprint: string;
+    since: string;
+    limit?: number;
+  },
+): DecisionItem | undefined {
+  const limit = Math.max(1, Math.min(filters.limit ?? 50, 200));
+  const scopeId = filters.scope_level === 'workspace' ? (filters.scope_id ?? null) : null;
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM decision_items d
+      WHERE d.status = 'pending'
+        AND d.source_type = ?
+        AND d.source_id = ?
+        AND d.scope_level = ?
+        AND (
+          (d.scope_id IS NULL AND ? IS NULL)
+          OR d.scope_id = ?
+        )
+        AND d.created_at >= ?
+      ORDER BY d.created_at DESC, d.id DESC
+      LIMIT ?
+    `,
+    )
+    .all(
+      filters.source_type,
+      filters.source_id,
+      filters.scope_level,
+      scopeId,
+      scopeId,
+      filters.since,
+      limit,
+    ) as Array<Record<string, unknown>>;
+
+  for (const row of rows) {
+    const item = parseDecisionItemRow(row);
+    if (extractDecisionEvidenceFingerprint(item.evidence) === filters.fingerprint) {
+      return item;
+    }
+  }
+  return undefined;
+}
+
 export function insertDecisionItem(item: DecisionItem): void {
   db.prepare(
     `
@@ -1355,6 +1425,48 @@ export function updateDecisionItemDecision(
     patch.decided_by,
     patch.accepted_todo_id ?? null,
     patch.decided_at,
+    id,
+  );
+}
+
+export function updateDecisionItemPendingMerge(
+  id: string,
+  patch: {
+    title: string;
+    summary: string | null;
+    priority: TodoPriority | null;
+    source_run_id: string | null;
+    evidence: string | null;
+    suggested_todo_title: string | null;
+    suggested_todo_description: string | null;
+    suggested_todo_priority: TodoPriority | null;
+    updated_at: string;
+  },
+): void {
+  db.prepare(
+    `
+    UPDATE decision_items
+    SET title = ?,
+        summary = ?,
+        priority = ?,
+        source_run_id = ?,
+        evidence = ?,
+        suggested_todo_title = ?,
+        suggested_todo_description = ?,
+        suggested_todo_priority = ?,
+        updated_at = ?
+    WHERE id = ? AND status = 'pending'
+  `,
+  ).run(
+    patch.title,
+    patch.summary,
+    patch.priority,
+    patch.source_run_id,
+    patch.evidence,
+    patch.suggested_todo_title,
+    patch.suggested_todo_description,
+    patch.suggested_todo_priority,
+    patch.updated_at,
     id,
   );
 }

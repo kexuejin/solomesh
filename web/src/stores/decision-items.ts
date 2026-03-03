@@ -42,6 +42,12 @@ export interface DecisionItemFilters {
   limit?: number;
 }
 
+export interface DecisionItemAcceptOverrides {
+  title?: string;
+  description?: string;
+  priority?: DecisionItemPriority;
+}
+
 interface DecisionItemsStore {
   items: DecisionItem[];
   nextCursor: string | null;
@@ -51,7 +57,7 @@ interface DecisionItemsStore {
     filters?: DecisionItemFilters,
     options?: { append?: boolean },
   ) => Promise<void>;
-  acceptItem: (id: string) => Promise<boolean>;
+  acceptItem: (id: string, overrides?: DecisionItemAcceptOverrides) => Promise<boolean>;
   ignoreItem: (id: string) => Promise<boolean>;
 }
 
@@ -122,14 +128,14 @@ export const useDecisionItemsStore = create<DecisionItemsStore>((set) => ({
     }
   },
 
-  acceptItem: async (id) => {
+  acceptItem: async (id, overrides) => {
     try {
       const data = await api.post<{
         ok: true;
         decision_item_id: string;
         status: 'accepted';
         todo: { todo_id: string };
-      }>(`/api/decision-items/${id}/accept`, {});
+      }>(`/api/decision-items/${id}/accept`, overrides ?? {});
       set((state) => ({
         items: state.items.map((item) =>
           item.id === id

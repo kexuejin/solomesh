@@ -224,6 +224,14 @@ export const DecisionItemQuerySchema = z
   })
   .strict();
 
+export const DecisionItemAcceptSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    description: z.string().trim().max(4000).optional(),
+    priority: TodoPrioritySchema.optional(),
+  })
+  .strict();
+
 // 简单 cron 表达式验证：5 或 6 段，每段允许 * 和常见 cron 语法
 const CRON_REGEX = /^(\S+\s+){4,5}\S+$/;
 
