@@ -60,8 +60,20 @@ export const TaskPatchSchema = z.object({
   schedule_type: z.enum(['cron', 'interval', 'once']).optional(),
   schedule_value: z.string().optional(),
   context_mode: z.enum(['group', 'isolated']).optional(),
+  operation_permission_mode: z.enum(['default', 'bypass']).optional(),
+  agent_runtime_override: z.union([z.enum(AGENT_PROVIDER_IDS), z.null()]).optional(),
+  execution_environment: z.enum(['local', 'worktree']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).nullable().optional(),
+  skill_refs: z.array(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(/^[\w-]+$/)
+      .transform((value) => value.toLowerCase()),
+  ).max(64).optional(),
   status: z.enum(['active', 'paused']).optional(),
   next_run: z.string().optional(),
 });
@@ -76,8 +88,20 @@ export const TaskCreateSchema = z.object({
   schedule_type: z.enum(['cron', 'interval', 'once']),
   schedule_value: z.string().min(1),
   context_mode: z.enum(['group', 'isolated']).optional(),
+  operation_permission_mode: z.enum(['default', 'bypass']).optional(),
+  agent_runtime_override: z.enum(AGENT_PROVIDER_IDS).optional(),
+  execution_environment: z.enum(['local', 'worktree']).optional(),
   execution_type: z.enum(['agent', 'script']).optional(),
   script_command: z.string().max(4096).optional(),
+  skill_refs: z.array(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(/^[\w-]+$/)
+      .transform((value) => value.toLowerCase()),
+  ).max(64).optional(),
 }).superRefine((data, ctx) => {
   const execType = data.execution_type || 'agent';
   if (execType === 'agent' && !data.prompt?.trim()) {

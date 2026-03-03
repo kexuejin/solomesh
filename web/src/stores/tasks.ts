@@ -8,11 +8,15 @@ export interface ScheduledTask {
   group_folder: string;
   chat_jid: string;
   prompt: string;
+  operation_permission_mode?: 'default' | 'bypass';
+  agent_runtime_override?: 'claude' | 'codex' | 'gemini' | null;
+  execution_environment?: 'local' | 'worktree';
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
+  skill_refs?: string[];
   next_run: string | null;
   last_run?: string | null;
   last_result?: string | null;
@@ -43,9 +47,14 @@ interface TasksState {
     scheduleType: 'cron' | 'interval' | 'once',
     scheduleValue: string,
     contextMode: 'group' | 'isolated',
+    operationPermissionMode?: 'default' | 'bypass',
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini' | null,
+    executionEnvironment?: 'local' | 'worktree',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
+    skillRefs?: string[],
   ) => Promise<void>;
+  runTaskNow: (id: string) => Promise<void>;
   updateTaskStatus: (id: string, status: 'active' | 'paused') => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   loadLogs: (taskId: string) => Promise<void>;
@@ -54,6 +63,7 @@ interface TasksState {
 type TasksStoreMessageKey =
   | 'tasks.store.loadFailed'
   | 'tasks.store.createFailed'
+  | 'tasks.store.runNowFailed'
   | 'tasks.store.updateStatusFailed'
   | 'tasks.store.deleteFailed'
   | 'tasks.store.loadLogsFailed';
@@ -97,8 +107,12 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     scheduleType: 'cron' | 'interval' | 'once',
     scheduleValue: string,
     contextMode: 'group' | 'isolated',
+    operationPermissionMode?: 'default' | 'bypass',
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini' | null,
+    executionEnvironment?: 'local' | 'worktree',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
+    skillRefs?: string[],
   ) => {
     try {
       const normalizedScheduleValue =
@@ -114,17 +128,40 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         schedule_value: normalizedScheduleValue,
         context_mode: contextMode,
       };
+      if (operationPermissionMode) {
+        body.operation_permission_mode = operationPermissionMode;
+      }
+      if (agentRuntimeOverride) {
+        body.agent_runtime_override = agentRuntimeOverride;
+      }
+      if (executionEnvironment) {
+        body.execution_environment = executionEnvironment;
+      }
       if (executionType) {
         body.execution_type = executionType;
       }
       if (scriptCommand) {
         body.script_command = scriptCommand;
       }
+      if (skillRefs && skillRefs.length > 0) {
+        body.skill_refs = skillRefs;
+      }
       await api.post('/api/tasks', body);
       set({ error: null });
       await get().loadTasks();
     } catch (err) {
       set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.createFailed') });
+      throw err;
+    }
+  },
+
+  runTaskNow: async (id: string) => {
+    try {
+      await api.post(`/api/tasks/${id}/run-now`, {});
+      set({ error: null });
+      await get().loadTasks();
+    } catch (err) {
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.runNowFailed') });
     }
   },
 

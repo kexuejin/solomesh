@@ -14,11 +14,12 @@ import { useI18n } from '../i18n';
 
 export function TasksPage() {
   const { t } = useI18n();
-  const { tasks, loading, error, loadTasks, createTask, updateTaskStatus, deleteTask } = useTasksStore();
+  const { tasks, loading, error, loadTasks, createTask, runTaskNow, updateTaskStatus, deleteTask } = useTasksStore();
   const { groups, loadGroups } = useChatStore();
   const user = useAuthStore((s) => s.user);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null);
+  const [runNowPendingIds, setRunNowPendingIds] = useState<Record<string, boolean>>({});
   const isAdmin = user?.role === 'admin';
   const templates = getAutomationTemplates(t);
 
@@ -34,20 +35,32 @@ export function TasksPage() {
     scheduleType: 'cron' | 'interval' | 'once';
     scheduleValue: string;
     contextMode: 'group' | 'isolated';
+    operationPermissionMode: 'default' | 'bypass';
+    agentRuntimeOverride: 'claude' | 'codex' | 'gemini' | null;
+    executionEnvironment: 'local' | 'worktree';
     executionType: 'agent' | 'script';
     scriptCommand: string;
+    skillRefs: string[];
   }) => {
-    await createTask(
-      data.groupFolder,
-      data.chatJid,
-      data.prompt,
-      data.scheduleType,
-      data.scheduleValue,
-      data.contextMode,
-      data.executionType,
-      data.scriptCommand,
-    );
-    setShowCreateForm(false);
+    try {
+      await createTask(
+        data.groupFolder,
+        data.chatJid,
+        data.prompt,
+        data.scheduleType,
+        data.scheduleValue,
+        data.contextMode,
+        data.operationPermissionMode,
+        data.agentRuntimeOverride,
+        data.executionEnvironment,
+        data.executionType,
+        data.scriptCommand,
+        data.skillRefs,
+      );
+      setShowCreateForm(false);
+    } catch {
+      // Keep the form open so users can inspect and resolve dependency errors.
+    }
   };
 
   const handlePause = async (id: string) => {
@@ -65,6 +78,20 @@ export function TasksPage() {
   const handleDelete = async (id: string) => {
     if (confirm(t('tasks.page.confirmDelete'))) {
       await deleteTask(id);
+    }
+  };
+
+  const handleRunNow = async (id: string) => {
+    if (runNowPendingIds[id]) return;
+    setRunNowPendingIds((prev) => ({ ...prev, [id]: true }));
+    try {
+      await runTaskNow(id);
+    } finally {
+      setRunNowPendingIds((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     }
   };
 
@@ -194,6 +221,8 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      onRunNow={handleRunNow}
+                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}
@@ -211,6 +240,8 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      onRunNow={handleRunNow}
+                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}
@@ -228,6 +259,8 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      onRunNow={handleRunNow}
+                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}

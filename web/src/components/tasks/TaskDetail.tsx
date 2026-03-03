@@ -84,6 +84,22 @@ export function TaskDetail({ task }: TaskDetailProps) {
         </div>
       )}
 
+      {Array.isArray(task.skill_refs) && task.skill_refs.length > 0 && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-2">{t('tasks.detail.skillRefs')}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {task.skill_refs.map((skillRef) => (
+              <code
+                key={skillRef}
+                className="rounded border border-border bg-card px-2 py-0.5 text-xs text-foreground"
+              >
+                {skillRef}
+              </code>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Schedule Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
@@ -141,6 +157,37 @@ export function TaskDetail({ task }: TaskDetailProps) {
                 : task.context_mode === 'isolated'
                   ? t('tasks.detail.contextIsolated')
                   : task.context_mode}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.executionEnvironment')}</div>
+          <div className="text-sm text-foreground">
+            {task.execution_environment === 'worktree'
+              ? t('tasks.detail.executionEnvironmentWorktree')
+              : t('tasks.detail.executionEnvironmentLocal')}
+          </div>
+        </div>
+
+        {task.execution_type !== 'script' && (
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.operationPermissionMode')}</div>
+            <div className="text-sm text-foreground">
+              {task.operation_permission_mode === 'bypass'
+                ? t('tasks.detail.permissionBypass')
+                : t('tasks.detail.permissionDefault')}
+            </div>
+          </div>
+        )}
+
+        {task.execution_type !== 'script' && (
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">{t('tasks.detail.agentRuntimeOverride')}</div>
+            <div className="text-sm text-foreground">
+              {task.agent_runtime_override
+                ? task.agent_runtime_override.toUpperCase()
+                : t('tasks.detail.runtimeSystemDefault')}
             </div>
           </div>
         )}

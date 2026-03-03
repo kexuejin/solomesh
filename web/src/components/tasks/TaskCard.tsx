@@ -1,17 +1,26 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Pause, Play, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Pause, Play, TestTube2, Trash2 } from 'lucide-react';
 import { ScheduledTask } from '../../stores/tasks';
 import { TaskDetail } from './TaskDetail';
 import { localeForDateTime, useI18n } from '../../i18n';
 
 interface TaskCardProps {
   task: ScheduledTask;
+  onRunNow: (id: string) => void;
+  isRunNowPending?: boolean;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
+export function TaskCard({
+  task,
+  onRunNow,
+  isRunNowPending = false,
+  onPause,
+  onResume,
+  onDelete,
+}: TaskCardProps) {
   const { t, locale } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
@@ -83,6 +92,12 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDelete(task.id);
+  };
+
+  const handleRunNow = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRunNowPending) return;
+    onRunNow(task.id);
   };
 
   return (
@@ -157,6 +172,23 @@ export function TaskCard({ task, onPause, onResume, onDelete }: TaskCardProps) {
                 )}
               </button>
             )}
+
+            {/* Run now */}
+            <button
+              onClick={handleRunNow}
+              disabled={isRunNowPending}
+              className={`p-2 rounded-lg transition-colors ${
+                isRunNowPending
+                  ? 'cursor-not-allowed text-muted-foreground/60'
+                  : 'cursor-pointer text-muted-foreground hover:text-brand-700 hover:bg-brand-50'
+              }`}
+              title={isRunNowPending ? t('tasks.card.actionRunNowPending') : t('tasks.card.actionRunNow')}
+              aria-label={isRunNowPending ? t('tasks.card.actionRunNowPending') : t('tasks.card.actionRunNowAria')}
+            >
+              {isRunNowPending
+                ? <Loader2 className="w-5 h-5 animate-spin" />
+                : <TestTube2 className="w-5 h-5" />}
+            </button>
 
             {/* Delete */}
             <button

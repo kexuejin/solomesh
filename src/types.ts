@@ -117,8 +117,12 @@ export interface ScheduledTask {
   group_folder: string;
   chat_jid: string;
   prompt: string;
+  operation_permission_mode?: 'default' | 'bypass';
+  agent_runtime_override?: AgentProvider | null;
+  execution_environment?: 'local' | 'worktree';
   execution_type?: 'agent' | 'script';
   script_command?: string | null;
+  skill_refs?: string[];
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
