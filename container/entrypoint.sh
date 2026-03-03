@@ -21,23 +21,23 @@ if [ -f /workspace/env-dir/env ]; then
 fi
 
 # Discover and link skills (project → user, higher priority overwrites)
-SKILL_TARGETS=(
-  /home/node/.claude/skills
-  /home/node/.agents/skills
-  /home/node/.gemini/skills
-)
-
-for target in "${SKILL_TARGETS[@]}"; do
-  mkdir -p "$target"
-done
-
+# Only remove entries that conflict with mounted skills (non-symlink with same name),
+# preserving any skills the agent created directly in .claude/skills/.
+mkdir -p /home/node/.claude/skills
 for dir in /workspace/project-skills /workspace/user-skills; do
-  [ -d "$dir" ] && for skill in "$dir"/*/; do
-    [ -d "$skill" ] || continue
-    for target in "${SKILL_TARGETS[@]}"; do
-      ln -sf "$skill" "$target"/ 2>/dev/null || true
+  if [ -d "$dir" ]; then
+    for skill in "$dir"/*/; do
+      if [ -d "$skill" ]; then
+        name=$(basename "$skill")
+        target="/home/node/.claude/skills/$name"
+        # Remove conflicting non-symlink entry (e.g. real directory from a failed agent edit)
+        if [ -e "$target" ] && [ ! -L "$target" ]; then
+          rm -rf "$target" 2>/dev/null || true
+        fi
+        ln -sfn "$skill" "$target" 2>/dev/null || true
+      fi
     done
-  done
+  fi
 done
 
 chown -R node:node /home/node/.claude/skills /home/node/.agents/skills /home/node/.gemini/skills 2>/dev/null || true
