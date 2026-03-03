@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock3, Loader2, Sparkles, X } from 'lucide-react';
+import { ChevronDown, Clock3, Loader2, Sparkles, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,6 +20,7 @@ import {
 } from './automation-presets';
 import { useI18n } from '../../i18n';
 import { extractErrorMessage } from '../../lib/error-message';
+import { DEFAULT_RUNTIME_DEFINITIONS, type AgentRuntimeId } from '../../runtime-definitions';
 
 interface Group {
   jid: string;
@@ -38,8 +39,12 @@ interface CreateTaskFormProps {
     scheduleType: ScheduleType;
     scheduleValue: string;
     contextMode: ContextMode;
+    operationPermissionMode: 'default' | 'bypass';
+    agentRuntimeOverride: AgentRuntimeId | null;
+    executionEnvironment: 'local' | 'worktree';
     executionType: 'agent' | 'script';
     scriptCommand: string;
+    skillRefs: string[];
   }) => Promise<void>;
   onClose: () => void;
 }
@@ -49,6 +54,35 @@ interface WorkflowIdeaOptimizeResponse {
   optimizedIdea: string;
 }
 
+interface SkillInstallCandidate {
+  package: string;
+  installs?: string;
+  description?: string;
+}
+
+interface TaskDependencyDetails {
+  missingSkillRefs: string[];
+  invalidSkillRefs: string[];
+  availableSkillRefs: string[];
+  skillInstallOptions: Record<string, string[]>;
+  skillInstallCandidates: Record<string, SkillInstallCandidate[]>;
+}
+
+interface TaskSubmitPayload {
+  groupFolder: string;
+  chatJid: string;
+  prompt: string;
+  scheduleType: ScheduleType;
+  scheduleValue: string;
+  contextMode: ContextMode;
+  operationPermissionMode: 'default' | 'bypass';
+  agentRuntimeOverride: AgentRuntimeId | null;
+  executionEnvironment: 'local' | 'worktree';
+  executionType: 'agent' | 'script';
+  scriptCommand: string;
+  skillRefs: string[];
+}
+
 type ScheduleMode = 'daily' | 'interval';
 type IntervalUnit = 'minute' | 'hour';
 
@@ -56,6 +90,104 @@ const WEEKDAY_VALUES = [1, 2, 3, 4, 5, 6, 0] as const;
 const ALL_WEEKDAYS = [...WEEKDAY_VALUES];
 const WORKDAYS = [1, 2, 3, 4, 5];
 const TEMPLATE_NONE = '__none__';
+const SKILL_REF_RE = /^[\w-]+$/;
+
+function normalizeSkillRef(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parseSkillRefsInput(value: string): string[] {
+  const tokens = value
+    .split(/[\n,]+/)
+    .map((item) => normalizeSkillRef(item))
+    .filter((item) => item.length > 0);
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const token of tokens) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    deduped.push(token);
+  }
+  return deduped;
+}
+
+function validateSkillRefs(skillRefs: string[]): string[] {
+  return skillRefs.filter((ref) => !SKILL_REF_RE.test(ref));
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? normalizeSkillRef(item) : ''))
+    .filter((item) => item.length > 0);
+}
+
+function toStringArrayMap(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== 'object') return {};
+  const result: Record<string, string[]> = {};
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = normalizeSkillRef(rawKey);
+    if (!key) continue;
+    result[key] = Array.from(new Set(toStringArray(rawValue)));
+  }
+  return result;
+}
+
+function toSkillInstallCandidatesMap(value: unknown): TaskDependencyDetails['skillInstallCandidates'] {
+  if (!value || typeof value !== 'object') return {};
+  const result: TaskDependencyDetails['skillInstallCandidates'] = {};
+  for (const [rawSkillRef, rawCandidates] of Object.entries(value as Record<string, unknown>)) {
+    const skillRef = normalizeSkillRef(rawSkillRef);
+    if (!skillRef || !Array.isArray(rawCandidates)) continue;
+    const dedup = new Set<string>();
+    const candidates: SkillInstallCandidate[] = [];
+    for (const raw of rawCandidates) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as Record<string, unknown>;
+      const pkg = typeof item.package === 'string' ? item.package.trim() : '';
+      if (!pkg || dedup.has(pkg)) continue;
+      dedup.add(pkg);
+      candidates.push({
+        package: pkg,
+        ...(typeof item.installs === 'string' && item.installs.trim()
+          ? { installs: item.installs.trim() }
+          : {}),
+        ...(typeof item.description === 'string' && item.description.trim()
+          ? { description: item.description.trim() }
+          : {}),
+      });
+    }
+    result[skillRef] = candidates;
+  }
+  return result;
+}
+
+function parseTaskDependencyDetails(err: unknown): TaskDependencyDetails | null {
+  if (!err || typeof err !== 'object' || !('details' in err)) return null;
+  const details = (err as { details?: unknown }).details;
+  if (!details || typeof details !== 'object') return null;
+  const payload = details as Record<string, unknown>;
+  const missingSkillRefs = toStringArray(payload.missingSkillRefs);
+  const invalidSkillRefs = toStringArray(payload.invalidSkillRefs);
+  const availableSkillRefs = toStringArray(payload.availableSkillRefs);
+  if (missingSkillRefs.length === 0 && invalidSkillRefs.length === 0) return null;
+  const skillInstallOptions = toStringArrayMap(payload.skillInstallOptions);
+  const skillInstallCandidates = toSkillInstallCandidatesMap(payload.skillInstallCandidates);
+  for (const skillRef of missingSkillRefs) {
+    const options = skillInstallOptions[skillRef] ?? [];
+    if (!skillInstallCandidates[skillRef] || skillInstallCandidates[skillRef].length === 0) {
+      skillInstallCandidates[skillRef] = options.map((pkg) => ({ package: pkg }));
+    }
+    skillInstallOptions[skillRef] = skillInstallCandidates[skillRef].map((candidate) => candidate.package);
+  }
+  return {
+    missingSkillRefs,
+    invalidSkillRefs,
+    availableSkillRefs,
+    skillInstallOptions,
+    skillInstallCandidates,
+  };
+}
 
 function uniqueSortedWeekdays(days: number[]): number[] {
   const order = [1, 2, 3, 4, 5, 6, 0];
@@ -223,9 +355,13 @@ export function CreateTaskForm({
     scheduleType: 'cron' as ScheduleType,
     scheduleValue: '',
     contextMode: 'isolated' as ContextMode,
+    operationPermissionMode: 'default' as 'default' | 'bypass',
+    agentRuntimeOverride: null as AgentRuntimeId | null,
+    executionEnvironment: 'local' as 'local' | 'worktree',
     executionType: 'agent' as 'agent' | 'script',
     scriptCommand: '',
   });
+  const [skillRefsInput, setSkillRefsInput] = useState('');
 
   const [templateChoice, setTemplateChoice] = useState<string>(TEMPLATE_NONE);
 
@@ -236,10 +372,16 @@ export function CreateTaskForm({
   const [intervalNumber, setIntervalNumber] = useState('30');
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>('minute');
   const [intervalWeekdays, setIntervalWeekdays] = useState<number[]>([...WORKDAYS]);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [optimizingPrompt, setOptimizingPrompt] = useState(false);
+  const [installingMissingSkills, setInstallingMissingSkills] = useState(false);
+  const [dependencyDetails, setDependencyDetails] = useState<TaskDependencyDetails | null>(null);
+  const [installSelections, setInstallSelections] = useState<Record<string, string>>({});
+  const [pendingSubmitPayload, setPendingSubmitPayload] = useState<TaskSubmitPayload | null>(null);
+  const runtimeOptions = DEFAULT_RUNTIME_DEFINITIONS;
 
   useEffect(() => {
     if (formData.groupFolder || groups.length === 0) return;
@@ -306,6 +448,12 @@ export function CreateTaskForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTemplateId]);
 
+  useEffect(() => {
+    if (dependencyDetails || errors.scriptCommand || errors.skillRefs) {
+      setIsAdvancedOpen(true);
+    }
+  }, [dependencyDetails, errors.scriptCommand, errors.skillRefs]);
+
   const clearScheduleError = () => {
     setErrors((prev) => {
       const next = { ...prev };
@@ -314,8 +462,10 @@ export function CreateTaskForm({
     });
   };
 
-  const validateForm = () => {
+  const validateForm = (): { ok: boolean; skillRefs: string[] } => {
     const newErrors: Record<string, string> = {};
+    const skillRefs = parseSkillRefsInput(skillRefsInput);
+    const invalidSkillRefs = validateSkillRefs(skillRefs);
 
     if (!formData.groupFolder) {
       newErrors.groupFolder = t('tasks.form.errors.groupRequired');
@@ -353,13 +503,23 @@ export function CreateTaskForm({
       }
     }
 
+    if (invalidSkillRefs.length > 0) {
+      newErrors.skillRefs = t('tasks.form.errors.skillRefsInvalidFormat', {
+        refs: invalidSkillRefs.join(', '),
+      });
+    }
+
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return {
+      ok: Object.keys(newErrors).length === 0,
+      skillRefs,
+    };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    const validated = validateForm();
+    if (!validated.ok) return;
 
     let scheduleType: ScheduleType;
     let scheduleValue: string;
@@ -378,17 +538,52 @@ export function CreateTaskForm({
       }
     }
 
+    const payload: TaskSubmitPayload = {
+      ...formData,
+      prompt: formData.prompt.trim(),
+      scriptCommand: formData.scriptCommand.trim(),
+      scheduleType,
+      scheduleValue,
+      skillRefs: validated.skillRefs,
+    };
+
+    setPendingSubmitPayload(payload);
+    setDependencyDetails(null);
+    setInstallSelections({});
     setSubmitting(true);
     try {
-      await onSubmit({
-        ...formData,
-        prompt: formData.prompt.trim(),
-        scriptCommand: formData.scriptCommand.trim(),
-        scheduleType,
-        scheduleValue,
-      });
+      await onSubmit(payload);
     } catch (error) {
-      console.error('Failed to create task:', error);
+      const dependency = parseTaskDependencyDetails(error);
+      if (dependency) {
+        const nextSelections: Record<string, string> = {};
+        for (const skillRef of dependency.missingSkillRefs) {
+          const options = dependency.skillInstallOptions[skillRef] ?? [];
+          if (options.length === 1) nextSelections[skillRef] = options[0]!;
+        }
+        setDependencyDetails(dependency);
+        setInstallSelections(nextSelections);
+        const errorParts: string[] = [];
+        if (dependency.missingSkillRefs.length > 0) {
+          errorParts.push(t('tasks.form.errors.dependencyMissingSkills', {
+            refs: dependency.missingSkillRefs.join(', '),
+          }));
+        }
+        if (dependency.invalidSkillRefs.length > 0) {
+          errorParts.push(t('tasks.form.errors.dependencyInvalidSkills', {
+            refs: dependency.invalidSkillRefs.join(', '),
+          }));
+        }
+        setErrors((prev) => ({
+          ...prev,
+          submit: errorParts.join('；'),
+        }));
+      } else {
+        setErrors((prev) => ({
+          ...prev,
+          submit: extractErrorMessage(error) ?? t('tasks.form.errors.createFailed'),
+        }));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -442,6 +637,75 @@ export function CreateTaskForm({
     }
   };
 
+  const handleInstallMissingSkillsAndRetry = async () => {
+    if (!dependencyDetails || !pendingSubmitPayload) return;
+
+    const unresolvedRefs: string[] = [];
+    const noCandidateRefs: string[] = [];
+    const selectedPackages: Record<string, string> = {};
+    for (const skillRef of dependencyDetails.missingSkillRefs) {
+      const options = dependencyDetails.skillInstallOptions[skillRef] ?? [];
+      if (options.length === 0) {
+        noCandidateRefs.push(skillRef);
+        continue;
+      }
+      const selected = (installSelections[skillRef] ?? '').trim();
+      if (!selected) {
+        unresolvedRefs.push(skillRef);
+        continue;
+      }
+      selectedPackages[skillRef] = selected;
+    }
+    if (noCandidateRefs.length > 0) {
+      setErrors((prev) => ({
+        ...prev,
+        submit: t('tasks.form.errors.dependencyNoInstallCandidates', {
+          refs: noCandidateRefs.join(', '),
+        }),
+      }));
+      return;
+    }
+    if (unresolvedRefs.length > 0) {
+      setErrors((prev) => ({
+        ...prev,
+        submit: t('tasks.form.errors.dependencyInstallSelectionRequired', {
+          refs: unresolvedRefs.join(', '),
+        }),
+      }));
+      return;
+    }
+
+    setInstallingMissingSkills(true);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.submit;
+      return next;
+    });
+    try {
+      for (const pkg of Object.values(selectedPackages)) {
+        await api.post('/api/skills/install', { package: pkg }, 60_000);
+      }
+      await onSubmit(pendingSubmitPayload);
+    } catch (error) {
+      const dependency = parseTaskDependencyDetails(error);
+      if (dependency) {
+        const nextSelections: Record<string, string> = {};
+        for (const skillRef of dependency.missingSkillRefs) {
+          const options = dependency.skillInstallOptions[skillRef] ?? [];
+          if (options.length === 1) nextSelections[skillRef] = options[0]!;
+        }
+        setDependencyDetails(dependency);
+        setInstallSelections(nextSelections);
+      }
+      setErrors((prev) => ({
+        ...prev,
+        submit: extractErrorMessage(error) ?? t('tasks.form.errors.installAndRetryFailed'),
+      }));
+    } finally {
+      setInstallingMissingSkills(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="surface-card w-full max-w-3xl max-h-[92vh] overflow-y-auto">
@@ -459,35 +723,37 @@ export function CreateTaskForm({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-foreground/80">
-              {t('tasks.form.workspace')} <span className="text-red-500">*</span>
-            </label>
-            <Select value={formData.groupFolder || undefined} onValueChange={handleGroupChange}>
-              <SelectTrigger className={cn('w-full', errors.groupFolder && 'border-red-500')}>
-                <SelectValue placeholder={t('tasks.form.choose')} />
-              </SelectTrigger>
-              <SelectContent>
-                {groups.map((group) => (
-                  <SelectItem key={group.jid} value={group.folder}>
-                    {group.name} ({group.folder})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.groupFolder && <p className="text-sm text-red-600">{errors.groupFolder}</p>}
-          </div>
-
-          <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3">
-            <div className="flex items-center justify-between gap-2 text-sm font-medium text-foreground/85">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-brand-600" />
-                {t('tasks.form.templateTitle')}
-              </div>
-              <span className="text-xs font-normal text-muted-foreground">{t('tasks.form.templateHint')}</span>
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-foreground/80">
+                {t('tasks.form.workspace')} <span className="text-red-500">*</span>
+              </label>
+              <Select value={formData.groupFolder || undefined} onValueChange={handleGroupChange}>
+                <SelectTrigger className={cn('w-full', errors.groupFolder && 'border-red-500')}>
+                  <SelectValue placeholder={t('tasks.form.choose')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.jid} value={group.folder}>
+                      {group.name} ({group.folder})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.groupFolder && <p className="text-sm text-red-600">{errors.groupFolder}</p>}
             </div>
-            <div className="flex flex-col gap-2">
+
+            <div className="space-y-2 rounded-xl border border-border/70 bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-2 text-sm font-medium text-foreground/85">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-brand-600" />
+                  {t('tasks.form.templateTitle')}
+                </div>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {t('tasks.form.templateHint')}
+                </span>
+              </div>
               <Select value={templateChoice} onValueChange={handleTemplateChoiceChange}>
                 <SelectTrigger className="flex-1 bg-card">
                   <SelectValue placeholder={t('tasks.form.chooseTemplate')} />
@@ -503,37 +769,6 @@ export function CreateTaskForm({
               </Select>
             </div>
           </div>
-
-          {isAdmin && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-foreground/80">
-                {t('tasks.form.executionType')}
-              </label>
-              <Select
-                value={formData.executionType}
-                onValueChange={(value) => {
-                  setFormData({
-                    ...formData,
-                    executionType: value as 'agent' | 'script',
-                  });
-                  setErrors((prev) => {
-                    const next = { ...prev };
-                    delete next.prompt;
-                    delete next.scriptCommand;
-                    return next;
-                  });
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="agent">{t('tasks.form.executionAgent')}</SelectItem>
-                  <SelectItem value="script">{t('tasks.form.executionScript')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground/80">
@@ -567,7 +802,11 @@ export function CreateTaskForm({
                   disabled={optimizingPrompt || submitting}
                   className="pointer-events-auto h-8 rounded-lg bg-card/95 px-2.5 text-xs sm:text-sm"
                 >
-                  {optimizingPrompt ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  {optimizingPrompt ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-3.5" />
+                  )}
                   {optimizingPrompt ? t('tasks.form.aiOptimizing') : t('tasks.form.aiOptimize')}
                 </Button>
               </div>
@@ -575,23 +814,6 @@ export function CreateTaskForm({
             <p className="text-xs text-muted-foreground">{t('tasks.form.aiOptimizeHint')}</p>
             {errors.prompt && <p className="text-sm text-red-600">{errors.prompt}</p>}
           </div>
-
-          {formData.executionType === 'script' && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-foreground/80">
-                {t('tasks.form.scriptCommand')} <span className="text-red-500">*</span>
-              </label>
-              <Input
-                value={formData.scriptCommand}
-                onChange={(e) => {
-                  setFormData({ ...formData, scriptCommand: e.target.value });
-                }}
-                className={cn(errors.scriptCommand && 'border-red-500')}
-                placeholder={t('tasks.form.scriptCommandPlaceholder')}
-              />
-              {errors.scriptCommand && <p className="text-sm text-red-600">{errors.scriptCommand}</p>}
-            </div>
-          )}
 
           <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-3">
             <label className="block text-sm font-medium text-foreground/80">
@@ -742,29 +964,279 @@ export function CreateTaskForm({
             {errors.scheduleValue && <p className="text-sm text-red-600">{errors.scheduleValue}</p>}
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-foreground/80">{t('tasks.form.contextMode')}</label>
-            <Select
-              value={formData.contextMode}
-              onValueChange={(value) =>
-                setFormData({
-                  ...formData,
-                  contextMode: value as ContextMode,
-                })
-              }
+          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+            <button
+              type="button"
+              onClick={() => setIsAdvancedOpen((prev) => !prev)}
+              className="flex w-full items-start justify-between gap-3 text-left"
             >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="isolated">{t('tasks.form.contextIsolated')}</SelectItem>
-                <SelectItem value="group">{t('tasks.form.contextGroup')}</SelectItem>
-              </SelectContent>
-            </Select>
-            {formData.executionType !== 'script' && (
-              <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-foreground/85">{t('tasks.form.advancedTitle')}</div>
+                <p className="text-xs text-muted-foreground">{t('tasks.form.advancedHint')}</p>
+              </div>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                {isAdvancedOpen
+                  ? t('tasks.form.advancedToggleClose')
+                  : t('tasks.form.advancedToggleOpen')}
+                <ChevronDown
+                  className={cn('h-4 w-4 transition-transform', !isAdvancedOpen && '-rotate-90')}
+                />
+              </span>
+            </button>
+
+            {isAdvancedOpen && (
+              <div className="space-y-3 border-t border-border/60 pt-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {isAdmin && (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-foreground/80">
+                        {t('tasks.form.executionType')}
+                      </label>
+                      <Select
+                        value={formData.executionType}
+                        onValueChange={(value) => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            executionType: value as 'agent' | 'script',
+                          }));
+                          setErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.prompt;
+                            delete next.scriptCommand;
+                            return next;
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="agent">{t('tasks.form.executionAgent')}</SelectItem>
+                          <SelectItem value="script">{t('tasks.form.executionScript')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-foreground/80">
+                      {t('tasks.form.contextMode')}
+                    </label>
+                    <Select
+                      value={formData.contextMode}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          contextMode: value as ContextMode,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="isolated">{t('tasks.form.contextIsolated')}</SelectItem>
+                        <SelectItem value="group">{t('tasks.form.contextGroup')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formData.executionType !== 'script' && (
+                      <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="block text-xs font-medium text-foreground/80">
+                      {t('tasks.form.executionEnvironment')}
+                    </label>
+                    <Select
+                      value={formData.executionEnvironment}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          executionEnvironment: value as 'local' | 'worktree',
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="worktree">{t('tasks.form.executionEnvironmentWorktree')}</SelectItem>
+                        <SelectItem value="local">{t('tasks.form.executionEnvironmentLocal')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{t('tasks.form.executionEnvironmentHint')}</p>
+                  </div>
+
+                  {formData.executionType !== 'script' && (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-foreground/80">
+                        {t('tasks.form.operationPermissionMode')}
+                      </label>
+                      <Select
+                        value={formData.operationPermissionMode}
+                        onValueChange={(value) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            operationPermissionMode: value as 'default' | 'bypass',
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default">{t('tasks.form.permissionDefault')}</SelectItem>
+                          <SelectItem value="bypass">{t('tasks.form.permissionBypass')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">{t('tasks.form.permissionHint')}</p>
+                    </div>
+                  )}
+
+                  {formData.executionType !== 'script' && (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-foreground/80">
+                        {t('tasks.form.agentRuntimeOverride')}
+                      </label>
+                      <Select
+                        value={formData.agentRuntimeOverride ?? '__system_default__'}
+                        onValueChange={(value) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            agentRuntimeOverride:
+                              value === '__system_default__' ? null : (value as AgentRuntimeId),
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__system_default__">
+                            {t('tasks.form.runtimeSystemDefault')}
+                          </SelectItem>
+                          {runtimeOptions.map((runtime) => (
+                            <SelectItem key={runtime.id} value={runtime.id}>
+                              {runtime.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">{t('tasks.form.runtimeHint')}</p>
+                    </div>
+                  )}
+                </div>
+
+                {formData.executionType === 'script' && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-foreground/80">
+                      {t('tasks.form.scriptCommand')} <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      value={formData.scriptCommand}
+                      onChange={(e) => {
+                        setFormData((prev) => ({ ...prev, scriptCommand: e.target.value }));
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.scriptCommand;
+                          return next;
+                        });
+                      }}
+                      className={cn(errors.scriptCommand && 'border-red-500')}
+                      placeholder={t('tasks.form.scriptCommandPlaceholder')}
+                    />
+                    {errors.scriptCommand && (
+                      <p className="text-sm text-red-600">{errors.scriptCommand}</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-foreground/80">
+                    {t('tasks.form.skillRefs')}
+                  </label>
+                  <Input
+                    value={skillRefsInput}
+                    onChange={(e) => {
+                      setSkillRefsInput(e.target.value);
+                      setDependencyDetails(null);
+                      setInstallSelections({});
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.skillRefs;
+                        delete next.submit;
+                        return next;
+                      });
+                    }}
+                    className={cn(errors.skillRefs && 'border-red-500')}
+                    placeholder={t('tasks.form.skillRefsPlaceholder')}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('tasks.form.skillRefsHint')}</p>
+                  {errors.skillRefs && <p className="text-sm text-red-600">{errors.skillRefs}</p>}
+                </div>
+              </div>
             )}
           </div>
+
+          {dependencyDetails && dependencyDetails.missingSkillRefs.length > 0 && (
+            <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+              <div className="text-sm font-medium text-amber-800">{t('tasks.form.missingSkillInstallTitle')}</div>
+              {dependencyDetails.missingSkillRefs.map((skillRef) => {
+                const candidates = dependencyDetails.skillInstallCandidates[skillRef] ?? [];
+                const options = dependencyDetails.skillInstallOptions[skillRef] ?? candidates.map((candidate) => candidate.package);
+                const hasCandidates = options.length > 0;
+                return (
+                  <div key={skillRef} className="space-y-1">
+                    <div className="text-xs text-amber-900/90">
+                      <code className="rounded bg-amber-100 px-1 py-0.5">{skillRef}</code>
+                    </div>
+                    {hasCandidates ? (
+                      <Select
+                        value={installSelections[skillRef] || undefined}
+                        onValueChange={(value) => {
+                          setInstallSelections((prev) => ({ ...prev, [skillRef]: value }));
+                        }}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder={t('tasks.form.installPackage')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {options.map((pkg) => (
+                            <SelectItem key={`${skillRef}:${pkg}`} value={pkg}>
+                              {pkg}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="text-xs text-amber-700">{t('tasks.form.errors.dependencyNoInstallCandidates')}</div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                  disabled={installingMissingSkills || submitting}
+                  onClick={handleInstallMissingSkillsAndRetry}
+                >
+                  {(installingMissingSkills || submitting) && <Loader2 className="size-4 animate-spin" />}
+                  {installingMissingSkills
+                    ? t('tasks.form.installingSkills')
+                    : t('tasks.form.installMissingSkills')}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {errors.submit && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {errors.submit}
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
