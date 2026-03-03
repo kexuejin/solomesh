@@ -29,6 +29,7 @@
 
 - You keep the power of native runtimes, but add team-level control.
 - You get Web + Feishu + Telegram entrypoints in one place.
+- You can tune runtime per workspace, and runtime/model/reasoning per message.
 - You can run repeatable workflows and scheduled automation without glue scripts.
 - You keep data in your own environment.
 
@@ -75,15 +76,21 @@ Set default runtime, expose source of secrets, and prevent risky host access by 
 
 ## What You Can Do Today
 
-1. Chat in a clean web UI and switch runtime quickly.
-2. Configure Claude/Codex/Gemini with official login or API key flow.
-3. Bind Feishu/Telegram sessions to target workspaces.
-4. Create automation tasks from templates and edit schedule visually.
-5. Run workflow templates with stage dependencies and publish precheck.
-6. Manage MCP servers and Skills per user/workspace.
-7. Expose workspace access with built-in tunnel + short links.
-8. Use Chinese/English UI (auto-detect system language, user override supported).
-9. Keep runtime credentials and operational settings visible and governable for the team.
+1. Chat in a clean web UI and switch runtime per message.
+2. Set message-level runtime controls: runtime override, model override, and reasoning effort.
+3. Use runtime directives directly in chat (`@claude`, `@codex`, `@gemini`).
+4. Create conversation sub-agents inside one workspace for parallel threads.
+5. Configure runtime credentials (Claude OAuth/setup-token/third-party token, Codex/Gemini API key).
+6. Use personal home workspaces and shared workspaces with member roles.
+7. Bind Feishu/Telegram sessions to target workspaces with user-level binding.
+8. Create scheduled tasks (`cron`, `interval`, `once`) in agent mode or script mode (script mode is admin-only).
+9. Build workflow templates (`draft -> published -> archived`) with dependency precheck and optional auto-install of missing skills on publish.
+10. Generate and optimize workflow templates with AI-assisted endpoints.
+11. Manage Skills and MCP servers (`stdio`, `http`, `sse`) per user/workspace, including host sync.
+12. Browse, upload, edit, preview, and download workspace files from Web.
+13. Manage users, invite codes, permission templates, and auth audit logs.
+14. Expose workspace access with built-in tunnel + short links.
+15. Use Chinese/English UI (auto-detect system language, user override supported).
 
 ## Remote Access
 
@@ -110,9 +117,9 @@ Useful env vars:
 
 | Runtime | ID | Auth | Model Override | Custom Base URL | Memory File |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `claude` | OAuth / setup-token / third-party token | No | Yes | `CLAUDE.md` |
+| Claude Code | `claude` | OAuth / setup-token / third-party token | Yes | Yes | `CLAUDE.md` |
 | Codex | `codex` | `CODEX_API_KEY` / `OPENAI_API_KEY` | Yes | Yes (`OPENAI_BASE_URL`) | `AGENTS.md` |
-| Gemini CLI | `gemini` | OAuth or `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Yes | Yes (`GOOGLE_GEMINI_BASE_URL`) | `GEMINI.md` |
+| Gemini CLI | `gemini` | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Yes | Yes (`GOOGLE_GEMINI_BASE_URL`) | `GEMINI.md` |
 
 ## Quick Start (3 Minutes)
 
@@ -152,9 +159,11 @@ Open `http://localhost:3000`.
 
 - Runtime abstraction by `agentRuntime` (`claude` / `codex` / `gemini`)
 - Runtime list and active runtime via `/api/config/runtimes`
-- Gemini OAuth endpoints:
-  - `/api/config/runtime/gemini/oauth/start`
-  - `/api/config/runtime/gemini/oauth/callback`
+- Message-level overrides: `agentRuntimeOverride`, `modelOverride`, `reasoningEffort`
+- Runtime directives in prompt: `@claude`, `@codex`, `@gemini`
+- Claude OAuth endpoints:
+  - `/api/config/runtime/oauth/start`
+  - `/api/config/runtime/oauth/callback`
 - Key source visibility (`runtime` / `env` / `none`) and degraded-key detection
 
 ### Collaboration Channels
@@ -163,18 +172,32 @@ Open `http://localhost:3000`.
 - User-level config and binding: `/api/config/user-im/*`
 - Session binding + merged message query support
 
+### Workspace Collaboration and Governance
+
+- Workspace execution modes: `container` / `host`
+- Host mode guardrails: role checks + mount allowlist
+- Workspace member management: owner/member roles
+- Workspace bootstrapping from local path or Git URL
+- User and governance controls: user management, invite codes, permission templates, audit log
+
 ### Automation and Workflow
 
 - Task schedules: `cron`, `interval`, `once`
+- Task execution types: `agent`, `script` (admin-only for script create/update)
 - Template-based automation creation
 - Workflow template lifecycle: `draft -> published -> archived`
 - Dependency precheck (`provider`, `skill`, `channel`, `mcp`)
+- AI-assisted workflow endpoints:
+  - `/api/workflows/templates/generate`
+  - `/api/workflows/templates/idea-optimize`
+  - `/api/workflows/templates/:scope/:templateId/optimize`
 - Stage-level runtime strategy: assign different runtimes per stage (for example: Claude -> Codex -> Gemini)
 
 ### Skills, MCP, and Memory
 
 - Provider-aware skills behavior
 - Per-user MCP servers (`stdio`, `http`, `sse`)
+- Skills/MCP host sync support
 - Runtime memory profile mapping:
   - `claude -> CLAUDE.md`
   - `codex -> AGENTS.md`
@@ -226,6 +249,12 @@ make reset-init      # reset runtime data (destructive)
 
 ## Key APIs
 
+- Auth: `/api/auth/*`
+- Health and monitor: `/api/health`, `/api/status`, `/api/docker/build`
+- Workspaces: `/api/groups/*`, `/api/groups/:jid/members*`
+- Workspace files: `/api/groups/:jid/files*`
+- Workspace conversation agents: `/api/groups/:jid/agents*`
+- Memory: `/api/memory/sources`, `/api/memory/search`, `/api/memory/file`, `/api/memory/global`
 - Runtime config: `/api/config/runtime*`, `/api/config/runtimes`
 - Channels: `/api/config/feishu`, `/api/config/telegram`, `/api/config/user-im/*`
 - Remote access:
@@ -238,6 +267,7 @@ make reset-init      # reset runtime data (destructive)
 - Tasks: `/api/tasks/*`
 - Skills: `/api/skills/*`
 - MCP servers: `/api/mcp-servers/*`
+- Admin and governance: `/api/admin/users`, `/api/admin/invites`, `/api/admin/audit-log`
 
 ## Repository Layout
 

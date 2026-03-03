@@ -29,6 +29,7 @@
 
 - 保留原生 runtime 能力，同时补上团队级控制能力。
 - Web + 飞书 + Telegram 三端统一接入。
+- 支持工作区级 runtime 控制，以及消息级 runtime / model / 推理强度控制。
 - 不写胶水脚本也能跑可复用工作流和自动化任务。
 - 数据留在你自己的环境里。
 
@@ -75,15 +76,21 @@
 
 ## 现在就能做什么
 
-1. 在统一 Web UI 聊天并快速切换 runtime。
-2. 配置 Claude/Codex/Gemini（官方登录或 API Key）。
-3. 把飞书/Telegram 会话绑定到指定工作区。
-4. 通过模板快速创建自动化任务，并可视化编辑调度。
-5. 用多阶段 Workflow 模板跑复杂流程，发布前自动预检依赖。
-6. 按用户/工作区管理 MCP Server 和 Skills。
-7. 用内置隧道和短链接把工作区安全暴露到公网访问。
-8. 使用中英文界面（默认跟随系统语言，也可个人覆盖）。
-9. 把凭据来源与关键配置透明化，便于团队治理和排障。
+1. 在统一 Web UI 聊天，并按消息快速切换 runtime。
+2. 使用消息级运行控制：runtime 覆盖、model 覆盖、推理强度（reasoning effort）。
+3. 在消息里直接使用 runtime 指令（`@claude`、`@codex`、`@gemini`）。
+4. 在同一工作区内创建子会话 Agent，并行推进多个任务线程。
+5. 配置 Claude/Codex/Gemini 凭据（Claude OAuth / setup-token / 第三方 token，Codex/Gemini API Key）。
+6. 使用个人主工作区与共享工作区，并管理成员角色。
+7. 把飞书/Telegram 会话绑定到指定工作区，支持用户级绑定策略。
+8. 创建定时任务（`cron`、`interval`、`once`），支持 agent 模式与 script 模式（script 仅管理员可创建/修改）。
+9. 使用 Workflow 模板生命周期（`draft -> published -> archived`），发布前预检依赖，发布时可选自动安装缺失 Skills。
+10. 通过 AI 能力生成与优化 Workflow 模板。
+11. 按用户/工作区管理 Skills 与 MCP Server（`stdio`、`http`、`sse`），支持从宿主同步。
+12. 在 Web 端浏览、上传、编辑、预览、下载工作区文件。
+13. 管理用户、邀请码、权限模板与登录审计日志。
+14. 用内置隧道和短链接把工作区安全暴露到公网访问。
+15. 使用中英文界面（默认跟随系统语言，也可个人覆盖）。
 
 ## 远程访问
 
@@ -110,9 +117,9 @@ SoloMesh 内置了远程访问内核，可把内网工作区地址通过隧道�
 
 | Runtime | ID | 鉴权方式 | 模型覆盖 | 自定义 Base URL | 主记忆文件 |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `claude` | OAuth / setup-token / 第三方 token | 否 | 支持 | `CLAUDE.md` |
+| Claude Code | `claude` | OAuth / setup-token / 第三方 token | 是 | 支持 | `CLAUDE.md` |
 | Codex | `codex` | `CODEX_API_KEY` / `OPENAI_API_KEY` | 是 | 支持（`OPENAI_BASE_URL`） | `AGENTS.md` |
-| Gemini CLI | `gemini` | OAuth 或 `GEMINI_API_KEY` / `GOOGLE_API_KEY` | 是 | 支持（`GOOGLE_GEMINI_BASE_URL`） | `GEMINI.md` |
+| Gemini CLI | `gemini` | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | 是 | 支持（`GOOGLE_GEMINI_BASE_URL`） | `GEMINI.md` |
 
 ## 快速开始（3 分钟）
 
@@ -152,9 +159,11 @@ make start
 
 - 用 `agentRuntime` 抽象运行时（`claude` / `codex` / `gemini`）
 - Runtime 列表与当前激活状态：`/api/config/runtimes`
-- Gemini OAuth 接口：
-  - `/api/config/runtime/gemini/oauth/start`
-  - `/api/config/runtime/gemini/oauth/callback`
+- 消息级覆盖参数：`agentRuntimeOverride`、`modelOverride`、`reasoningEffort`
+- 消息内 runtime 指令：`@claude`、`@codex`、`@gemini`
+- Claude OAuth 接口：
+  - `/api/config/runtime/oauth/start`
+  - `/api/config/runtime/oauth/callback`
 - API Key 来源可视化（`runtime` / `env` / `none`）和降级检测
 
 ### 协作渠道
@@ -163,18 +172,32 @@ make start
 - 用户级渠道与绑定：`/api/config/user-im/*`
 - 支持会话绑定与消息合并查询
 
+### 工作区协作与治理
+
+- 工作区执行模式：`container` / `host`
+- Host 模式安全边界：角色权限 + 挂载白名单
+- 工作区成员管理：owner/member 角色
+- 工作区初始化方式：从本地路径复制或从 Git URL 克隆
+- 用户治理能力：用户管理、邀请码、权限模板、审计日志
+
 ### 自动化与 Workflow
 
 - 调度类型：`cron`、`interval`、`once`
+- 任务执行类型：`agent`、`script`（script 创建/修改仅管理员）
 - 模板化自动化创建
 - Workflow 模板生命周期：`draft -> published -> archived`
 - 发布前依赖预检（`provider`、`skill`、`channel`、`mcp`）
+- AI 辅助工作流接口：
+  - `/api/workflows/templates/generate`
+  - `/api/workflows/templates/idea-optimize`
+  - `/api/workflows/templates/:scope/:templateId/optimize`
 - 支持按阶段指定 runtime（例如：Claude -> Codex -> Gemini）
 
 ### Skills、MCP、记忆体系
 
 - Skills 行为具备 runtime 感知
 - 用户级 MCP Server（`stdio`、`http`、`sse`）
+- 支持 Skills / MCP 从宿主机配置同步
 - Runtime 记忆文件映射：
   - `claude -> CLAUDE.md`
   - `codex -> AGENTS.md`
@@ -226,6 +249,12 @@ make reset-init      # 重置运行数据（危险操作）
 
 ## 关键 API
 
+- 鉴权与账号：`/api/auth/*`
+- 健康与监控：`/api/health`、`/api/status`、`/api/docker/build`
+- 工作区：`/api/groups/*`、`/api/groups/:jid/members*`
+- 工作区文件：`/api/groups/:jid/files*`
+- 工作区子会话 Agent：`/api/groups/:jid/agents*`
+- 记忆体系：`/api/memory/sources`、`/api/memory/search`、`/api/memory/file`、`/api/memory/global`
 - Runtime 配置：`/api/config/runtime*`、`/api/config/runtimes`
 - 渠道配置：`/api/config/feishu`、`/api/config/telegram`、`/api/config/user-im/*`
 - 远程访问：
@@ -238,6 +267,7 @@ make reset-init      # 重置运行数据（危险操作）
 - Tasks：`/api/tasks/*`
 - Skills：`/api/skills/*`
 - MCP Servers：`/api/mcp-servers/*`
+- 管理与治理：`/api/admin/users`、`/api/admin/invites`、`/api/admin/audit-log`
 
 ## 仓库结构
 
