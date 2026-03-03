@@ -724,50 +724,44 @@ export function CreateTaskForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-foreground/80">
-                {t('tasks.form.workspace')} <span className="text-red-500">*</span>
-              </label>
-              <Select value={formData.groupFolder || undefined} onValueChange={handleGroupChange}>
-                <SelectTrigger className={cn('w-full', errors.groupFolder && 'border-red-500')}>
-                  <SelectValue placeholder={t('tasks.form.choose')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {groups.map((group) => (
-                    <SelectItem key={group.jid} value={group.folder}>
-                      {group.name} ({group.folder})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.groupFolder && <p className="text-sm text-red-600">{errors.groupFolder}</p>}
+          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/20 p-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground/85">
+              <Sparkles className="h-4 w-4 text-brand-600" />
+              {t('tasks.form.templateTitle')}
             </div>
+            <Select value={templateChoice} onValueChange={handleTemplateChoiceChange}>
+              <SelectTrigger className="w-full bg-card">
+                <SelectValue placeholder={t('tasks.form.chooseTemplate')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TEMPLATE_NONE}>{t('tasks.form.noTemplate')}</SelectItem>
+                {templates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{t('tasks.form.templateHint')}</p>
+          </div>
 
-            <div className="space-y-2 rounded-xl border border-border/70 bg-muted/20 p-3">
-              <div className="flex items-center justify-between gap-2 text-sm font-medium text-foreground/85">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-brand-600" />
-                  {t('tasks.form.templateTitle')}
-                </div>
-                <span className="text-xs font-normal text-muted-foreground">
-                  {t('tasks.form.templateHint')}
-                </span>
-              </div>
-              <Select value={templateChoice} onValueChange={handleTemplateChoiceChange}>
-                <SelectTrigger className="flex-1 bg-card">
-                  <SelectValue placeholder={t('tasks.form.chooseTemplate')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={TEMPLATE_NONE}>{t('tasks.form.noTemplate')}</SelectItem>
-                  {templates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-foreground/80">
+              {t('tasks.form.workspace')} <span className="text-red-500">*</span>
+            </label>
+            <Select value={formData.groupFolder || undefined} onValueChange={handleGroupChange}>
+              <SelectTrigger className={cn('w-full', errors.groupFolder && 'border-red-500')}>
+                <SelectValue placeholder={t('tasks.form.choose')} />
+              </SelectTrigger>
+              <SelectContent>
+                {groups.map((group) => (
+                  <SelectItem key={group.jid} value={group.folder}>
+                    {group.name} ({group.folder})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.groupFolder && <p className="text-sm text-red-600">{errors.groupFolder}</p>}
           </div>
 
           <div className="space-y-2">
