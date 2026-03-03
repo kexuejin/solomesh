@@ -153,6 +153,12 @@ export class GroupQueue {
     return shared as ActiveGroupState;
   }
 
+  /** 检查指定 JID 是否有自己直接启动的活跃 runner（非通过 folder 共享匹配） */
+  hasDirectActiveRunner(groupJid: string): boolean {
+    const state = this.groups.get(groupJid);
+    return state?.active === true;
+  }
+
   enqueueMessageCheck(groupJid: string): void {
     if (this.shuttingDown) return;
 
@@ -411,6 +417,34 @@ export class GroupQueue {
     } catch {
       // ignore
     }
+  }
+
+  /**
+   * Close all active containers/processes so they restart with fresh credentials.
+   * Called after OAuth token refresh to ensure running agents pick up new tokens.
+   */
+  closeAllActiveForCredentialRefresh(): number {
+    let closed = 0;
+    for (const [jid, state] of this.groups) {
+      if (state.active && state.groupFolder) {
+        const inputDir = this.resolveIpcInputDir(state as ActiveGroupState);
+        try {
+          fs.mkdirSync(inputDir, { recursive: true });
+          fs.writeFileSync(path.join(inputDir, '_close'), '');
+          closed++;
+          logger.info(
+            { groupJid: jid, groupFolder: state.groupFolder },
+            'Sent close signal for credential refresh',
+          );
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (closed > 0) {
+      logger.info({ closed }, 'Closed active containers/processes for credential refresh');
+    }
+    return closed;
   }
 
   /**
