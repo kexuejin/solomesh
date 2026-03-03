@@ -210,6 +210,12 @@ import {
   listAutomationChatTemplateIds,
   parseAutomationChatCommandInput,
 } from './automation-chat-command.js';
+import {
+  buildLinkInsightAgentPrompt,
+  fetchLinkInsightSnapshot,
+  parseLinkInsightAgentOutput,
+  parseLinkInsightChatCommandInput,
+} from './link-insight-command.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const execFileAsync = promisify(execFile);
@@ -1139,10 +1145,129 @@ function formatAutomationCommandUsage(): string {
   ].join('\n');
 }
 
-function handleWorkflowControlMessages(
+function formatLinkInsightCommandUsage(): string {
+  return [
+    '用法：/insight <url> [关注点]',
+    '示例：/insight https://example.com/article 关注点=是否值得纳入下个迭代',
+    '说明：会抓取文章并输出分析结论，同时直接写入决策中心。',
+  ].join('\n');
+}
+
+async function handleLinkInsightChatCommand(
+  chatJid: string,
+  message: NewMessage,
+  command: {
+    url: string;
+    focus: string;
+  },
+): Promise<boolean> {
+  const targetChatJid = resolveAutomationCommandTargetChatJid(chatJid);
+  const targetGroup = getRegisteredGroup(targetChatJid);
+  if (!targetGroup) {
+    sendSystemMessage(chatJid, 'insight', '当前会话未绑定可用工作区，无法分析链接。');
+    return false;
+  }
+
+  sendSystemMessage(chatJid, 'insight', `开始分析链接：${command.url}`);
+
+  let snapshot: Awaited<ReturnType<typeof fetchLinkInsightSnapshot>>;
+  try {
+    snapshot = await fetchLinkInsightSnapshot(command.url);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    sendSystemMessage(chatJid, 'insight', `链接抓取失败：${errorMsg}`);
+    return false;
+  }
+
+  const providerOverride =
+    chatProviderSelections[chatJid]
+    ?? getWorkflowStageProvider(getRunningWorkflowState(chatJid))
+    ?? undefined;
+  const prompt = buildLinkInsightAgentPrompt(snapshot, command.focus);
+  let rawModelOutput = '';
+
+  await setTyping(chatJid, true);
+  try {
+    const output = await runAgent(
+      targetGroup,
+      prompt,
+      chatJid,
+      providerOverride,
+      async (result) => {
+        if (result.status === 'stream') return;
+        if (!result.result) return;
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        if (raw.trim()) {
+          rawModelOutput = raw;
+        }
+      },
+    );
+
+    if (output.status === 'error') {
+      sendSystemMessage(chatJid, 'insight', `分析失败：${output.error || 'unknown'}`);
+      return false;
+    }
+  } finally {
+    await setTyping(chatJid, false);
+  }
+
+  const analysis = parseLinkInsightAgentOutput(rawModelOutput, snapshot);
+  const scopeLevel = targetGroup.folder === MAIN_GROUP_FOLDER ? 'global' : 'workspace';
+  const sourceHost = (() => {
+    try {
+      return new URL(snapshot.url).host;
+    } catch {
+      return 'unknown';
+    }
+  })();
+
+  const decision = ingestDecisionItem(
+    {
+      title: analysis.decisionTitle,
+      summary: analysis.decisionSummary,
+      scope_level: scopeLevel,
+      scope_id: scopeLevel === 'workspace' ? targetGroup.folder : undefined,
+      priority: analysis.priority,
+      source_type: 'manual',
+      source_id: `link-insight:${sourceHost}`,
+      source_run_id: `${chatJid}:${message.id}`,
+      evidence: {
+        url: snapshot.url,
+        title: snapshot.title,
+        description: snapshot.description,
+        extracted_at: snapshot.extractedAt,
+        focus: command.focus || null,
+        key_points: analysis.keyPoints,
+      },
+      suggested_todo: {
+        title: analysis.suggestedTodoTitle,
+        description: analysis.suggestedTodoDescription,
+        priority: analysis.priority,
+      },
+    },
+    message.sender && message.sender !== '__system__'
+      ? message.sender
+      : 'system:insight',
+  );
+
+  const pointsPreview = analysis.keyPoints.length > 0
+    ? `\n要点：${analysis.keyPoints.slice(0, 3).join('；')}`
+    : '';
+  sendSystemMessage(
+    chatJid,
+    'insight',
+    `链接分析完成，已写入决策中心（ID=${decision.decision_item_id}）。\n结论：${analysis.decisionSummary}${pointsPreview}`,
+  );
+  return true;
+}
+
+async function handleWorkflowControlMessages(
   chatJid: string,
   messages: NewMessage[],
-): { messages: NewMessage[]; handledCommands: boolean } {
+): Promise<{ messages: NewMessage[]; handledCommands: boolean }> {
   const nowIso = new Date().toISOString();
   const ownerUserId = getWorkflowOwnerUserId(chatJid);
   const templateUsage = formatWorkflowTemplateUsage(ownerUserId);
@@ -1227,6 +1352,36 @@ function handleWorkflowControlMessages(
           automationParsed.contentForPrompt === message.content
             ? message
             : { ...message, content: automationParsed.contentForPrompt },
+        );
+      }
+      continue;
+    }
+
+    const linkInsightParsed = parseLinkInsightChatCommandInput(message.content);
+    if (linkInsightParsed.command.type !== 'none') {
+      handledCommands = true;
+      let commandSucceeded = false;
+      if (linkInsightParsed.command.type === 'help') {
+        commandSucceeded = true;
+        sendSystemMessage(chatJid, 'insight', formatLinkInsightCommandUsage());
+      } else if (linkInsightParsed.command.type === 'analyze') {
+        commandSucceeded = await handleLinkInsightChatCommand(chatJid, message, {
+          url: linkInsightParsed.command.url,
+          focus: linkInsightParsed.command.focus,
+        });
+      }
+
+      const shouldPassThroughPrompt =
+        commandSucceeded
+        && (
+          linkInsightParsed.contentForPrompt.trim().length > 0
+        || !!(message.attachments && message.attachments !== '[]')
+        );
+      if (shouldPassThroughPrompt) {
+        passthrough.push(
+          linkInsightParsed.contentForPrompt === message.content
+            ? message
+            : { ...message, content: linkInsightParsed.contentForPrompt },
         );
       }
       continue;
@@ -1963,7 +2118,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
   const lastProcessed = missedMessages[missedMessages.length - 1];
-  const workflowResolved = handleWorkflowControlMessages(chatJid, missedMessages);
+  const workflowResolved = await handleWorkflowControlMessages(chatJid, missedMessages);
   const pendingMessages = workflowResolved.messages;
   if (pendingMessages.length === 0) {
     lastAgentTimestamp[chatJid] = {
@@ -3316,7 +3471,7 @@ async function processAgentConversation(chatJid: string, agentId: string): Promi
   const missedMessages = getMessagesSince(virtualChatJid, sinceCursor);
   if (missedMessages.length === 0) return;
   const lastProcessed = missedMessages[missedMessages.length - 1];
-  const workflowResolved = handleWorkflowControlMessages(virtualChatJid, missedMessages);
+  const workflowResolved = await handleWorkflowControlMessages(virtualChatJid, missedMessages);
   const pendingMessages = workflowResolved.messages;
   if (pendingMessages.length === 0) {
     lastAgentTimestamp[virtualChatJid] = {
@@ -3684,7 +3839,7 @@ async function startMessageLoop(): Promise<void> {
             lastAgentTimestamp[chatJid] || EMPTY_CURSOR,
           );
           const messagesToSend = allPending.length > 0 ? allPending : groupMessages;
-          const workflowResolved = handleWorkflowControlMessages(chatJid, messagesToSend);
+          const workflowResolved = await handleWorkflowControlMessages(chatJid, messagesToSend);
           const workflowMessages = workflowResolved.messages;
           if (workflowMessages.length === 0) {
             const lastProcessed = messagesToSend[messagesToSend.length - 1];
