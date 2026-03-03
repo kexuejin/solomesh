@@ -24,3 +24,17 @@ test('workflow command suggestions support /automation alias', () => {
   const values = suggestions.map((item) => item.value);
   assert.deepEqual(values, ['/auto competitor-watch']);
 });
+
+test('workflow command suggestions show base command hints on slash', () => {
+  const suggestions = getWorkflowCommandSuggestions('/');
+  const values = suggestions.map((item) => item.value);
+  assert.ok(values.includes('/wf'));
+  assert.ok(values.includes('/auto'));
+  assert.ok(values.includes('/insight'));
+});
+
+test('workflow command suggestions include /insight by prefix', () => {
+  const suggestions = getWorkflowCommandSuggestions('/ins');
+  const values = suggestions.map((item) => item.value);
+  assert.deepEqual(values, ['/insight']);
+});

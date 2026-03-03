@@ -115,6 +115,17 @@ const AUTOMATION_HELP_SUGGESTION: WorkflowCommandSuggestion = {
   descriptionKey: 'chat.workflowDirective.automations.help',
 };
 
+const INSIGHT_HELP_SUGGESTION: WorkflowCommandSuggestion = {
+  value: '/insight',
+  label: 'insight',
+};
+
+const ROOT_COMMAND_SUGGESTIONS: WorkflowCommandSuggestion[] = [
+  { value: '/wf', label: 'wf' },
+  AUTOMATION_HELP_SUGGESTION,
+  INSIGHT_HELP_SUGGESTION,
+];
+
 function buildTemplateSuggestions(
   templates?: WorkflowTemplateSuggestionSource[],
   templateIds?: string[],
@@ -250,6 +261,30 @@ export function getWorkflowCommandSuggestions(
     }
 
     return [];
+  }
+
+  if (text.startsWith('/insight')) {
+    if (text === '/insight') {
+      return [INSIGHT_HELP_SUGGESTION];
+    }
+    if (text.startsWith('/insight ')) {
+      return [];
+    }
+    return [INSIGHT_HELP_SUGGESTION];
+  }
+
+  if (
+    text.startsWith('/')
+    && !text.includes(' ')
+    && !text.startsWith('/wf')
+    && !text.startsWith('/auto')
+    && !text.startsWith('/automation')
+    && !text.startsWith('/insight')
+  ) {
+    if (text === '/') return [...ROOT_COMMAND_SUGGESTIONS];
+    return ROOT_COMMAND_SUGGESTIONS.filter((item) =>
+      item.value.toLowerCase().startsWith(text),
+    );
   }
 
   if (!text.startsWith('/wf')) return [];
