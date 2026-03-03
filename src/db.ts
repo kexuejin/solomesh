@@ -29,7 +29,7 @@ import {
   Permission,
   PermissionTemplateKey,
 } from './types.js';
-import type { AgentProvider } from './agent-providers.js';
+import { AGENT_PROVIDER_IDS, type AgentProvider } from './agent-providers.js';
 import { getDefaultPermissions, normalizePermissions } from './permissions.js';
 import { listRuntimePrimaryMemoryFileNames } from './memory-file-alias.js';
 import { parseMessageProvider } from './message-provider.js';
@@ -151,8 +151,12 @@ export function initDatabase(): void {
       schedule_type TEXT NOT NULL,
       schedule_value TEXT NOT NULL,
       context_mode TEXT DEFAULT 'isolated',
+      operation_permission_mode TEXT DEFAULT 'default',
+      agent_runtime_override TEXT,
+      execution_environment TEXT DEFAULT 'local',
       execution_type TEXT DEFAULT 'agent',
       script_command TEXT,
+      skill_refs TEXT,
       next_run TEXT,
       last_run TEXT,
       last_result TEXT,
@@ -338,6 +342,10 @@ export function initDatabase(): void {
   ensureColumn('scheduled_tasks', 'created_by', 'TEXT');
   ensureColumn('scheduled_tasks', 'execution_type', "TEXT DEFAULT 'agent'");
   ensureColumn('scheduled_tasks', 'script_command', 'TEXT');
+  ensureColumn('scheduled_tasks', 'skill_refs', 'TEXT');
+  ensureColumn('scheduled_tasks', 'operation_permission_mode', "TEXT DEFAULT 'default'");
+  ensureColumn('scheduled_tasks', 'agent_runtime_override', 'TEXT');
+  ensureColumn('scheduled_tasks', 'execution_environment', "TEXT DEFAULT 'local'");
   ensureColumn('registered_groups', 'selected_skills', 'TEXT');
   ensureColumn('sessions', 'agent_id', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('agents', 'kind', "TEXT NOT NULL DEFAULT 'task'");
@@ -397,8 +405,12 @@ export function initDatabase(): void {
     'schedule_type',
     'schedule_value',
     'context_mode',
+    'operation_permission_mode',
+    'agent_runtime_override',
+    'execution_environment',
     'execution_type',
     'script_command',
+    'skill_refs',
     'next_run',
     'last_run',
     'last_result',
@@ -771,13 +783,104 @@ export function getMessagesSince(
     }));
 }
 
+type ScheduledTaskRow = Omit<ScheduledTask, 'skill_refs'> & {
+  skill_refs: string | null;
+};
+
+const TASK_SKILL_REF_RE = /^[\w-]+$/;
+
+function normalizeTaskSkillRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const ref = item.trim().toLowerCase();
+    if (!ref || seen.has(ref)) continue;
+    if (!TASK_SKILL_REF_RE.test(ref)) continue;
+    seen.add(ref);
+    normalized.push(ref);
+    if (normalized.length >= 64) break;
+  }
+  return normalized;
+}
+
+function parseTaskSkillRefs(raw: string | null | undefined): string[] {
+  if (typeof raw !== 'string' || raw.trim().length === 0) return [];
+  try {
+    return normalizeTaskSkillRefs(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+function parseTaskOperationPermissionMode(
+  raw: unknown,
+): 'default' | 'bypass' {
+  return raw === 'bypass' ? 'bypass' : 'default';
+}
+
+function parseTaskRuntimeOverride(raw: unknown): AgentProvider | null {
+  if (typeof raw !== 'string') return null;
+  return AGENT_PROVIDER_IDS.includes(raw as AgentProvider)
+    ? (raw as AgentProvider)
+    : null;
+}
+
+function parseTaskExecutionEnvironment(raw: unknown): 'local' | 'worktree' {
+  return raw === 'worktree' ? 'worktree' : 'local';
+}
+
+function parseTaskText(raw: unknown, fallback = ''): string {
+  if (typeof raw === 'string') return raw;
+  if (Buffer.isBuffer(raw)) return raw.toString('utf8');
+  if (raw === null || raw === undefined) return fallback;
+  return String(raw);
+}
+
+function parseTaskNullableText(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  return parseTaskText(raw);
+}
+
+function serializeTaskSkillRefs(skillRefs: string[] | undefined): string | null {
+  const normalized = normalizeTaskSkillRefs(skillRefs);
+  return normalized.length > 0 ? JSON.stringify(normalized) : null;
+}
+
+function mapScheduledTaskRow(row: ScheduledTaskRow): ScheduledTask {
+  return {
+    ...row,
+    prompt: parseTaskText((row as { prompt?: unknown }).prompt),
+    schedule_value: parseTaskText((row as { schedule_value?: unknown }).schedule_value),
+    script_command: parseTaskNullableText(
+      (row as { script_command?: unknown }).script_command,
+    ),
+    next_run: parseTaskNullableText((row as { next_run?: unknown }).next_run),
+    last_run: parseTaskNullableText((row as { last_run?: unknown }).last_run),
+    last_result: parseTaskNullableText(
+      (row as { last_result?: unknown }).last_result,
+    ),
+    operation_permission_mode: parseTaskOperationPermissionMode(
+      (row as { operation_permission_mode?: unknown }).operation_permission_mode,
+    ),
+    agent_runtime_override: parseTaskRuntimeOverride(
+      (row as { agent_runtime_override?: unknown }).agent_runtime_override,
+    ),
+    execution_environment: parseTaskExecutionEnvironment(
+      (row as { execution_environment?: unknown }).execution_environment,
+    ),
+    skill_refs: parseTaskSkillRefs(row.skill_refs),
+  };
+}
+
 export function createTask(
   task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, execution_type, script_command, next_run, status, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, operation_permission_mode, agent_runtime_override, execution_environment, execution_type, script_command, skill_refs, next_run, status, created_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -787,8 +890,12 @@ export function createTask(
     task.schedule_type,
     task.schedule_value,
     task.context_mode || 'isolated',
+    task.operation_permission_mode === 'bypass' ? 'bypass' : 'default',
+    task.agent_runtime_override ?? null,
+    task.execution_environment === 'worktree' ? 'worktree' : 'local',
     task.execution_type || 'agent',
     task.script_command ?? null,
+    serializeTaskSkillRefs(task.skill_refs),
     task.next_run,
     task.status,
     task.created_at,
@@ -797,23 +904,26 @@ export function createTask(
 }
 
 export function getTaskById(id: string): ScheduledTask | undefined {
-  return db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(id) as
-    | ScheduledTask
+  const row = db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(id) as
+    | ScheduledTaskRow
     | undefined;
+  return row ? mapScheduledTaskRow(row) : undefined;
 }
 
 export function getTasksForGroup(groupFolder: string): ScheduledTask[] {
-  return db
+  const rows = db
     .prepare(
       'SELECT * FROM scheduled_tasks WHERE group_folder = ? ORDER BY created_at DESC',
     )
-    .all(groupFolder) as ScheduledTask[];
+    .all(groupFolder) as ScheduledTaskRow[];
+  return rows.map((row) => mapScheduledTaskRow(row));
 }
 
 export function getAllTasks(): ScheduledTask[] {
-  return db
+  const rows = db
     .prepare('SELECT * FROM scheduled_tasks ORDER BY created_at DESC')
-    .all() as ScheduledTask[];
+    .all() as ScheduledTaskRow[];
+  return rows.map((row) => mapScheduledTaskRow(row));
 }
 
 export function updateTask(
@@ -825,8 +935,12 @@ export function updateTask(
       | 'schedule_type'
       | 'schedule_value'
       | 'context_mode'
+      | 'operation_permission_mode'
+      | 'agent_runtime_override'
+      | 'execution_environment'
       | 'execution_type'
       | 'script_command'
+      | 'skill_refs'
       | 'next_run'
       | 'status'
     >
@@ -851,6 +965,18 @@ export function updateTask(
     fields.push('context_mode = ?');
     values.push(updates.context_mode);
   }
+  if (updates.operation_permission_mode !== undefined) {
+    fields.push('operation_permission_mode = ?');
+    values.push(updates.operation_permission_mode === 'bypass' ? 'bypass' : 'default');
+  }
+  if (updates.agent_runtime_override !== undefined) {
+    fields.push('agent_runtime_override = ?');
+    values.push(updates.agent_runtime_override ?? null);
+  }
+  if (updates.execution_environment !== undefined) {
+    fields.push('execution_environment = ?');
+    values.push(updates.execution_environment === 'worktree' ? 'worktree' : 'local');
+  }
   if (updates.execution_type !== undefined) {
     fields.push('execution_type = ?');
     values.push(updates.execution_type);
@@ -858,6 +984,10 @@ export function updateTask(
   if (updates.script_command !== undefined) {
     fields.push('script_command = ?');
     values.push(updates.script_command);
+  }
+  if (updates.skill_refs !== undefined) {
+    fields.push('skill_refs = ?');
+    values.push(serializeTaskSkillRefs(updates.skill_refs));
   }
   if (updates.next_run !== undefined) {
     fields.push('next_run = ?');
@@ -901,7 +1031,7 @@ export function deleteTasksForGroup(groupFolder: string): void {
 
 export function getDueTasks(): ScheduledTask[] {
   const now = new Date().toISOString();
-  return db
+  const rows = db
     .prepare(
       `
     SELECT * FROM scheduled_tasks
@@ -909,7 +1039,8 @@ export function getDueTasks(): ScheduledTask[] {
     ORDER BY next_run
   `,
     )
-    .all(now) as ScheduledTask[];
+    .all(now) as ScheduledTaskRow[];
+  return rows.map((row) => mapScheduledTaskRow(row));
 }
 
 export function updateTaskAfterRun(
@@ -925,6 +1056,20 @@ export function updateTaskAfterRun(
     WHERE id = ?
   `,
   ).run(nextRun, now, lastResult, nextRun, id);
+}
+
+export function updateTaskAfterManualRun(
+  id: string,
+  lastResult: string,
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `
+    UPDATE scheduled_tasks
+    SET last_run = ?, last_result = ?
+    WHERE id = ?
+  `,
+  ).run(now, lastResult, id);
 }
 
 export function logTaskRun(log: TaskRunLog): void {
