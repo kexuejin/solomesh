@@ -31,11 +31,12 @@ test('settings page routes remote-access tab to RemoteAccessSection', () => {
 test('remote access section calls token verify/revoke/list endpoints', () => {
   const section = read('web/src/components/settings/RemoteAccessSection.tsx');
 
+  assert.ok(section.includes('/api/remote-access/links'));
+  assert.ok(section.includes('/api/remote-access/preferences'));
   assert.ok(section.includes('/api/remote-access/tokens/verify'));
   assert.ok(section.includes('/api/remote-access/tokens'));
   assert.ok(section.includes('/api/remote-access/tokens/revoke'));
   assert.ok(section.includes('/api/remote-access/tokens/revoke-by-id'));
-  assert.ok(section.includes('/api/remote-access/public/entry'));
   assert.ok(section.includes('settings.remoteAccess.verifyToken'));
   assert.ok(section.includes('settings.remoteAccess.revokeToken'));
   assert.ok(section.includes('settings.remoteAccess.tokenHistoryTitle'));

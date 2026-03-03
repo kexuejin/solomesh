@@ -39,3 +39,17 @@ test('allow custom token query key', () => {
     'https://demo.example.com/im?access_token=abc123&view=mobile',
   );
 });
+
+test('preserve query string in path when building access link', () => {
+  const builder = new AccessLinkBuilder();
+  const link = builder.build({
+    publicUrl: 'https://demo.example.com',
+    token: 'abc123',
+    path: '/api/remote-access/public/entry?path=%2Fchat%2Fmain',
+  });
+
+  assert.equal(
+    link,
+    'https://demo.example.com/api/remote-access/public/entry?path=%2Fchat%2Fmain&token=abc123',
+  );
+});

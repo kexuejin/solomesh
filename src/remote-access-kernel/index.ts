@@ -1,4 +1,5 @@
 export * from './access-token-service.js';
+export * from './ensure-tunnel-running.js';
 export * from './kernel.js';
 export * from './link-builder.js';
 export * from './provider-adapter.js';

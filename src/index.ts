@@ -44,6 +44,7 @@ import {
   MAIN_GROUP_FOLDER,
   POLL_INTERVAL,
   REMOTE_ACCESS_ENABLED,
+  REMOTE_ACCESS_DEFAULT_TARGET_URL,
   TIMEZONE,
   validateConfig,
 } from './config.js';
@@ -134,9 +135,10 @@ import {
   resolveProviderDirectiveMessages,
 } from './provider-directive.js';
 import {
-  buildWorkspacePublicEntryPath,
+  buildWorkspaceAccessLinkRequest,
   looksLikeRemoteAccessLinkRequest,
 } from './remote-access-kernel/workspace-linking.js';
+import { ensureRemoteAccessTunnelRunning } from './remote-access-kernel/ensure-tunnel-running.js';
 import {
   listImChannelDefinitions,
   parseImChannelFromJid,
@@ -322,11 +324,14 @@ async function maybeReplyWorkspaceRemoteAccessLink(
   }
 
   try {
-    const link = await remoteAccessKernel.createAccessLink({
-      ttlSeconds: 30 * 60,
-      oneTime: false,
-      path: buildWorkspacePublicEntryPath(group.folder),
+    await ensureRemoteAccessTunnelRunning({
+      kernel: remoteAccessKernel,
+      defaultTargetUrl: REMOTE_ACCESS_DEFAULT_TARGET_URL,
     });
+    const preferences = await remoteAccessKernel.getLinkPreferences();
+    const link = await remoteAccessKernel.createAccessLink(
+      buildWorkspaceAccessLinkRequest(group.folder, preferences),
+    );
     await sendMessage(
       chatJid,
       `Remote access link for workspace "${group.name}": ${link.url}`,

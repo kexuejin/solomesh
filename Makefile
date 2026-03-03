@@ -34,7 +34,7 @@ start: ## 一键启动生产环境（首次自动安装依赖和构建容器镜�
 	@if [ ! -d node_modules ] || [ ! -d web/node_modules ] || [ ! -d container/agent-runner/node_modules ]; then echo "📦 检测到依赖未完整安装，执行安装..."; $(MAKE) install; fi
 	@if command -v docker >/dev/null 2>&1 && ! docker image inspect solomesh-agent:latest >/dev/null 2>&1; then echo "🐳 构建 Agent 容器镜像..."; ./container/build.sh; fi
 	$(MAKE) build
-	npm run start
+	REMOTE_ACCESS_ENABLED=$${REMOTE_ACCESS_ENABLED:-true} npm run start
 
 # ─── Quality ─────────────────────────────────────────────────
 

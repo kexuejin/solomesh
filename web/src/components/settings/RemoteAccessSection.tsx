@@ -24,10 +24,19 @@ interface TunnelStatusSnapshot {
   lastError?: string;
 }
 
+type AccessLinkMode = 'token' | 'public';
+
+interface RemoteAccessLinkPreferences {
+  mode: AccessLinkMode;
+  ttlSeconds: number;
+  oneTime: boolean;
+}
+
 interface RemoteAccessStatusResponse {
   enabled: boolean;
   defaultTargetUrl: string;
   tunnel: TunnelStatusSnapshot;
+  preferences: RemoteAccessLinkPreferences;
   providers: Array<{
     kind: 'cloudflared' | 'ngrok';
     executable: string;
@@ -41,14 +50,21 @@ interface RemoteAccessStartStopResponse {
 }
 
 interface RemoteAccessLinkResult {
-  token: string;
-  expiresAt: string;
+  mode: AccessLinkMode;
+  code: string;
+  token?: string;
+  expiresAt?: string;
   url: string;
 }
 
 interface RemoteAccessLinkResponse {
   success: boolean;
   link: RemoteAccessLinkResult;
+}
+
+interface RemoteAccessPreferencesResponse {
+  success: boolean;
+  preferences: RemoteAccessLinkPreferences;
 }
 
 type AccessTokenVerifyResult =
@@ -94,6 +110,12 @@ interface RemoteAccessTokenListResponse {
 
 interface RemoteAccessSectionProps extends SettingsNotification {}
 
+const DEFAULT_LINK_PREFERENCES: RemoteAccessLinkPreferences = {
+  mode: 'token',
+  ttlSeconds: 1800,
+  oneTime: false,
+};
+
 function formatDateTime(value: string | undefined, locale: 'zh-CN' | 'en'): string {
   if (!value) return '-';
   return new Date(value).toLocaleString(localeForDateTime(locale));
@@ -110,9 +132,11 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
   const [providerLocked, setProviderLocked] = useState(false);
   const [targetUrl, setTargetUrl] = useState('');
   const [autoRestart, setAutoRestart] = useState(true);
-  const [ttlSeconds, setTtlSeconds] = useState('3600');
+  const [linkMode, setLinkMode] = useState<AccessLinkMode>(DEFAULT_LINK_PREFERENCES.mode);
+  const [ttlSeconds, setTtlSeconds] = useState(String(DEFAULT_LINK_PREFERENCES.ttlSeconds));
   const [path, setPath] = useState('/app');
-  const [oneTime, setOneTime] = useState(false);
+  const [oneTime, setOneTime] = useState(DEFAULT_LINK_PREFERENCES.oneTime);
+  const [savingDefaults, setSavingDefaults] = useState(false);
   const [latestLink, setLatestLink] = useState<RemoteAccessLinkResult | null>(null);
   const [copyDone, setCopyDone] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
@@ -131,6 +155,10 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
       const data = await api.get<RemoteAccessStatusResponse>('/api/remote-access/status');
       setStatus(data);
       setTargetUrl((current) => current || data.defaultTargetUrl);
+      const preferences = data.preferences ?? DEFAULT_LINK_PREFERENCES;
+      setLinkMode(preferences.mode);
+      setTtlSeconds(String(preferences.ttlSeconds));
+      setOneTime(preferences.oneTime);
     } catch (err) {
       const statusCode = (err as { status?: number })?.status;
       if (statusCode === 503) {
@@ -245,6 +273,13 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
               enabled: true,
               defaultTargetUrl: resolvedTargetUrl,
               tunnel: data.tunnel,
+              preferences: status?.preferences ?? {
+                mode: linkMode,
+                ttlSeconds: Number.isFinite(Number(ttlSeconds))
+                  ? Math.max(1, Math.floor(Number(ttlSeconds)))
+                  : DEFAULT_LINK_PREFERENCES.ttlSeconds,
+                oneTime,
+              },
               providers: status?.providers ?? [],
             },
       );
@@ -277,7 +312,7 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
 
   const handleCreateLink = async () => {
     const ttl = Number(ttlSeconds);
-    if (!Number.isFinite(ttl) || ttl <= 0) {
+    if (linkMode === 'token' && (!Number.isFinite(ttl) || ttl <= 0)) {
       setError(t('settings.remoteAccess.errors.invalidTtl'));
       return;
     }
@@ -289,16 +324,19 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
     setError(null);
     setNotice(null);
     try {
+      const payload: Record<string, unknown> = {
+        mode: linkMode,
+        path: redirectPath,
+      };
+      if (linkMode === 'token') {
+        payload.ttlSeconds = Math.floor(ttl);
+        payload.oneTime = oneTime;
+      }
       const data = await api.post<RemoteAccessLinkResponse>('/api/remote-access/links', {
-        ttlSeconds: Math.floor(ttl),
-        oneTime,
-        path: '/api/remote-access/public/entry',
-        extraQuery: {
-          path: redirectPath,
-        },
+        ...payload,
       });
       setLatestLink(data.link);
-      setTokenInput(data.link.token);
+      setTokenInput(data.link.token ?? '');
       setVerifyResult(null);
       setNotice(t('settings.remoteAccess.notice.linkCreated'));
       void loadTokenHistory();
@@ -306,6 +344,42 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
       setError(getErrorMessage(err, t('settings.remoteAccess.errors.createLinkFailed')));
     } finally {
       setCreatingLink(false);
+    }
+  };
+
+  const handleSaveLinkDefaults = async () => {
+    const ttl = Number(ttlSeconds);
+    if (linkMode === 'token' && (!Number.isFinite(ttl) || ttl <= 0)) {
+      setError(t('settings.remoteAccess.errors.invalidTtl'));
+      return;
+    }
+
+    setSavingDefaults(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const payload: Record<string, unknown> = {
+        mode: linkMode,
+        oneTime,
+      };
+      if (linkMode === 'token') {
+        payload.ttlSeconds = Math.floor(ttl);
+      }
+      const data = await api.put<RemoteAccessPreferencesResponse>(
+        '/api/remote-access/preferences',
+        payload,
+      );
+      setStatus((current) => current
+        ? { ...current, preferences: data.preferences }
+        : current);
+      setLinkMode(data.preferences.mode);
+      setTtlSeconds(String(data.preferences.ttlSeconds));
+      setOneTime(data.preferences.oneTime);
+      setNotice(t('settings.remoteAccess.notice.defaultsSaved'));
+    } catch (err) {
+      setError(getErrorMessage(err, t('settings.remoteAccess.errors.saveDefaultsFailed')));
+    } finally {
+      setSavingDefaults(false);
     }
   };
 
@@ -597,15 +671,46 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
           <div className="mt-1 text-sm font-medium text-foreground">{t('settings.remoteAccess.linkTitle')}</div>
         </div>
         <div className="space-y-3 px-4 py-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground/80">{t('settings.remoteAccess.ttlLabel')}</label>
-              <Input
-                value={ttlSeconds}
-                onChange={(e) => setTtlSeconds(e.target.value)}
-                className="h-10 rounded-xl border-border/75 bg-card/95"
-              />
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-foreground/80">
+              {t('settings.remoteAccess.linkModeLabel')}
+            </label>
+            <div className="inline-flex rounded-xl border border-border/70 bg-muted/20 p-1">
+              <button
+                type="button"
+                onClick={() => setLinkMode('token')}
+                className={`h-9 rounded-lg px-3 text-sm transition-colors ${
+                  linkMode === 'token'
+                    ? 'bg-card text-brand-700 shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t('settings.remoteAccess.linkModes.token')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLinkMode('public')}
+                className={`h-9 rounded-lg px-3 text-sm transition-colors ${
+                  linkMode === 'public'
+                    ? 'bg-card text-brand-700 shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t('settings.remoteAccess.linkModes.public')}
+              </button>
             </div>
+          </div>
+          <div className={`grid gap-3 ${linkMode === 'token' ? 'md:grid-cols-2' : ''}`}>
+            {linkMode === 'token' && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-foreground/80">{t('settings.remoteAccess.ttlLabel')}</label>
+                <Input
+                  value={ttlSeconds}
+                  onChange={(e) => setTtlSeconds(e.target.value)}
+                  className="h-10 rounded-xl border-border/75 bg-card/95"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-xs font-medium text-foreground/80">{t('settings.remoteAccess.pathLabel')}</label>
               <Input
@@ -615,28 +720,46 @@ export function RemoteAccessSection({ setNotice, setError }: RemoteAccessSection
               />
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm text-foreground/85">
-            <input
-              type="checkbox"
-              checked={oneTime}
-              onChange={(e) => setOneTime(e.target.checked)}
-              className="h-4 w-4"
-            />
-            {t('settings.remoteAccess.oneTimeLabel')}
-          </label>
+          {linkMode === 'token' && (
+            <label className="flex items-center gap-2 text-sm text-foreground/85">
+              <input
+                type="checkbox"
+                checked={oneTime}
+                onChange={(e) => setOneTime(e.target.checked)}
+                className="h-4 w-4"
+              />
+              {t('settings.remoteAccess.oneTimeLabel')}
+            </label>
+          )}
           <SettingsActionBar separated={false}>
             <Button onClick={handleCreateLink} disabled={creatingLink || !isRunning} className="h-10 rounded-xl">
               {creatingLink ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
               {creatingLink ? t('settings.remoteAccess.creatingLink') : t('settings.remoteAccess.createLink')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveLinkDefaults}
+              disabled={savingDefaults}
+              className="h-10 rounded-xl"
+            >
+              {savingDefaults && <Loader2 className="size-4 animate-spin" />}
+              {savingDefaults
+                ? t('settings.remoteAccess.savingDefaults')
+                : t('settings.remoteAccess.saveDefaults')}
             </Button>
           </SettingsActionBar>
 
           {latestLink && (
             <div className="rounded-xl border border-border/70 bg-muted/20 p-3 space-y-2">
               <div className="text-xs text-muted-foreground">
-                {t('settings.remoteAccess.linkExpiresAt', {
-                  value: formatDateTime(latestLink.expiresAt, locale),
-                })}
+                {latestLink.mode === 'token'
+                  ? t('settings.remoteAccess.linkExpiresAt', {
+                      value: formatDateTime(latestLink.expiresAt, locale),
+                    })
+                  : t('settings.remoteAccess.linkNeverExpires')}
+              </div>
+              <div className="text-xs text-muted-foreground break-all">
+                {t('settings.remoteAccess.linkCode', { value: latestLink.code })}
               </div>
               <div className="flex flex-col gap-2 md:flex-row">
                 <Input

@@ -79,6 +79,13 @@ export class TunnelManager {
 
   async getStatus(): Promise<TunnelStatusSnapshot> {
     const state = await this.stateStore.read();
+    if (state.tunnel.status === 'running' && !this.activeHandle) {
+      return this.patchTunnel({
+        status: 'stopped',
+        publicUrl: undefined,
+        lastError: 'Stale tunnel state detected (no active process).',
+      });
+    }
     return state.tunnel;
   }
 

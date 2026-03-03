@@ -12,10 +12,22 @@ import type {
 
 class FakeKernel {
   private readonly result: AccessTokenVerifyResult;
+  private readonly codeResults: Record<
+    string,
+    { ok: true; token?: string; path?: string } | { ok: false; reason: 'not_found' | 'expired' }
+  >;
   public readonly calls: Array<{ token: string; consumeOneTime?: boolean }> = [];
+  public readonly codeCalls: string[] = [];
 
-  constructor(result: AccessTokenVerifyResult) {
+  constructor(
+    result: AccessTokenVerifyResult,
+    codeResults: Record<
+      string,
+      { ok: true; token?: string; path?: string } | { ok: false; reason: 'not_found' | 'expired' }
+    > = {},
+  ) {
     this.result = result;
+    this.codeResults = codeResults;
   }
 
   async verifyAccessToken(
@@ -24,6 +36,13 @@ class FakeKernel {
   ): Promise<AccessTokenVerifyResult> {
     this.calls.push({ token, consumeOneTime: options?.consumeOneTime });
     return this.result;
+  }
+
+  async resolveAccessCode(
+    code: string,
+  ): Promise<{ ok: true; token?: string; path?: string } | { ok: false; reason: 'not_found' | 'expired' }> {
+    this.codeCalls.push(code);
+    return this.codeResults[code] ?? { ok: false, reason: 'not_found' };
   }
 
   async getTunnelStatus(): Promise<TunnelStatusSnapshot> {
@@ -57,7 +76,7 @@ test('public entry returns friendly html for missing token', async () => {
   assert.equal(res.status, 400);
   assert.match(res.headers.get('content-type') || '', /text\/html/i);
   const text = await res.text();
-  assert.match(text, /Missing token/i);
+  assert.match(text, /Missing access key/i);
   assert.match(text, /SoloMesh Remote Access/i);
 });
 
@@ -95,6 +114,103 @@ test('public entry redirects to requested path when token is valid', async () =>
   assert.equal(res.status, 302);
   assert.equal(res.headers.get('location'), '/settings?tab=runtime');
   assert.deepEqual(kernel.calls, [{ token: 'ok-token', consumeOneTime: true }]);
+});
+
+test('public entry redirects using token payload path when query path is missing', async () => {
+  const app = createApp(
+    new FakeKernel({
+      valid: true,
+      payload: {
+        v: 1,
+        iat: 1_700_000_000,
+        exp: 1_700_000_100,
+        jti: 'token-embedded-path',
+        oneTime: false,
+        path: '/chat/main',
+      },
+    }),
+  );
+
+  const res = await app.request(
+    'http://example.com/api/remote-access/public/entry?token=ok-token',
+    { redirect: 'manual' },
+  );
+
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), '/chat/main');
+});
+
+test('public entry accepts token from path segment', async () => {
+  const app = createApp(
+    new FakeKernel({
+      valid: true,
+      payload: {
+        v: 1,
+        iat: 1_700_000_000,
+        exp: 1_700_000_100,
+        jti: 'token-path-param',
+        oneTime: false,
+        path: '/chat/main',
+      },
+    }),
+  );
+
+  const res = await app.request(
+    'http://example.com/api/remote-access/public/entry/ok-token',
+    { redirect: 'manual' },
+  );
+
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), '/chat/main');
+});
+
+test('public entry resolves short code to public path without token verification', async () => {
+  const kernel = new FakeKernel(
+    { valid: false, reason: 'malformed' },
+    {
+      abc123: { ok: true, path: '/chat/main' },
+    },
+  );
+  const app = createApp(kernel);
+
+  const res = await app.request(
+    'http://example.com/api/remote-access/public/entry?code=abc123',
+    { redirect: 'manual' },
+  );
+
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), '/chat/main');
+  assert.deepEqual(kernel.calls, []);
+  assert.deepEqual(kernel.codeCalls, ['abc123']);
+});
+
+test('public entry resolves short code to token and verifies mapped token', async () => {
+  const kernel = new FakeKernel(
+    {
+      valid: true,
+      payload: {
+        v: 1,
+        iat: 1_700_000_000,
+        exp: 1_700_000_100,
+        jti: 'token-from-code',
+        oneTime: false,
+        path: '/chat/main',
+      },
+    },
+    {
+      abc123: { ok: true, token: 'mapped-token', path: '/chat/main' },
+    },
+  );
+  const app = createApp(kernel);
+
+  const res = await app.request(
+    'http://example.com/api/remote-access/public/entry?code=abc123',
+    { redirect: 'manual' },
+  );
+
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), '/chat/main');
+  assert.deepEqual(kernel.calls, [{ token: 'mapped-token', consumeOneTime: true }]);
 });
 
 test('public entry sanitizes external redirect path', async () => {

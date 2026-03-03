@@ -8,6 +8,7 @@ import {
 } from '../remote-access-kernel/provider-availability.js';
 import type {
   AccessLinkRequest,
+  RemoteAccessLinkPreferences,
   TunnelProviderKind,
   TunnelStartRequest,
 } from '../remote-access-kernel/types.js';
@@ -157,14 +158,25 @@ function parseAccessLinkRequest(value: unknown): AccessLinkRequest | null {
   if (!isRecord(value)) {
     return null;
   }
-  if (typeof value.ttlSeconds !== 'number' || !Number.isFinite(value.ttlSeconds)) {
-    return null;
-  }
-  const ttlSeconds = Math.floor(value.ttlSeconds);
-  if (ttlSeconds <= 0 || ttlSeconds > 7 * 24 * 60 * 60) {
-    return null;
+
+  let mode: AccessLinkRequest['mode'];
+  if (value.mode !== undefined) {
+    if (value.mode !== 'token' && value.mode !== 'public') {
+      return null;
+    }
+    mode = value.mode;
   }
 
+  let ttlSeconds: number | undefined;
+  if (value.ttlSeconds !== undefined) {
+    if (typeof value.ttlSeconds !== 'number' || !Number.isFinite(value.ttlSeconds)) {
+      return null;
+    }
+    ttlSeconds = Math.floor(value.ttlSeconds);
+    if (ttlSeconds <= 0 || ttlSeconds > 7 * 24 * 60 * 60) {
+      return null;
+    }
+  }
   if (value.oneTime !== undefined && typeof value.oneTime !== 'boolean') {
     return null;
   }
@@ -177,11 +189,45 @@ function parseAccessLinkRequest(value: unknown): AccessLinkRequest | null {
   }
 
   return {
+    mode,
     ttlSeconds,
     oneTime: value.oneTime as boolean | undefined,
     path: value.path as string | undefined,
     extraQuery,
   };
+}
+
+function parseLinkPreferencesRequest(
+  value: unknown,
+): Partial<RemoteAccessLinkPreferences> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const out: Partial<RemoteAccessLinkPreferences> = {};
+  if (value.mode !== undefined) {
+    if (value.mode !== 'token' && value.mode !== 'public') {
+      return null;
+    }
+    out.mode = value.mode;
+  }
+  if (value.ttlSeconds !== undefined) {
+    if (typeof value.ttlSeconds !== 'number' || !Number.isFinite(value.ttlSeconds)) {
+      return null;
+    }
+    const ttlSeconds = Math.floor(value.ttlSeconds);
+    if (ttlSeconds <= 0 || ttlSeconds > 7 * 24 * 60 * 60) {
+      return null;
+    }
+    out.ttlSeconds = ttlSeconds;
+  }
+  if (value.oneTime !== undefined) {
+    if (typeof value.oneTime !== 'boolean') {
+      return null;
+    }
+    out.oneTime = value.oneTime;
+  }
+  return out;
 }
 
 function parseTokenRequest(value: unknown): string | null {
@@ -300,7 +346,7 @@ async function getProviderAvailability(
   return Promise.all(checks);
 }
 
-remoteAccessRoutes.get('/public/entry', async (c) => {
+async function handlePublicEntry(c: any) {
   const resolved = resolveDeps();
   if (!resolved) {
     return c.html(
@@ -311,12 +357,54 @@ remoteAccessRoutes.get('/public/entry', async (c) => {
       503,
     );
   }
-  const token = (c.req.query('token') || '').trim();
+
+  const queryCode = (c.req.query('code') || '').trim();
+  const queryToken = (c.req.query('token') || '').trim();
+  const pathIdentifier = (c.req.param('identifier') || '').trim();
+
+  let token = '';
+  let resolvedPathFromCode: string | undefined;
+
+  const codeCandidate = (queryCode || pathIdentifier).trim();
+  if (codeCandidate) {
+    const codeResolution = await resolved.kernel.resolveAccessCode(codeCandidate);
+    if (codeResolution.ok) {
+      resolvedPathFromCode = codeResolution.path;
+      if (codeResolution.token) {
+        token = codeResolution.token;
+      } else {
+        const redirectPath = sanitizeRedirectPath(
+          c.req.query('path') || codeResolution.path,
+        );
+        return c.redirect(redirectPath, 302);
+      }
+    } else if (codeResolution.reason === 'expired') {
+      return c.html(
+        renderPublicEntryErrorHtml({
+          title: 'Link expired',
+          message: 'This access link is expired.',
+          reason: codeResolution.reason,
+        }),
+        401,
+      );
+    } else if (queryCode) {
+      return c.html(
+        renderPublicEntryErrorHtml({
+          title: 'Invalid link',
+          message: 'This access link is invalid or not found.',
+          reason: codeResolution.reason,
+        }),
+        404,
+      );
+    }
+  }
+
+  token = (token || queryToken || pathIdentifier).trim();
   if (!token) {
     return c.html(
       renderPublicEntryErrorHtml({
-        title: 'Missing token',
-        message: 'Access token is required to open this link.',
+        title: 'Missing access key',
+        message: 'Access code or token is required to open this link.',
       }),
       400,
     );
@@ -336,21 +424,29 @@ remoteAccessRoutes.get('/public/entry', async (c) => {
     );
   }
 
-  const redirectPath = sanitizeRedirectPath(c.req.query('path'));
+  const requestedPath = c.req.query('path') || resolvedPathFromCode || verify.payload.path;
+  const redirectPath = sanitizeRedirectPath(requestedPath);
   return c.redirect(redirectPath, 302);
-});
+}
+
+remoteAccessRoutes.get('/public/entry', handlePublicEntry);
+remoteAccessRoutes.get('/public/entry/:identifier', handlePublicEntry);
 
 remoteAccessRoutes.get('/status', authMiddleware, systemConfigMiddleware, async (c) => {
   const resolved = resolveDeps();
   if (!resolved) {
     return c.json({ error: 'Remote access is disabled.' }, 503);
   }
-  const tunnel = await resolved.kernel.getTunnelStatus();
+  const [tunnel, preferences] = await Promise.all([
+    resolved.kernel.getTunnelStatus(),
+    resolved.kernel.getLinkPreferences(),
+  ]);
   const providers = await getProviderAvailability(resolved, { autoInstall: false });
   return c.json({
     enabled: true,
     defaultTargetUrl: resolved.defaultTargetUrl,
     tunnel,
+    preferences,
     providers,
   });
 });
@@ -416,6 +512,24 @@ remoteAccessRoutes.post('/links', authMiddleware, systemConfigMiddleware, async 
     const message = toErrorMessage(error);
     const status = message.includes('Tunnel is not running') ? 409 : 500;
     return c.json({ error: message }, status);
+  }
+});
+
+remoteAccessRoutes.put('/preferences', authMiddleware, systemConfigMiddleware, async (c) => {
+  const resolved = resolveDeps();
+  if (!resolved) {
+    return c.json({ error: 'Remote access is disabled.' }, 503);
+  }
+  const body = await c.req.json().catch(() => null);
+  const request = parseLinkPreferencesRequest(body);
+  if (!request) {
+    return c.json({ error: 'Invalid request body.' }, 400);
+  }
+  try {
+    const preferences = await resolved.kernel.updateLinkPreferences(request);
+    return c.json({ success: true, preferences });
+  } catch (error) {
+    return c.json({ error: toErrorMessage(error) }, 500);
   }
 });
 

@@ -3,6 +3,12 @@ import path from 'node:path';
 
 import type { RemoteAccessKernelState, TunnelStatusSnapshot } from './types.js';
 
+const DEFAULT_LINK_PREFERENCES: RemoteAccessKernelState['preferences'] = {
+  mode: 'token',
+  ttlSeconds: 30 * 60,
+  oneTime: false,
+};
+
 function createDefaultTunnelSnapshot(): TunnelStatusSnapshot {
   const now = new Date().toISOString();
   return {
@@ -18,6 +24,8 @@ export function createDefaultKernelState(): RemoteAccessKernelState {
     revokedTokenIds: [],
     consumedTokenIds: [],
     issuedTokens: [],
+    accessCodes: [],
+    preferences: { ...DEFAULT_LINK_PREFERENCES },
   };
 }
 
@@ -48,6 +56,59 @@ function parseIssuedTokens(value: unknown): RemoteAccessKernelState['issuedToken
     });
   }
   return out;
+}
+
+function parseAccessCodes(value: unknown): RemoteAccessKernelState['accessCodes'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const out: RemoteAccessKernelState['accessCodes'] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    if (
+      typeof record.code !== 'string'
+      || typeof record.createdAt !== 'string'
+      || !record.code.trim()
+      || (record.expiresAt !== undefined && typeof record.expiresAt !== 'string')
+      || (record.token !== undefined && typeof record.token !== 'string')
+      || (record.path !== undefined && typeof record.path !== 'string')
+    ) {
+      continue;
+    }
+    out.push({
+      code: record.code,
+      createdAt: record.createdAt,
+      expiresAt: record.expiresAt,
+      token: record.token,
+      path: record.path,
+    });
+  }
+  return out;
+}
+
+function parsePreferences(value: unknown): RemoteAccessKernelState['preferences'] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { ...DEFAULT_LINK_PREFERENCES };
+  }
+  const record = value as Record<string, unknown>;
+  const mode = record.mode === 'public' ? 'public' : 'token';
+  const ttlSecondsRaw = typeof record.ttlSeconds === 'number'
+    ? Math.floor(record.ttlSeconds)
+    : DEFAULT_LINK_PREFERENCES.ttlSeconds;
+  const ttlSeconds = Number.isFinite(ttlSecondsRaw) && ttlSecondsRaw > 0
+    ? ttlSecondsRaw
+    : DEFAULT_LINK_PREFERENCES.ttlSeconds;
+  const oneTime = typeof record.oneTime === 'boolean'
+    ? record.oneTime
+    : DEFAULT_LINK_PREFERENCES.oneTime;
+  return {
+    mode,
+    ttlSeconds,
+    oneTime,
+  };
 }
 
 export interface RemoteAccessStateStore {
@@ -105,6 +166,8 @@ export class JsonRemoteAccessStateStore implements RemoteAccessStateStore {
           ? parsed.consumedTokenIds
           : [],
         issuedTokens: parseIssuedTokens(parsed.issuedTokens),
+        accessCodes: parseAccessCodes((parsed as any).accessCodes),
+        preferences: parsePreferences((parsed as any).preferences),
       };
     } catch {
       return createDefaultKernelState();

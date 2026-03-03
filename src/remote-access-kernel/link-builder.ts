@@ -30,7 +30,12 @@ export class AccessLinkBuilder {
   build(request: BuildAccessLinkRequest): string {
     const url = new URL(request.publicUrl);
     if (request.path !== undefined) {
-      url.pathname = normalizePath(request.path);
+      const resolvedPath = new URL(
+        normalizePath(request.path),
+        'http://solomesh.local',
+      );
+      url.pathname = resolvedPath.pathname;
+      url.search = resolvedPath.search;
     }
     url.searchParams.set(this.tokenQueryKey, request.token);
     for (const [key, value] of Object.entries(request.extraQuery ?? {})) {

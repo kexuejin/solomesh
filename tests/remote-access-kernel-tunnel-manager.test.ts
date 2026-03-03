@@ -113,3 +113,36 @@ test('auto restart tunnel when provider process exits', async () => {
   assert.equal(status.restartCount, 1);
   assert.equal(provider.startCalls, 2);
 });
+
+test('rehydrates stale running state as stopped when no active process exists', async () => {
+  const stateStore = new InMemoryRemoteAccessStateStore({
+    tunnel: {
+      status: 'running',
+      provider: 'cloudflared',
+      targetUrl: 'http://127.0.0.1:3000',
+      publicUrl: 'https://stale.trycloudflare.com',
+      startedAt: '2026-03-03T01:00:00.000Z',
+      updatedAt: '2026-03-03T01:00:00.000Z',
+      restartCount: 0,
+    },
+    revokedTokenIds: [],
+    consumedTokenIds: [],
+    issuedTokens: [],
+    accessCodes: [],
+    preferences: {
+      mode: 'token',
+      ttlSeconds: 1800,
+      oneTime: false,
+    },
+  });
+  const manager = new TunnelManager({
+    stateStore,
+    providers: [],
+    now: () => new Date('2026-03-03T01:10:00.000Z'),
+  });
+
+  const status = await manager.getStatus();
+  assert.equal(status.status, 'stopped');
+  assert.equal(status.publicUrl, undefined);
+  assert.match(status.lastError || '', /stale/i);
+});

@@ -21,16 +21,35 @@ export interface TunnelStartRequest {
 }
 
 export interface AccessLinkRequest {
-  ttlSeconds: number;
+  ttlSeconds?: number;
   oneTime?: boolean;
   path?: string;
   extraQuery?: Record<string, string>;
+  mode?: AccessLinkMode;
 }
 
 export interface AccessLinkResult {
-  token: string;
-  expiresAt: string;
+  mode: AccessLinkMode;
+  code: string;
+  token?: string;
+  expiresAt?: string;
   url: string;
+}
+
+export type AccessLinkMode = 'token' | 'public';
+
+export interface RemoteAccessLinkPreferences {
+  mode: AccessLinkMode;
+  ttlSeconds: number;
+  oneTime: boolean;
+}
+
+export interface AccessCodeRecord {
+  code: string;
+  createdAt: string;
+  expiresAt?: string;
+  token?: string;
+  path?: string;
 }
 
 export interface IssuedAccessToken {
@@ -67,6 +86,7 @@ export interface AccessTokenPayload {
   exp: number;
   jti: string;
   oneTime: boolean;
+  path?: string;
 }
 
 export type AccessTokenVerifyResult =
@@ -84,6 +104,8 @@ export interface RemoteAccessKernelState {
   revokedTokenIds: string[];
   consumedTokenIds: string[];
   issuedTokens: AccessTokenRecord[];
+  accessCodes: AccessCodeRecord[];
+  preferences: RemoteAccessLinkPreferences;
 }
 
 export type RemoteAccessKernelEvent =

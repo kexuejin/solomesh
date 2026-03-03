@@ -81,8 +81,30 @@ Set default runtime, expose source of secrets, and prevent risky host access by 
 4. Create automation tasks from templates and edit schedule visually.
 5. Run workflow templates with stage dependencies and publish precheck.
 6. Manage MCP servers and Skills per user/workspace.
-7. Use Chinese/English UI (auto-detect system language, user override supported).
-8. Keep runtime credentials and operational settings visible and governable for the team.
+7. Expose workspace access with built-in tunnel + short links.
+8. Use Chinese/English UI (auto-detect system language, user override supported).
+9. Keep runtime credentials and operational settings visible and governable for the team.
+
+## Remote Access
+
+SoloMesh includes a built-in remote-access kernel for exposing internal workspace URLs through a tunnel.
+
+- Tunnel providers: `cloudflared` and `ngrok`
+- Short-link entry: `/r/<code>`
+- Link modes:
+  - `token` mode: expiring links (TTL + optional one-time token)
+  - `public` mode: no-token links without expiry
+- Login flow: if unauthenticated, user is redirected to `/login` and then returned to the target workspace path.
+- Workspace assistant behavior: in Web chat and IM channels (Feishu/Telegram), requests like "remote access" can auto-generate and reply with the workspace short link.
+
+Settings path: `Settings -> Remote Access`
+
+Useful env vars:
+
+- `REMOTE_ACCESS_ENABLED` (enabled by default in `make start`)
+- `CLOUDFLARED_BIN`
+- `NGROK_BIN`
+- `REMOTE_ACCESS_AUTO_INSTALL_PROVIDERS` (defaults to auto-install provider binaries)
 
 ## Runtime Support
 
@@ -206,6 +228,12 @@ make reset-init      # reset runtime data (destructive)
 
 - Runtime config: `/api/config/runtime*`, `/api/config/runtimes`
 - Channels: `/api/config/feishu`, `/api/config/telegram`, `/api/config/user-im/*`
+- Remote access:
+  - `/api/remote-access/status`
+  - `/api/remote-access/tunnel/start`, `/api/remote-access/tunnel/stop`
+  - `/api/remote-access/links`
+  - `/api/remote-access/preferences`
+  - `/api/remote-access/public/entry`
 - Workflows: `/api/workflows/templates/*`
 - Tasks: `/api/tasks/*`
 - Skills: `/api/skills/*`

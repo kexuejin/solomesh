@@ -12,6 +12,7 @@ import type {
 export interface IssueAccessTokenRequest {
   ttlSeconds: number;
   oneTime?: boolean;
+  path?: string;
 }
 
 export interface VerifyAccessTokenOptions {
@@ -53,6 +54,7 @@ function parsePayload(value: string): AccessTokenPayload | null {
       || typeof parsed.jti !== 'string'
       || parsed.jti.length === 0
       || typeof parsed.oneTime !== 'boolean'
+      || (parsed.path !== undefined && typeof parsed.path !== 'string')
     ) {
       return null;
     }
@@ -91,6 +93,7 @@ export class AccessTokenService {
       exp: expiresAt,
       jti: this.randomId(),
       oneTime: request.oneTime ?? false,
+      path: request.path,
     };
 
     const payloadPart = Buffer.from(JSON.stringify(payload), 'utf8').toString(

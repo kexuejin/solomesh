@@ -81,8 +81,30 @@
 4. 通过模板快速创建自动化任务，并可视化编辑调度。
 5. 用多阶段 Workflow 模板跑复杂流程，发布前自动预检依赖。
 6. 按用户/工作区管理 MCP Server 和 Skills。
-7. 使用中英文界面（默认跟随系统语言，也可个人覆盖）。
-8. 把凭据来源与关键配置透明化，便于团队治理和排障。
+7. 用内置隧道和短链接把工作区安全暴露到公网访问。
+8. 使用中英文界面（默认跟随系统语言，也可个人覆盖）。
+9. 把凭据来源与关键配置透明化，便于团队治理和排障。
+
+## 远程访问
+
+SoloMesh 内置了远程访问内核，可把内网工作区地址通过隧道暴露并生成短链接。
+
+- 隧道 Provider：`cloudflared`、`ngrok`
+- 短链入口：`/r/<code>`
+- 链接模式：
+  - `token`：带过期时间（TTL）和可选一次性令牌
+  - `public`：无 token、无过期时间
+- 登录流程：未登录访问时会先跳转到 `/login`，登录后自动回到目标工作区路径。
+- 助手自动回复：在 Web 会话和 IM 渠道（飞书/Telegram）里发送“远程访问”等请求，可自动回复当前工作区短链。
+
+设置入口：`设置 -> 远程访问`
+
+常用环境变量：
+
+- `REMOTE_ACCESS_ENABLED`（`make start` 默认开启）
+- `CLOUDFLARED_BIN`
+- `NGROK_BIN`
+- `REMOTE_ACCESS_AUTO_INSTALL_PROVIDERS`（默认自动安装 provider 可执行文件）
 
 ## Runtime 支持
 
@@ -206,6 +228,12 @@ make reset-init      # 重置运行数据（危险操作）
 
 - Runtime 配置：`/api/config/runtime*`、`/api/config/runtimes`
 - 渠道配置：`/api/config/feishu`、`/api/config/telegram`、`/api/config/user-im/*`
+- 远程访问：
+  - `/api/remote-access/status`
+  - `/api/remote-access/tunnel/start`、`/api/remote-access/tunnel/stop`
+  - `/api/remote-access/links`
+  - `/api/remote-access/preferences`
+  - `/api/remote-access/public/entry`
 - Workflows：`/api/workflows/templates/*`
 - Tasks：`/api/tasks/*`
 - Skills：`/api/skills/*`

@@ -55,6 +55,7 @@ import {
   JsonRemoteAccessStateStore,
   CloudflaredTunnelProviderAdapter,
   NgrokTunnelProviderAdapter,
+  ensureRemoteAccessTunnelRunning,
 } from './remote-access-kernel/index.js';
 
 // Database and types (only for handleWebUserMessage and broadcast)
@@ -99,7 +100,7 @@ import {
   type ReasoningEffort,
 } from './chat-run-overrides.js';
 import {
-  buildWorkspacePublicEntryPath,
+  buildWorkspaceAccessLinkRequest,
   looksLikeRemoteAccessLinkRequest,
 } from './remote-access-kernel/workspace-linking.js';
 
@@ -268,6 +269,18 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/browse', browseRoutes);
 app.route('/api/groups', agentRoutes); // Agent routes under /api/groups/:jid/agents
 app.route('/api', monitorRoutes);
+app.get('/r/:code', (c) => {
+  const code = (c.req.param('code') || '').trim();
+  const target = new URL('/api/remote-access/public/entry', 'http://solomesh.local');
+  if (code) {
+    target.searchParams.set('code', code);
+  }
+  const path = c.req.query('path');
+  if (path) {
+    target.searchParams.set('path', path);
+  }
+  return c.redirect(`${target.pathname}${target.search}`, 302);
+});
 
 // --- POST /api/messages ---
 
@@ -395,11 +408,14 @@ async function handleWebUserMessage(
       );
     } else {
       try {
-        const link = await remoteAccessKernel.createAccessLink({
-          ttlSeconds: 30 * 60,
-          oneTime: false,
-          path: buildWorkspacePublicEntryPath(group.folder),
+        await ensureRemoteAccessTunnelRunning({
+          kernel: remoteAccessKernel,
+          defaultTargetUrl: REMOTE_ACCESS_DEFAULT_TARGET_URL,
         });
+        const preferences = await remoteAccessKernel.getLinkPreferences();
+        const link = await remoteAccessKernel.createAccessLink(
+          buildWorkspaceAccessLinkRequest(group.folder, preferences),
+        );
         sendAssistantMessage(
           chatJid,
           `Remote access link for workspace "${group.name}": ${link.url}`,

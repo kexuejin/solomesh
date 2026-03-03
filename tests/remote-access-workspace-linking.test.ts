@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildWorkspaceAccessLinkRequest,
   buildWorkspaceChatPath,
   buildWorkspacePublicEntryPath,
   looksLikeRemoteAccessLinkRequest,
@@ -14,10 +15,31 @@ test('buildWorkspaceChatPath encodes folder name into /chat/:folder route', () =
 
 test('buildWorkspacePublicEntryPath always redirects to workspace route', () => {
   const path = buildWorkspacePublicEntryPath('team-a');
-  assert.equal(
-    path,
-    '/api/remote-access/public/entry?path=%2Fchat%2Fteam-a',
-  );
+  assert.equal(path, '/chat/team-a');
+});
+
+test('buildWorkspaceAccessLinkRequest maps preference mode to request payload', () => {
+  const tokenRequest = buildWorkspaceAccessLinkRequest('team-a', {
+    mode: 'token',
+    ttlSeconds: 1200,
+    oneTime: true,
+  });
+  assert.deepEqual(tokenRequest, {
+    mode: 'token',
+    ttlSeconds: 1200,
+    oneTime: true,
+    path: '/chat/team-a',
+  });
+
+  const publicRequest = buildWorkspaceAccessLinkRequest('team-a', {
+    mode: 'public',
+    ttlSeconds: 1200,
+    oneTime: true,
+  });
+  assert.deepEqual(publicRequest, {
+    mode: 'public',
+    path: '/chat/team-a',
+  });
 });
 
 test('looksLikeRemoteAccessLinkRequest matches zh/en request phrases', () => {

@@ -11,7 +11,7 @@ test('chat workspace header includes remote-access entry action', () => {
   const chatView = read('web/src/components/chat/ChatView.tsx');
 
   assert.ok(chatView.includes('/api/remote-access/links'));
-  assert.ok(chatView.includes('/api/remote-access/public/entry'));
+  assert.ok(chatView.includes('path: `/chat/${encodeURIComponent(group.folder)}`'));
   assert.ok(chatView.includes('chat.view.actions.remoteAccess'));
 });
 

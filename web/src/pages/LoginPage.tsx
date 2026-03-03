@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '../stores/auth';
 import { api } from '../api/client';
@@ -19,6 +19,7 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((state) => state.login);
   const initialized = useAuthStore((state) => state.initialized);
   const checkStatus = useAuthStore((state) => state.checkStatus);
@@ -61,7 +62,16 @@ export function LoginPage() {
         return;
       }
       const mustChange = useAuthStore.getState().user?.must_change_password;
-      navigate(mustChange ? '/settings' : '/chat');
+      const from = (
+        location.state as
+          | { from?: { pathname?: string; search?: string; hash?: string } }
+          | null
+      )?.from;
+      const fromPath = from?.pathname
+        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+        : '';
+      const fallback = mustChange ? '/settings' : '/chat';
+      navigate(fromPath && fromPath !== '/login' ? fromPath : fallback, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message) : t('auth.login.failed'));
     } finally {

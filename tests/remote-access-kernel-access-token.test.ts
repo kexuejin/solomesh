@@ -14,10 +14,17 @@ test('issue and verify signed token', async () => {
     randomId: () => 'token-1',
   });
 
-  const issued = await service.issueToken({ ttlSeconds: 300, oneTime: false });
+  const issued = await service.issueToken({
+    ttlSeconds: 300,
+    oneTime: false,
+    path: '/chat/main',
+  });
   const verified = await service.verifyToken(issued.token);
 
   assert.equal(verified.valid, true);
+  if (verified.valid) {
+    assert.equal(verified.payload.path, '/chat/main');
+  }
   assert.equal(issued.tokenId, 'token-1');
   assert.equal(issued.oneTime, false);
   assert.equal(issued.expiresAt, '2026-03-02T00:05:00.000Z');

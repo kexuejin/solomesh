@@ -19,6 +19,7 @@ test('web server mounts remote-access routes', () => {
   assert.ok(web.includes('cloudflared: CLOUDFLARED_BIN'));
   assert.ok(web.includes('ngrok: NGROK_BIN'));
   assert.ok(web.includes("app.route('/api/remote-access', remoteAccessRoutes);"));
+  assert.ok(web.includes("app.get('/r/:code'"));
   assert.ok(web.includes('injectRemoteAccessDeps({'));
   assert.ok(web.includes('kernel: remoteAccessKernel'));
 });
@@ -31,6 +32,7 @@ test('remote-access routes expose minimal tunnel and token endpoints', () => {
   assert.ok(routes.includes("remoteAccessRoutes.post('/tunnel/start'"));
   assert.ok(routes.includes("remoteAccessRoutes.post('/tunnel/stop'"));
   assert.ok(routes.includes("remoteAccessRoutes.post('/links'"));
+  assert.ok(routes.includes("remoteAccessRoutes.put('/preferences'"));
   assert.ok(routes.includes("remoteAccessRoutes.post('/tokens/verify'"));
   assert.ok(routes.includes("remoteAccessRoutes.get('/tokens'"));
   assert.ok(routes.includes("remoteAccessRoutes.post('/tokens/revoke'"));

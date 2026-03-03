@@ -428,12 +428,7 @@ export function ChatView({ groupJid, onBack }: ChatViewProps) {
     setCreatingRemoteAccessLink(true);
     try {
       const data = await api.post<RemoteAccessLinkResponse>('/api/remote-access/links', {
-        ttlSeconds: 30 * 60,
-        oneTime: false,
-        path: '/api/remote-access/public/entry',
-        extraQuery: {
-          path: `/chat/${encodeURIComponent(group.folder)}`,
-        },
+        path: `/chat/${encodeURIComponent(group.folder)}`,
       });
       const url = data.link.url;
       await navigator.clipboard.writeText(url).catch(() => undefined);
