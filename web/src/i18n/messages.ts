@@ -1733,8 +1733,10 @@ export const zhCN = {
     },
     tracking: {
       tagsLabel: '按标签筛选',
+      sourceLabel: '按来源筛选',
       allTags: '全部',
-      emptyFiltered: '当前标签下暂无内容',
+      allSources: '全部来源',
+      emptyFiltered: '当前筛选条件下暂无内容',
       addSources: '添加追踪源',
     },
     card: {
@@ -4332,8 +4334,10 @@ export const en = {
     },
     tracking: {
       tagsLabel: 'Filter by tags',
+      sourceLabel: 'Filter by source',
       allTags: 'All',
-      emptyFiltered: 'No items under this tag',
+      allSources: 'All sources',
+      emptyFiltered: 'No items under current filters',
       addSources: 'Add sources',
     },
     card: {

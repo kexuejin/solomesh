@@ -31,8 +31,11 @@ test('workbench tracking tab supports radar tag filters', () => {
   const page = read('web/src/pages/WorkbenchPage.tsx');
   assert.ok(page.includes("'/api/radar/subscriptions'"));
   assert.ok(page.includes('trackingTagFilter'));
+  assert.ok(page.includes('trackingSourceFilter'));
   assert.ok(page.includes("t('workbench.tracking.tagsLabel')"));
+  assert.ok(page.includes("t('workbench.tracking.sourceLabel')"));
   assert.ok(page.includes("t('workbench.tracking.allTags')"));
+  assert.ok(page.includes("t('workbench.tracking.allSources')"));
 });
 
 test('radar subscription dialog supports custom feed tags', () => {

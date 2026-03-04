@@ -35,7 +35,8 @@ interface RadarSubscriptionPayload {
 
 interface TrackingDecisionCard {
   item: DecisionItem;
-  sourceName: string | null;
+  sourceName: string;
+  sourceKey: string;
   tags: string[];
 }
 
@@ -108,6 +109,7 @@ export function WorkbenchPage() {
   const [decisionItems, setDecisionItems] = useState<DecisionItem[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [trackingTagFilter, setTrackingTagFilter] = useState<string>('all');
+  const [trackingSourceFilter, setTrackingSourceFilter] = useState<string>('all');
   const [radarSourceMetaMap, setRadarSourceMetaMap] = useState<Record<string, RadarResolvedSourceMeta>>({});
   const [expandedDecisionDetails, setExpandedDecisionDetails] = useState<Record<string, boolean>>({});
 
@@ -172,17 +174,20 @@ export function WorkbenchPage() {
     () =>
       columns.tracking.map((item) => {
         const sourceRef = parseRadarSourceRef(item.source_id);
+        const evidence = parseDecisionEvidence(item.evidence);
         if (!sourceRef) {
           return {
             item,
-            sourceName: null,
+            sourceName: evidence?.source_name || item.source_type,
+            sourceKey: item.source_id || item.id,
             tags: [],
           };
         }
         const sourceMeta = radarSourceMetaMap[sourceRef];
         return {
           item,
-          sourceName: sourceMeta?.name ?? null,
+          sourceName: evidence?.source_name || sourceMeta?.name || item.source_type,
+          sourceKey: sourceRef,
           tags: sourceMeta?.tags ?? [],
         };
       }),
@@ -203,6 +208,14 @@ export function WorkbenchPage() {
     return tags.sort((a, b) => a.localeCompare(b));
   }, [trackingCards]);
 
+  const trackingSourceOptions = useMemo(
+    () =>
+      [...new Map(trackingCards.map((card) => [card.sourceKey, card.sourceName])).entries()]
+        .map(([key, label]) => ({ key, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [trackingCards],
+  );
+
   useEffect(() => {
     if (trackingTagFilter === 'all') return;
     const exists = trackingTagOptions.some(
@@ -213,12 +226,25 @@ export function WorkbenchPage() {
     }
   }, [trackingTagFilter, trackingTagOptions]);
 
-  const filteredTrackingCards = useMemo(() => {
-    if (trackingTagFilter === 'all') return trackingCards;
-    return trackingCards.filter((card) =>
-      card.tags.some((tag) => tag.toLowerCase() === trackingTagFilter.toLowerCase()),
+  useEffect(() => {
+    if (trackingSourceFilter === 'all') return;
+    const exists = trackingSourceOptions.some(
+      (source) => source.key === trackingSourceFilter,
     );
-  }, [trackingCards, trackingTagFilter]);
+    if (!exists) {
+      setTrackingSourceFilter('all');
+    }
+  }, [trackingSourceFilter, trackingSourceOptions]);
+
+  const filteredTrackingCards = useMemo(() => {
+    return trackingCards.filter((card) => {
+      const tagMatched = trackingTagFilter === 'all'
+        || card.tags.some((tag) => tag.toLowerCase() === trackingTagFilter.toLowerCase());
+      const sourceMatched = trackingSourceFilter === 'all'
+        || card.sourceKey === trackingSourceFilter;
+      return tagMatched && sourceMatched;
+    });
+  }, [trackingCards, trackingTagFilter, trackingSourceFilter]);
 
   const formatDate = (timestamp: string | null | undefined): string => {
     if (!timestamp) return '-';
@@ -468,6 +494,23 @@ export function WorkbenchPage() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+          {trackingSourceOptions.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[11px] text-muted-foreground">{t('workbench.tracking.sourceLabel')}</div>
+              <select
+                className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                value={trackingSourceFilter}
+                onChange={(event) => setTrackingSourceFilter(event.target.value)}
+              >
+                <option value="all">{t('workbench.tracking.allSources')}</option>
+                {trackingSourceOptions.map((source) => (
+                  <option key={source.key} value={source.key}>
+                    {source.label}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
