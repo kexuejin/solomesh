@@ -20,4 +20,7 @@ test('radar routes expose subscriptions and custom feed CRUD endpoints', () => {
   assert.ok(routes.includes("radarRoutes.post('/subscriptions/feeds'"));
   assert.ok(routes.includes("radarRoutes.patch('/subscriptions/feeds/:id'"));
   assert.ok(routes.includes("radarRoutes.delete('/subscriptions/feeds/:id'"));
+  assert.ok(routes.includes("radarRoutes.get('/items'"));
+  assert.ok(routes.includes("radarRoutes.post('/items/:id/actions'"));
+  assert.ok(routes.includes("radarRoutes.get('/digests/history'"));
 });

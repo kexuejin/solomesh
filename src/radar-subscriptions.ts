@@ -5,6 +5,8 @@ import type {
   RadarUserSourceOverride,
 } from './types.js';
 
+export type { RadarResolvedSubscriptionSource } from './types.js';
+
 function toMapByTemplateId(
   overrides: RadarUserSourceOverride[],
 ): Map<string, RadarUserSourceOverride> {

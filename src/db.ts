@@ -26,9 +26,16 @@ import {
   DecisionItemStatus,
   DecisionItemScopeLevel,
   RadarCadence,
+  RadarDeliveryChannel,
+  RadarDeliveryLog,
+  RadarDeliveryStatus,
+  RadarDigestType,
+  RadarItem,
   RadarSourceTemplate,
   RadarSourceType,
   RadarUserCustomFeed,
+  RadarUserItemState,
+  RadarUserItemStateValue,
   RadarUserSourceOverride,
   Todo,
   TodoPriority,
@@ -121,7 +128,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     id: 'default-github-trending',
     name: 'GitHub Trending',
     type: 'github_trending',
-    url: 'https://github.com/trending?since=daily',
+    url: 'https://mshibanami.github.io/GitHubTrendingRSS/daily/overall.xml',
     default_enabled: true,
     default_cadence: 'both',
     tags: ['agent', 'coding', 'tools'],
@@ -130,7 +137,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     id: 'default-producthunt-ai',
     name: 'Product Hunt AI',
     type: 'producthunt',
-    url: 'https://www.producthunt.com/topics/artificial-intelligence',
+    url: 'https://www.producthunt.com/feed',
     default_enabled: true,
     default_cadence: 'both',
     tags: ['launch', 'tools'],
@@ -139,7 +146,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     id: 'default-hn-show',
     name: 'Hacker News Show',
     type: 'hn',
-    url: 'https://news.ycombinator.com/show',
+    url: 'https://hnrss.org/show',
     default_enabled: true,
     default_cadence: 'daily',
     tags: ['launch', 'discussion'],
@@ -148,7 +155,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     id: 'default-hf-papers',
     name: 'Hugging Face Papers',
     type: 'hf_papers',
-    url: 'https://huggingface.co/papers',
+    url: 'https://huggingface.co/papers/rss',
     default_enabled: true,
     default_cadence: 'both',
     tags: ['research', 'models'],
@@ -177,9 +184,17 @@ function seedRadarSourceTemplates(): void {
   const now = new Date().toISOString();
   const stmt = db.prepare(
     `
-    INSERT OR IGNORE INTO radar_source_templates (
+    INSERT INTO radar_source_templates (
       id, name, type, url, default_enabled, default_cadence, tags, active, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      type = excluded.type,
+      url = excluded.url,
+      default_enabled = excluded.default_enabled,
+      default_cadence = excluded.default_cadence,
+      tags = excluded.tags,
+      updated_at = excluded.updated_at
   `,
   );
 
@@ -397,6 +412,47 @@ export function initDatabase(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_radar_custom_feeds_user
       ON radar_user_custom_feeds(user_id);
+
+    CREATE TABLE IF NOT EXISTS radar_items (
+      id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL,
+      source_ref TEXT NOT NULL,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      published_at TEXT,
+      score REAL NOT NULL DEFAULT 0,
+      dedupe_key TEXT NOT NULL,
+      raw_meta TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      UNIQUE(dedupe_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_radar_items_published
+      ON radar_items(published_at DESC);
+
+    CREATE TABLE IF NOT EXISTS radar_user_item_state (
+      user_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      state TEXT NOT NULL,
+      todo_id TEXT,
+      decision_item_id TEXT,
+      acted_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, item_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_radar_user_item_state_lookup
+      ON radar_user_item_state(user_id, state, acted_at);
+
+    CREATE TABLE IF NOT EXISTS radar_delivery_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      digest_type TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      status TEXT NOT NULL,
+      error TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_radar_delivery_logs_user_created
+      ON radar_delivery_logs(user_id, created_at DESC);
   `);
 
   // State tables (replacing JSON files)
@@ -704,6 +760,36 @@ export function initDatabase(): void {
     'created_at',
     'updated_at',
   ]);
+  assertSchema('radar_items', [
+    'id',
+    'source_type',
+    'source_ref',
+    'title',
+    'url',
+    'summary',
+    'published_at',
+    'score',
+    'dedupe_key',
+    'raw_meta',
+    'created_at',
+  ]);
+  assertSchema('radar_user_item_state', [
+    'user_id',
+    'item_id',
+    'state',
+    'todo_id',
+    'decision_item_id',
+    'acted_at',
+  ]);
+  assertSchema('radar_delivery_logs', [
+    'id',
+    'user_id',
+    'digest_type',
+    'channel',
+    'status',
+    'error',
+    'created_at',
+  ]);
   assertSchema(
     'registered_groups',
     [
@@ -878,7 +964,7 @@ export function initDatabase(): void {
 
   seedRadarSourceTemplates();
 
-  const SCHEMA_VERSION = '20';
+  const SCHEMA_VERSION = '21';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -1810,6 +1896,308 @@ export function deleteRadarUserCustomFeed(userId: string, id: string): boolean {
     )
     .run(userId, id);
   return result.changes > 0;
+}
+
+function parseRadarItemRow(row: Record<string, unknown>): RadarItem {
+  return {
+    id: String(row.id),
+    source_type: row.source_type as RadarSourceType,
+    source_ref: String(row.source_ref),
+    title: String(row.title),
+    url: String(row.url),
+    summary: String(row.summary ?? ''),
+    published_at: typeof row.published_at === 'string' ? row.published_at : null,
+    score: Number(row.score ?? 0),
+    dedupe_key: String(row.dedupe_key),
+    raw_meta: String(row.raw_meta ?? '{}'),
+    created_at: String(row.created_at),
+  };
+}
+
+function parseRadarUserItemStateRow(
+  row: Record<string, unknown>,
+): RadarUserItemState {
+  return {
+    user_id: String(row.user_id),
+    item_id: String(row.item_id),
+    state: row.state as RadarUserItemStateValue,
+    todo_id: typeof row.todo_id === 'string' ? row.todo_id : null,
+    decision_item_id:
+      typeof row.decision_item_id === 'string' ? row.decision_item_id : null,
+    acted_at: String(row.acted_at),
+  };
+}
+
+function parseRadarDeliveryLogRow(row: Record<string, unknown>): RadarDeliveryLog {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    digest_type: row.digest_type as RadarDigestType,
+    channel: row.channel as RadarDeliveryChannel,
+    status: row.status as RadarDeliveryStatus,
+    error: typeof row.error === 'string' ? row.error : null,
+    created_at: String(row.created_at),
+  };
+}
+
+export function getRadarItemByDedupeKey(dedupeKey: string): RadarItem | undefined {
+  const row = db
+    .prepare('SELECT * FROM radar_items WHERE dedupe_key = ?')
+    .get(dedupeKey) as Record<string, unknown> | undefined;
+  return row ? parseRadarItemRow(row) : undefined;
+}
+
+export function getRadarItemById(id: string): RadarItem | undefined {
+  const row = db
+    .prepare('SELECT * FROM radar_items WHERE id = ?')
+    .get(id) as Record<string, unknown> | undefined;
+  return row ? parseRadarItemRow(row) : undefined;
+}
+
+export function insertRadarItem(item: RadarItem): void {
+  db.prepare(
+    `
+    INSERT INTO radar_items (
+      id, source_type, source_ref, title, url, summary, published_at,
+      score, dedupe_key, raw_meta, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    item.id,
+    item.source_type,
+    item.source_ref,
+    item.title,
+    item.url,
+    item.summary,
+    item.published_at,
+    item.score,
+    item.dedupe_key,
+    item.raw_meta,
+    item.created_at,
+  );
+}
+
+export function updateRadarItemMerge(
+  id: string,
+  patch: Partial<
+    Pick<
+      RadarItem,
+      | 'source_type'
+      | 'source_ref'
+      | 'title'
+      | 'url'
+      | 'summary'
+      | 'published_at'
+      | 'score'
+      | 'raw_meta'
+    >
+  >,
+): boolean {
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  if (patch.source_type !== undefined) {
+    fields.push('source_type = ?');
+    params.push(patch.source_type);
+  }
+  if (patch.source_ref !== undefined) {
+    fields.push('source_ref = ?');
+    params.push(patch.source_ref);
+  }
+  if (patch.title !== undefined) {
+    fields.push('title = ?');
+    params.push(patch.title);
+  }
+  if (patch.url !== undefined) {
+    fields.push('url = ?');
+    params.push(patch.url);
+  }
+  if (patch.summary !== undefined) {
+    fields.push('summary = ?');
+    params.push(patch.summary);
+  }
+  if (patch.published_at !== undefined) {
+    fields.push('published_at = ?');
+    params.push(patch.published_at);
+  }
+  if (patch.score !== undefined) {
+    fields.push('score = ?');
+    params.push(patch.score);
+  }
+  if (patch.raw_meta !== undefined) {
+    fields.push('raw_meta = ?');
+    params.push(patch.raw_meta);
+  }
+  if (fields.length === 0) return false;
+  params.push(id);
+  const result = db
+    .prepare(
+      `
+      UPDATE radar_items
+      SET ${fields.join(', ')}
+      WHERE id = ?
+    `,
+    )
+    .run(...params);
+  return result.changes > 0;
+}
+
+export function listRadarItems(
+  options: {
+    source_ref?: string;
+    limit?: number;
+    cursor?: string;
+  } = {},
+): RadarItem[] {
+  const clauses: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (options.source_ref) {
+    clauses.push('source_ref = ?');
+    params.push(options.source_ref);
+  }
+  if (options.cursor) {
+    const cursor = options.cursor.trim();
+    const dividerIdx = cursor.lastIndexOf('|');
+    if (dividerIdx > 0) {
+      const cursorTs = cursor.slice(0, dividerIdx);
+      const cursorId = cursor.slice(dividerIdx + 1);
+      if (cursorTs && cursorId) {
+        clauses.push('(created_at < ? OR (created_at = ? AND id < ?))');
+        params.push(cursorTs, cursorTs, cursorId);
+      }
+    }
+  }
+
+  const limit = Math.max(1, Math.min(options.limit ?? 50, 200));
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_items
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+  return rows.map(parseRadarItemRow);
+}
+
+export function getRadarUserItemState(
+  userId: string,
+  itemId: string,
+): RadarUserItemState | undefined {
+  const row = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_user_item_state
+      WHERE user_id = ? AND item_id = ?
+    `,
+    )
+    .get(userId, itemId) as Record<string, unknown> | undefined;
+  return row ? parseRadarUserItemStateRow(row) : undefined;
+}
+
+export function upsertRadarUserItemState(state: RadarUserItemState): void {
+  db.prepare(
+    `
+    INSERT INTO radar_user_item_state (
+      user_id, item_id, state, todo_id, decision_item_id, acted_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, item_id) DO UPDATE SET
+      state = excluded.state,
+      todo_id = excluded.todo_id,
+      decision_item_id = excluded.decision_item_id,
+      acted_at = excluded.acted_at
+  `,
+  ).run(
+    state.user_id,
+    state.item_id,
+    state.state,
+    state.todo_id,
+    state.decision_item_id,
+    state.acted_at,
+  );
+}
+
+export function listRadarUserItemStates(
+  userId: string,
+  options: {
+    state?: RadarUserItemStateValue;
+    acted_after?: string;
+    limit?: number;
+  } = {},
+): RadarUserItemState[] {
+  const clauses = ['user_id = ?'];
+  const params: unknown[] = [userId];
+  if (options.state) {
+    clauses.push('state = ?');
+    params.push(options.state);
+  }
+  if (options.acted_after) {
+    clauses.push('acted_at >= ?');
+    params.push(options.acted_after);
+  }
+  const limit = Math.max(1, Math.min(options.limit ?? 200, 500));
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_user_item_state
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY acted_at DESC, item_id DESC
+      LIMIT ?
+    `,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+  return rows.map(parseRadarUserItemStateRow);
+}
+
+export function insertRadarDeliveryLog(log: RadarDeliveryLog): void {
+  db.prepare(
+    `
+    INSERT INTO radar_delivery_logs (
+      id, user_id, digest_type, channel, status, error, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    log.id,
+    log.user_id,
+    log.digest_type,
+    log.channel,
+    log.status,
+    log.error,
+    log.created_at,
+  );
+}
+
+export function listRadarDeliveryLogs(
+  userId: string,
+  options: {
+    digest_type?: RadarDigestType;
+    limit?: number;
+  } = {},
+): RadarDeliveryLog[] {
+  const clauses = ['user_id = ?'];
+  const params: unknown[] = [userId];
+  if (options.digest_type) {
+    clauses.push('digest_type = ?');
+    params.push(options.digest_type);
+  }
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_delivery_logs
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `,
+    )
+    .all(...params, limit) as Array<Record<string, unknown>>;
+  return rows.map(parseRadarDeliveryLogRow);
 }
 
 export function getTodoById(id: string): Todo | undefined {

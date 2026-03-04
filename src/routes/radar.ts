@@ -5,21 +5,28 @@ import { authMiddleware } from '../middleware/auth.js';
 import {
   createRadarUserCustomFeed,
   deleteRadarUserCustomFeed,
+  getRadarItemById,
   getRadarSourceTemplateById,
   getRadarUserCustomFeedById,
+  getRadarUserItemState,
   getRadarUserSourceOverride,
+  listRadarDeliveryLogs,
   listRadarSourceTemplates,
+  listRadarUserItemStates,
   listRadarUserCustomFeeds,
   listRadarUserSourceOverrides,
   updateRadarUserCustomFeed,
+  upsertRadarUserItemState,
   updateRadarUserSourceOverride,
 } from '../db.js';
 import {
   RadarCustomFeedCreateSchema,
   RadarCustomFeedUpdateSchema,
+  RadarItemActionSchema,
   RadarTemplateOverrideUpdateSchema,
 } from '../schemas.js';
 import { resolveRadarSubscriptions } from '../radar-subscriptions.js';
+import { ingestTodo } from '../todo-core.js';
 import type { AuthUser, RadarUserCustomFeed, RadarUserSourceOverride } from '../types.js';
 import type { Variables } from '../web-context.js';
 
@@ -192,6 +199,135 @@ radarRoutes.delete('/subscriptions/feeds/:id', authMiddleware, (c) => {
     return c.json({ error: 'Radar custom feed not found' }, 404);
   }
   return c.json({ ok: true });
+});
+
+radarRoutes.get('/items', authMiddleware, (c) => {
+  const authUser = c.get('user') as AuthUser;
+  const state = (c.req.query('state') || 'tracking').trim();
+  const limitRaw = Number.parseInt(c.req.query('limit') || '50', 10);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.max(1, Math.min(limitRaw, 200))
+    : 50;
+
+  const states = listRadarUserItemStates(authUser.id, {
+    state:
+      state === 'tracking' || state === 'ignored' || state === 'promoted'
+        ? state
+        : undefined,
+    limit,
+  });
+
+  const items = states
+    .map((entry) => {
+      const item = getRadarItemById(entry.item_id);
+      if (!item) return null;
+      return {
+        item,
+        state: entry,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  return c.json({
+    items,
+    nextCursor: null,
+  });
+});
+
+radarRoutes.post('/items/:id/actions', authMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const validation = RadarItemActionSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json(
+      { error: 'Invalid request body', details: validation.error.format() },
+      400,
+    );
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  const itemId = c.req.param('id');
+  const item = getRadarItemById(itemId);
+  if (!item) {
+    return c.json({ error: 'Radar item not found' }, 404);
+  }
+
+  const currentState = getRadarUserItemState(authUser.id, itemId);
+  if (!currentState) {
+    return c.json({ error: 'Radar item not found' }, 404);
+  }
+
+  const now = new Date().toISOString();
+
+  if (validation.data.action === 'ignore') {
+    upsertRadarUserItemState({
+      ...currentState,
+      state: 'ignored',
+      acted_at: now,
+    });
+    return c.json({ ok: true, state: 'ignored' });
+  }
+
+  if (validation.data.action === 'keep_tracking') {
+    upsertRadarUserItemState({
+      ...currentState,
+      state: 'tracking',
+      acted_at: now,
+    });
+    return c.json({ ok: true, state: 'tracking' });
+  }
+
+  const todo = ingestTodo(
+    {
+      title: validation.data.todo?.title ?? item.title,
+      description:
+        validation.data.todo?.description
+        ?? (item.summary ? `${item.summary}\n\n${item.url}` : item.url),
+      priority: validation.data.todo?.priority ?? 'medium',
+      source_type: 'automation',
+      source_id: `radar:${item.source_ref}`,
+      source_run_id: now,
+      trigger_mode: 'automation',
+      evidence: {
+        radar_item_id: item.id,
+        radar_url: item.url,
+      },
+    },
+    authUser.id,
+  );
+
+  upsertRadarUserItemState({
+    ...currentState,
+    state: 'promoted',
+    todo_id: todo.todo_id,
+    acted_at: now,
+  });
+
+  return c.json({
+    ok: true,
+    state: 'promoted',
+    todo,
+  });
+});
+
+radarRoutes.get('/digests/history', authMiddleware, (c) => {
+  const authUser = c.get('user') as AuthUser;
+  const limitRaw = Number.parseInt(c.req.query('limit') || '50', 10);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.max(1, Math.min(limitRaw, 200))
+    : 50;
+
+  const digestType = c.req.query('digest_type');
+  const logs = listRadarDeliveryLogs(authUser.id, {
+    digest_type:
+      digestType === 'daily'
+      || digestType === 'weekly'
+      || digestType === 'failure_alert'
+        ? digestType
+        : undefined,
+    limit,
+  });
+
+  return c.json({ logs });
 });
 
 export default radarRoutes;

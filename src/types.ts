@@ -296,6 +296,45 @@ export interface RadarResolvedSubscriptionSource {
   exclude_keywords: string[];
 }
 
+export interface RadarItem {
+  id: string;
+  source_type: RadarSourceType;
+  source_ref: string;
+  title: string;
+  url: string;
+  summary: string;
+  published_at: string | null;
+  score: number;
+  dedupe_key: string;
+  raw_meta: string;
+  created_at: string;
+}
+
+export type RadarUserItemStateValue = 'tracking' | 'ignored' | 'promoted';
+
+export interface RadarUserItemState {
+  user_id: string;
+  item_id: string;
+  state: RadarUserItemStateValue;
+  todo_id: string | null;
+  decision_item_id: string | null;
+  acted_at: string;
+}
+
+export type RadarDigestType = 'daily' | 'weekly' | 'failure_alert';
+export type RadarDeliveryChannel = 'workbench' | 'feishu' | 'telegram';
+export type RadarDeliveryStatus = 'ok' | 'failed';
+
+export interface RadarDeliveryLog {
+  id: string;
+  user_id: string;
+  digest_type: RadarDigestType;
+  channel: RadarDeliveryChannel;
+  status: RadarDeliveryStatus;
+  error: string | null;
+  created_at: string;
+}
+
 // --- Auth types ---
 
 export type UserRole = 'admin' | 'member';

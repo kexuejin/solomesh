@@ -115,6 +115,7 @@ import {
 } from './runtime-config.js';
 import { GroupQueue } from './group-queue.js';
 import { startSchedulerLoop } from './task-scheduler.js';
+import { startRadarAutomationLoop } from './radar-automation.js';
 import { AgentStatus, MessageCursor, NewMessage, RegisteredGroup, type ImChannel } from './types.js';
 import { logger } from './logger.js';
 import { listSessionCleanupPlan } from './session-cleanup.js';
@@ -4711,6 +4712,9 @@ async function main(): Promise<void> {
       queue.registerProcess(groupJid, proc, containerName, groupFolder, displayName),
     sendMessage,
     assistantName: APP_NAME,
+  });
+  startRadarAutomationLoop({
+    sendMessage,
   });
   startIpcWatcher();
   recoverPendingMessages();

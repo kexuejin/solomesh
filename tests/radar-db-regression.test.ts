@@ -12,6 +12,9 @@ test('db defines radar subscription tables', () => {
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_source_templates'));
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_user_source_overrides'));
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_user_custom_feeds'));
+  assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_items'));
+  assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_user_item_state'));
+  assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_delivery_logs'));
 });
 
 test('db exports radar subscription query/update helpers', () => {
@@ -20,4 +23,7 @@ test('db exports radar subscription query/update helpers', () => {
   assert.ok(source.includes('export function listRadarUserSourceOverrides('));
   assert.ok(source.includes('export function createRadarUserCustomFeed('));
   assert.ok(source.includes('export function updateRadarUserSourceOverride('));
+  assert.ok(source.includes('export function insertRadarItem('));
+  assert.ok(source.includes('export function upsertRadarUserItemState('));
+  assert.ok(source.includes('export function insertRadarDeliveryLog('));
 });
