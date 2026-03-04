@@ -11,6 +11,7 @@ test('db defines radar subscription tables', () => {
   const source = read('src/db.ts');
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_source_templates'));
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_user_source_overrides'));
+  assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_user_settings'));
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_user_custom_feeds'));
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_items'));
   assert.ok(source.includes('CREATE TABLE IF NOT EXISTS radar_user_item_state'));
@@ -21,6 +22,8 @@ test('db exports radar subscription query/update helpers', () => {
   const source = read('src/db.ts');
   assert.ok(source.includes('export function listRadarSourceTemplates('));
   assert.ok(source.includes('export function listRadarUserSourceOverrides('));
+  assert.ok(source.includes('export function getRadarUserSettings('));
+  assert.ok(source.includes('export function upsertRadarUserSettings('));
   assert.ok(source.includes('export function createRadarUserCustomFeed('));
   assert.ok(source.includes('export function updateRadarUserSourceOverride('));
   assert.ok(source.includes('export function insertRadarItem('));
@@ -31,7 +34,7 @@ test('db exports radar subscription query/update helpers', () => {
 test('radar template defaults are disabled and existing users are migrated to disabled subscriptions', () => {
   const source = read('src/db.ts');
   assert.ok(source.includes("default_enabled: false"));
-  assert.ok(source.includes("const SCHEMA_VERSION = '22';"));
+  assert.ok(source.includes("const SCHEMA_VERSION = '23';"));
   assert.ok(
     source.includes('clear all template-based subscriptions for existing users'),
   );

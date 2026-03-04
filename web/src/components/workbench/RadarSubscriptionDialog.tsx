@@ -35,9 +35,15 @@ interface RadarUserCustomFeed {
   tags: string[];
 }
 
+interface RadarUserSettings {
+  ai_summary_enabled: boolean;
+  auto_translate_zh: boolean;
+}
+
 interface SubscriptionPayload {
   templates: RadarSourceTemplate[];
   overrides: RadarUserSourceOverride[];
+  settings: RadarUserSettings;
   customFeeds: RadarUserCustomFeed[];
 }
 
@@ -93,6 +99,10 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
   const [newFeedCadence, setNewFeedCadence] = useState<RadarCadence>('both');
   const [newFeedTags, setNewFeedTags] = useState('');
   const [feedTagDrafts, setFeedTagDrafts] = useState<Record<string, string>>({});
+  const [settings, setSettings] = useState<RadarUserSettings>({
+    ai_summary_enabled: false,
+    auto_translate_zh: false,
+  });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -101,6 +111,10 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
       setTemplates(res.templates);
       setOverrides(res.overrides);
       setCustomFeeds(res.customFeeds);
+      setSettings({
+        ai_summary_enabled: res.settings?.ai_summary_enabled === true,
+        auto_translate_zh: res.settings?.auto_translate_zh === true,
+      });
       setFeedTagDrafts(
         Object.fromEntries(
           res.customFeeds.map((feed) => [feed.id, formatTagInput(feed.tags)]),
@@ -130,6 +144,28 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
     }
     return map;
   }, [overrides]);
+
+  const updateSettings = useCallback(
+    async (patch: Partial<RadarUserSettings>) => {
+      setSavingKey('settings');
+      try {
+        const res = await api.put<{
+          settings: RadarUserSettings;
+        }>('/api/radar/subscriptions/settings', patch);
+        setSettings(res.settings);
+        setError(null);
+      } catch (err) {
+        if (err && typeof err === 'object' && 'message' in err) {
+          setError(String((err as { message?: unknown }).message ?? '').trim() || t('workbench.radar.errors.saveFailed'));
+        } else {
+          setError(t('workbench.radar.errors.saveFailed'));
+        }
+      } finally {
+        setSavingKey(null);
+      }
+    },
+    [t],
+  );
 
   const updateTemplate = useCallback(
     async (templateId: string, patch: Record<string, unknown>) => {
@@ -263,6 +299,48 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
           <div className="py-6 text-sm text-muted-foreground">{t('workbench.radar.loading')}</div>
         ) : (
           <div className="space-y-5">
+            <section className="space-y-2 rounded-lg border border-border p-3">
+              <h3 className="text-sm font-semibold text-foreground">{t('workbench.radar.aiSettingsTitle')}</h3>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={settings.ai_summary_enabled}
+                  disabled={savingKey === 'settings'}
+                  onChange={() => {
+                    const nextEnabled = !settings.ai_summary_enabled;
+                    setSettings((prev) => ({
+                      ai_summary_enabled: nextEnabled,
+                      auto_translate_zh: nextEnabled ? prev.auto_translate_zh : false,
+                    }));
+                    void updateSettings({
+                      ai_summary_enabled: nextEnabled,
+                      auto_translate_zh: nextEnabled ? settings.auto_translate_zh : false,
+                    });
+                  }}
+                />
+                <span>{t('workbench.radar.aiSummaryEnabled')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={settings.auto_translate_zh}
+                  disabled={savingKey === 'settings' || !settings.ai_summary_enabled}
+                  onChange={() => {
+                    const nextTranslate = !settings.auto_translate_zh;
+                    setSettings((prev) => ({
+                      ...prev,
+                      auto_translate_zh: nextTranslate,
+                    }));
+                    void updateSettings({ auto_translate_zh: nextTranslate });
+                  }}
+                />
+                <span>{t('workbench.radar.autoTranslateZh')}</span>
+              </label>
+              <p className="text-[11px] text-muted-foreground">{t('workbench.radar.aiSettingsHint')}</p>
+            </section>
+
             <section className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">{t('workbench.radar.systemSources')}</h3>
               <div className="space-y-2">

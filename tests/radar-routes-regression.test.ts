@@ -16,6 +16,7 @@ test('web mounts radar routes', () => {
 test('radar routes expose subscriptions and custom feed CRUD endpoints', () => {
   const routes = read('src/routes/radar.ts');
   assert.ok(routes.includes("radarRoutes.get('/subscriptions'"));
+  assert.ok(routes.includes("radarRoutes.put('/subscriptions/settings'"));
   assert.ok(routes.includes("radarRoutes.put('/subscriptions/templates/:id'"));
   assert.ok(routes.includes("radarRoutes.post('/subscriptions/feeds'"));
   assert.ok(routes.includes("radarRoutes.patch('/subscriptions/feeds/:id'"));

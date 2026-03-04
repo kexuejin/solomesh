@@ -34,6 +34,7 @@ import {
   RadarSourceTemplate,
   RadarSourceType,
   RadarUserCustomFeed,
+  RadarUserSettings,
   RadarUserItemState,
   RadarUserItemStateValue,
   RadarUserSourceOverride,
@@ -393,6 +394,13 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_radar_overrides_user
       ON radar_user_source_overrides(user_id);
 
+    CREATE TABLE IF NOT EXISTS radar_user_settings (
+      user_id TEXT PRIMARY KEY,
+      ai_summary_enabled INTEGER NOT NULL DEFAULT 0,
+      auto_translate_zh INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS radar_user_custom_feeds (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -743,6 +751,12 @@ export function initDatabase(): void {
     'exclude_keywords',
     'updated_at',
   ]);
+  assertSchema('radar_user_settings', [
+    'user_id',
+    'ai_summary_enabled',
+    'auto_translate_zh',
+    'updated_at',
+  ]);
   assertSchema('radar_user_custom_feeds', [
     'id',
     'user_id',
@@ -992,7 +1006,7 @@ export function initDatabase(): void {
     ).run(nowIso);
   }
 
-  const SCHEMA_VERSION = '22';
+  const SCHEMA_VERSION = '23';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -1646,6 +1660,17 @@ function parseRadarUserSourceOverrideRow(
   };
 }
 
+function parseRadarUserSettingsRow(
+  row: Record<string, unknown>,
+): RadarUserSettings {
+  return {
+    user_id: String(row.user_id),
+    ai_summary_enabled: Number(row.ai_summary_enabled ?? 0) === 1,
+    auto_translate_zh: Number(row.auto_translate_zh ?? 0) === 1,
+    updated_at: String(row.updated_at),
+  };
+}
+
 function parseRadarUserCustomFeedRow(
   row: Record<string, unknown>,
 ): RadarUserCustomFeed {
@@ -1766,6 +1791,48 @@ export function updateRadarUserSourceOverride(
     JSON.stringify(override.include_keywords),
     JSON.stringify(override.exclude_keywords),
     override.updated_at,
+  );
+}
+
+export function getRadarUserSettings(userId: string): RadarUserSettings {
+  const row = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_user_settings
+      WHERE user_id = ?
+    `,
+    )
+    .get(userId) as Record<string, unknown> | undefined;
+
+  if (row) {
+    return parseRadarUserSettingsRow(row);
+  }
+
+  return {
+    user_id: userId,
+    ai_summary_enabled: false,
+    auto_translate_zh: false,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function upsertRadarUserSettings(settings: RadarUserSettings): void {
+  db.prepare(
+    `
+    INSERT INTO radar_user_settings (
+      user_id, ai_summary_enabled, auto_translate_zh, updated_at
+    ) VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      ai_summary_enabled = excluded.ai_summary_enabled,
+      auto_translate_zh = excluded.auto_translate_zh,
+      updated_at = excluded.updated_at
+  `,
+  ).run(
+    settings.user_id,
+    settings.ai_summary_enabled ? 1 : 0,
+    settings.auto_translate_zh ? 1 : 0,
+    settings.updated_at,
   );
 }
 

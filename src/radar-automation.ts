@@ -2,11 +2,13 @@ import crypto from 'node:crypto';
 
 import { TIMEZONE } from './config.js';
 import {
+  getDecisionItemById,
   getGroupsByOwner,
   getRadarItemByDedupeKey,
   getRadarItemById,
   getRadarUserCustomFeedById,
   getRadarUserItemState,
+  getRadarUserSettings,
   getRouterState,
   getUserHomeGroup,
   insertRadarDeliveryLog,
@@ -17,6 +19,7 @@ import {
   listRadarUserSourceOverrides,
   listUsers,
   setRouterState,
+  updateDecisionItemPendingMerge,
   updateRadarItemMerge,
   updateRadarUserCustomFeed,
   upsertRadarUserItemState,
@@ -24,6 +27,7 @@ import {
 import { ingestDecisionItem } from './decision-core.js';
 import { parseImChannelFromJid } from './im-channel.js';
 import { logger } from './logger.js';
+import { generateRadarAiSummary } from './radar-ai.js';
 import { canonicalizeRadarUrl, fetchRadarFeedEntries, type RadarFeedEntry } from './radar-feed.js';
 import { resolveRadarSubscriptions, type RadarResolvedSubscriptionSource } from './radar-subscriptions.js';
 import type {
@@ -31,6 +35,7 @@ import type {
   RadarDigestType,
   RadarItem,
   RadarSourceType,
+  RadarUserSettings,
   UserPublic,
 } from './types.js';
 
@@ -40,6 +45,7 @@ const RADAR_LOOP_INTERVAL_MS = 60 * 1000;
 const RADAR_FAILURE_THRESHOLD = 3;
 const RADAR_DAILY_DIGEST_HOUR = 9;
 const RADAR_WEEKLY_DIGEST_HOUR = 9;
+const RADAR_AI_ENRICH_MAX_CONCURRENCY = 2;
 
 const RADAR_TEMPLATE_FAILURES_KEY = 'radar_template_failure_state';
 const RADAR_DAILY_DIGEST_KEY_PREFIX = 'radar_daily_digest_last:';
@@ -61,6 +67,9 @@ let radarLoopStarted = false;
 let radarLoopRunning = false;
 let lastRadarFetchAt = 0;
 let lastRadarDigestCheckAt = 0;
+let radarAiRunning = 0;
+const radarAiQueue: Array<() => Promise<void>> = [];
+const radarAiPendingDecisionIds = new Set<string>();
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -162,6 +171,151 @@ function sanitizeSummary(value: string): string {
   return truncate(normalized, 1200);
 }
 
+function detectContentLanguage(text: string): 'zh' | 'en' | 'mixed' | 'unknown' {
+  const trimmed = text.trim();
+  if (!trimmed) return 'unknown';
+  const hasChinese = /[\u4e00-\u9fff]/.test(trimmed);
+  const hasLatin = /[A-Za-z]/.test(trimmed);
+  if (hasChinese && hasLatin) return 'mixed';
+  if (hasChinese) return 'zh';
+  if (hasLatin) return 'en';
+  return 'unknown';
+}
+
+function buildFallbackAiSummary(title: string, summary: string): string {
+  const normalizedTitle = title.trim();
+  const normalizedSummary = sanitizeSummary(summary);
+  if (!normalizedSummary) return truncate(normalizedTitle, 240);
+
+  // Lightweight summarization fallback: compress to one concise paragraph.
+  const compact = normalizedSummary
+    .split(/[.!?。！？]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 2)
+    .join('；');
+
+  if (!compact) return truncate(normalizedTitle, 240);
+  return truncate(`${normalizedTitle}：${compact}`, 300);
+}
+
+function parseEvidenceObject(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function serializeEvidenceObject(value: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '{}';
+  }
+}
+
+function drainRadarAiQueue(): void {
+  while (
+    radarAiRunning < RADAR_AI_ENRICH_MAX_CONCURRENCY
+    && radarAiQueue.length > 0
+  ) {
+    const next = radarAiQueue.shift();
+    if (!next) break;
+    radarAiRunning += 1;
+    void next()
+      .catch((err) => {
+        logger.debug({ err }, 'Radar AI enrich job failed');
+      })
+      .finally(() => {
+        radarAiRunning = Math.max(0, radarAiRunning - 1);
+        drainRadarAiQueue();
+      });
+  }
+}
+
+function enqueueRadarAiEnrich(job: () => Promise<void>): void {
+  radarAiQueue.push(job);
+  drainRadarAiQueue();
+}
+
+async function enrichDecisionItemWithAiSummary(
+  userId: string,
+  decisionItemId: string,
+  source: RadarResolvedSubscriptionSource,
+  item: RadarItem,
+  settings: RadarUserSettings,
+): Promise<void> {
+  if (!settings.ai_summary_enabled) return;
+  if (radarAiPendingDecisionIds.has(decisionItemId)) return;
+  radarAiPendingDecisionIds.add(decisionItemId);
+
+  enqueueRadarAiEnrich(async () => {
+    try {
+      const decision = getDecisionItemById(decisionItemId);
+      if (!decision || decision.status !== 'pending') return;
+
+      const evidence = parseEvidenceObject(decision.evidence) ?? {};
+      const existingAiSummary = typeof evidence.ai_summary === 'string'
+        ? evidence.ai_summary.trim()
+        : '';
+      if (existingAiSummary) return;
+
+      const sourceLanguage = detectContentLanguage(`${item.title}\n${item.summary}`);
+      const translateToChinese = settings.auto_translate_zh
+        && sourceLanguage === 'en';
+      const aiSummary = await generateRadarAiSummary(
+        {
+          title: item.title,
+          summary: item.summary,
+          url: item.url,
+        },
+        { translateToChinese },
+      );
+      const fallbackSummary = buildFallbackAiSummary(item.title, item.summary);
+      const summary = (aiSummary || fallbackSummary).trim();
+      if (!summary) return;
+
+      const nextEvidence: Record<string, unknown> = {
+        ...evidence,
+        source_id: source.id,
+        source_name: source.name,
+        source_url: source.url,
+        item_url: item.url,
+        item_published_at: item.published_at,
+        content_language: sourceLanguage,
+        ai_summary: summary,
+        ai_summary_generated_at: nowIso(),
+        ai_summary_translated: translateToChinese,
+      };
+
+      updateDecisionItemPendingMerge(decision.id, {
+        title: decision.title,
+        summary: decision.summary,
+        priority: decision.priority,
+        source_run_id: decision.source_run_id,
+        evidence: serializeEvidenceObject(nextEvidence),
+        suggested_todo_title: decision.suggested_todo_title,
+        suggested_todo_description: truncate(`${summary}\n\n${item.url}`, 3500),
+        suggested_todo_priority: decision.suggested_todo_priority,
+        updated_at: nowIso(),
+      });
+    } catch (err) {
+      logger.debug(
+        { err, decisionItemId, userId },
+        'Failed to enrich radar decision with AI summary',
+      );
+    } finally {
+      radarAiPendingDecisionIds.delete(decisionItemId);
+    }
+  });
+}
+
 function buildDecisionSummary(entry: RadarFeedEntry): string {
   const summary = sanitizeSummary(entry.summary);
   if (!summary) return entry.url;
@@ -216,12 +370,14 @@ function ensureUserItemState(
   source: RadarResolvedSubscriptionSource,
   item: RadarItem,
   runAtIso: string,
+  settings: RadarUserSettings,
 ): void {
   const existingState = getRadarUserItemState(userId, item.id);
   if (existingState) return;
 
   const title = truncate(item.title, 200);
   const summary = truncate(item.summary, 3500);
+  const contentLanguage = detectContentLanguage(`${item.title}\n${item.summary}`);
   const decisionResult = ingestDecisionItem(
     {
       title: `[Radar] ${title}`,
@@ -242,6 +398,7 @@ function ensureUserItemState(
         source_url: source.url,
         item_url: item.url,
         item_published_at: item.published_at,
+        content_language: contentLanguage,
       },
       suggested_todo: {
         title,
@@ -260,6 +417,14 @@ function ensureUserItemState(
     decision_item_id: decisionResult.decision_item_id,
     acted_at: runAtIso,
   });
+
+  void enrichDecisionItemWithAiSummary(
+    userId,
+    decisionResult.decision_item_id,
+    source,
+    item,
+    settings,
+  );
 }
 
 function upsertRadarEntry(
@@ -362,6 +527,7 @@ async function collectForUser(
 ): Promise<void> {
   const templates = listRadarSourceTemplates();
   const overrides = listRadarUserSourceOverrides(user.id);
+  const settings = getRadarUserSettings(user.id);
   const customFeeds = listRadarUserCustomFeeds(user.id);
   const sources = resolveRadarSubscriptions(templates, overrides, customFeeds)
     .filter((source) => source.enabled);
@@ -373,7 +539,7 @@ async function collectForUser(
       for (const entry of cappedEntries) {
         const item = upsertRadarEntry(source, entry);
         if (!item) continue;
-        ensureUserItemState(user.id, source, item, runAtIso);
+        ensureUserItemState(user.id, source, item, runAtIso, settings);
       }
 
       if (source.origin === 'custom') {

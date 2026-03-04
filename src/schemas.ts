@@ -268,6 +268,19 @@ export const RadarTemplateOverrideUpdateSchema = z
     { message: 'At least one override field is required' },
   );
 
+export const RadarUserSettingsUpdateSchema = z
+  .object({
+    ai_summary_enabled: z.boolean().optional(),
+    auto_translate_zh: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (data) =>
+      data.ai_summary_enabled !== undefined
+      || data.auto_translate_zh !== undefined,
+    { message: 'At least one settings field is required' },
+  );
+
 export const RadarCustomFeedCreateSchema = z
   .object({
     name: z.string().trim().min(1).max(120),

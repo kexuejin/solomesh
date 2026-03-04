@@ -9,6 +9,7 @@ import {
   getRadarSourceTemplateById,
   getRadarUserCustomFeedById,
   getRadarUserItemState,
+  getRadarUserSettings,
   getRadarUserSourceOverride,
   listRadarDeliveryLogs,
   listRadarSourceTemplates,
@@ -17,12 +18,14 @@ import {
   listRadarUserSourceOverrides,
   updateRadarUserCustomFeed,
   upsertRadarUserItemState,
+  upsertRadarUserSettings,
   updateRadarUserSourceOverride,
 } from '../db.js';
 import {
   RadarCustomFeedCreateSchema,
   RadarCustomFeedUpdateSchema,
   RadarItemActionSchema,
+  RadarUserSettingsUpdateSchema,
   RadarTemplateOverrideUpdateSchema,
 } from '../schemas.js';
 import { resolveRadarSubscriptions } from '../radar-subscriptions.js';
@@ -47,15 +50,48 @@ radarRoutes.get('/subscriptions', authMiddleware, (c) => {
   const authUser = c.get('user') as AuthUser;
   const templates = listRadarSourceTemplates();
   const overrides = listRadarUserSourceOverrides(authUser.id);
+  const settings = getRadarUserSettings(authUser.id);
   const customFeeds = listRadarUserCustomFeeds(authUser.id);
   const resolved = resolveRadarSubscriptions(templates, overrides, customFeeds);
 
   return c.json({
     templates,
     overrides,
+    settings,
     customFeeds,
     resolved,
   });
+});
+
+radarRoutes.put('/subscriptions/settings', authMiddleware, async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const validation = RadarUserSettingsUpdateSchema.safeParse(body);
+  if (!validation.success) {
+    return c.json(
+      { error: 'Invalid request body', details: validation.error.format() },
+      400,
+    );
+  }
+
+  const authUser = c.get('user') as AuthUser;
+  const now = new Date().toISOString();
+  const current = getRadarUserSettings(authUser.id);
+  const next = {
+    user_id: authUser.id,
+    ai_summary_enabled:
+      validation.data.ai_summary_enabled ?? current.ai_summary_enabled,
+    auto_translate_zh:
+      validation.data.auto_translate_zh ?? current.auto_translate_zh,
+    updated_at: now,
+  };
+
+  // Translation depends on AI summary generation.
+  if (!next.ai_summary_enabled) {
+    next.auto_translate_zh = false;
+  }
+
+  upsertRadarUserSettings(next);
+  return c.json({ settings: next });
 });
 
 radarRoutes.put('/subscriptions/templates/:id', authMiddleware, async (c) => {

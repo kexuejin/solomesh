@@ -264,6 +264,13 @@ export interface RadarUserSourceOverride {
   updated_at: string;
 }
 
+export interface RadarUserSettings {
+  user_id: string;
+  ai_summary_enabled: boolean;
+  auto_translate_zh: boolean;
+  updated_at: string;
+}
+
 export interface RadarUserCustomFeed {
   id: string;
   user_id: string;

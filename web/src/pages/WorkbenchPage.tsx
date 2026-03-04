@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Check, CircleOff, Columns3, RefreshCw, Sparkles, Rss } from 'lucide-react';
+import { Check, CircleOff, Columns3, ExternalLink, RefreshCw, Sparkles, Rss } from 'lucide-react';
 
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -39,6 +39,15 @@ interface TrackingDecisionCard {
   tags: string[];
 }
 
+interface RadarDecisionEvidence {
+  source_name?: string;
+  source_url?: string;
+  item_url?: string;
+  item_published_at?: string;
+  ai_summary?: string;
+  content_language?: string;
+}
+
 function parseRadarSourceRef(sourceId: string): string | null {
   if (!sourceId.startsWith('radar:')) return null;
   const raw = sourceId.slice('radar:'.length).trim();
@@ -58,6 +67,19 @@ function normalizeTags(values: string[] | undefined): string[] {
     tags.push(trimmed);
   }
   return tags;
+}
+
+function parseDecisionEvidence(raw: string | null): RadarDecisionEvidence | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as RadarDecisionEvidence;
+  } catch {
+    return null;
+  }
 }
 
 function WorkbenchColumn({ title, count, children }: WorkbenchColumnProps) {
@@ -87,6 +109,7 @@ export function WorkbenchPage() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [trackingTagFilter, setTrackingTagFilter] = useState<string>('all');
   const [radarSourceMetaMap, setRadarSourceMetaMap] = useState<Record<string, RadarResolvedSourceMeta>>({});
+  const [expandedDecisionDetails, setExpandedDecisionDetails] = useState<Record<string, boolean>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -250,6 +273,14 @@ export function WorkbenchPage() {
     const sourceRef = parseRadarSourceRef(item.source_id);
     const sourceMeta = sourceRef ? radarSourceMetaMap[sourceRef] : null;
     const sourceTags = sourceMeta?.tags ?? [];
+    const evidence = parseDecisionEvidence(item.evidence);
+    const sourceName = evidence?.source_name || sourceMeta?.name || item.source_type;
+    const sourceUrl = evidence?.source_url || null;
+    const itemUrl = evidence?.item_url || null;
+    const itemPublishedAt = evidence?.item_published_at || null;
+    const aiSummary = evidence?.ai_summary || null;
+    const contentLanguage = evidence?.content_language || null;
+    const detailExpanded = expandedDecisionDetails[item.id] === true;
     return (
       <article key={item.id} className="rounded-lg border border-border bg-background p-3">
         {withTrackingHint && (
@@ -259,9 +290,9 @@ export function WorkbenchPage() {
           </div>
         )}
         <h4 className="mb-1 text-sm font-medium text-foreground">{item.title}</h4>
-        {item.summary && (
+        {(aiSummary || item.summary) && (
           <p className="mb-2 line-clamp-2 text-xs text-muted-foreground">
-            {item.summary}
+            {aiSummary || item.summary}
           </p>
         )}
         {sourceTags.length > 0 && (
@@ -277,12 +308,44 @@ export function WorkbenchPage() {
           </div>
         )}
         <div className="mb-2 text-[11px] text-muted-foreground">
-          {t('workbench.card.source')}: {sourceMeta?.name ?? item.source_type}
+          {t('workbench.card.source')}: {sourceName}
         </div>
+        {itemPublishedAt && (
+          <div className="mb-2 text-[11px] text-muted-foreground">
+            {t('workbench.card.publishedAt')}: {formatDate(itemPublishedAt)}
+          </div>
+        )}
+        {contentLanguage && (
+          <div className="mb-2 text-[11px] text-muted-foreground">
+            {t('workbench.card.language')}: {contentLanguage}
+          </div>
+        )}
         <div className="mb-3 text-[11px] text-muted-foreground">
           {t('workbench.card.updatedAt')}: {formatDate(item.created_at)}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {itemUrl && (
+            <a href={itemUrl} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="outline">
+                <ExternalLink size={14} />
+                {t('workbench.actions.openSource')}
+              </Button>
+            </a>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setExpandedDecisionDetails((prev) => ({
+                ...prev,
+                [item.id]: !detailExpanded,
+              }));
+            }}
+          >
+            {detailExpanded
+              ? t('workbench.actions.hideDetails')
+              : t('workbench.actions.viewDetails')}
+          </Button>
           <Button
             size="sm"
             onClick={() => void handleDecisionAction(item.id, 'accept')}
@@ -301,6 +364,36 @@ export function WorkbenchPage() {
             {t('workbench.actions.ignore')}
           </Button>
         </div>
+        {detailExpanded && (
+          <div className="mt-3 space-y-1 rounded-md border border-border/70 bg-muted/25 p-2.5 text-[11px] text-muted-foreground">
+            <div>
+              {t('workbench.card.title')}: {item.title}
+            </div>
+            <div>
+              {t('workbench.card.source')}: {sourceName}
+            </div>
+            {itemPublishedAt && (
+              <div>
+                {t('workbench.card.publishedAt')}: {formatDate(itemPublishedAt)}
+              </div>
+            )}
+            {(aiSummary || item.summary) && (
+              <div>
+                {t('workbench.card.aiSummary')}: {aiSummary || item.summary}
+              </div>
+            )}
+            {sourceUrl && (
+              <div className="truncate">
+                {t('workbench.card.sourceUrl')}: {sourceUrl}
+              </div>
+            )}
+            {itemUrl && (
+              <div className="truncate">
+                {t('workbench.card.itemUrl')}: {itemUrl}
+              </div>
+            )}
+          </div>
+        )}
       </article>
     );
   };
