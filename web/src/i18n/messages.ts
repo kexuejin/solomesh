@@ -1,6 +1,7 @@
 export const zhCN = {
   nav: {
-    workspace: '工作台',
+    workspace: '聊天',
+    workbench: '看板',
     tasks: '任务',
     todos: 'Todo',
     decisionCenter: '决策中心',
@@ -1686,6 +1687,36 @@ export const zhCN = {
       },
     },
   },
+  workbench: {
+    page: {
+      title: '工作看板',
+      subtitle: '共 {{total}} 项，按统一执行流展示',
+      refresh: '刷新',
+      emptyTitle: '暂无看板事项',
+      emptyDescription: '当前没有待处理、追踪中或执行中的事项。',
+    },
+    columns: {
+      triage: '待处理',
+      queued: '待执行',
+      inProgress: '进行中',
+      done: '已完成',
+      tracking: '追踪中',
+      empty: '暂无内容',
+    },
+    card: {
+      source: '来源',
+      updatedAt: '更新时间',
+      trackingHint: '持续追踪',
+    },
+    actions: {
+      accept: '纳入执行',
+      ignore: '忽略',
+    },
+    errors: {
+      loadFailed: '加载看板失败',
+      actionFailed: '更新状态失败',
+    },
+  },
   todos: {
     page: {
       title: 'Todo',
@@ -2467,7 +2498,8 @@ export const zhCN = {
 
 export const en = {
   nav: {
-    workspace: 'Workspace',
+    workspace: 'Chat',
+    workbench: 'Board',
     tasks: 'Tasks',
     todos: 'Todo',
     decisionCenter: 'Decision Center',
@@ -4181,6 +4213,36 @@ export const en = {
         cadence: 'Weekdays 11:30',
         prompt: 'Scan promising new projects or open-source tools, rank by relevance / impact / implementation cost, and output recommendation rationale, risks, next actions, and todo-ready candidate items.',
       },
+    },
+  },
+  workbench: {
+    page: {
+      title: 'Workbench Board',
+      subtitle: '{{total}} items in a unified execution flow',
+      refresh: 'Refresh',
+      emptyTitle: 'No board items',
+      emptyDescription: 'No triage, tracking, or execution items at the moment.',
+    },
+    columns: {
+      triage: 'Triage',
+      queued: 'Queued',
+      inProgress: 'In Progress',
+      done: 'Done',
+      tracking: 'Tracking',
+      empty: 'No items',
+    },
+    card: {
+      source: 'Source',
+      updatedAt: 'Updated',
+      trackingHint: 'Keep tracking',
+    },
+    actions: {
+      accept: 'Accept',
+      ignore: 'Ignore',
+    },
+    errors: {
+      loadFailed: 'Failed to load workbench board',
+      actionFailed: 'Failed to update item',
     },
   },
   todos: {

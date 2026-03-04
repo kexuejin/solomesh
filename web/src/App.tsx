@@ -10,9 +10,8 @@ const SetupPage = lazy(() => import('./pages/SetupPage').then(m => ({ default: m
 const SetupProvidersPage = lazy(() => import('./pages/SetupProvidersPage').then(m => ({ default: m.SetupProvidersPage })));
 const SetupChannelsPage = lazy(() => import('./pages/SetupChannelsPage').then(m => ({ default: m.SetupChannelsPage })));
 const ChatPage = lazy(() => import('./pages/ChatPage').then(m => ({ default: m.ChatPage })));
+const WorkbenchPage = lazy(() => import('./pages/WorkbenchPage').then(m => ({ default: m.WorkbenchPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then(m => ({ default: m.TasksPage })));
-const TodosPage = lazy(() => import('./pages/TodosPage').then(m => ({ default: m.TodosPage })));
-const DecisionCenterPage = lazy(() => import('./pages/DecisionCenterPage').then(m => ({ default: m.DecisionCenterPage })));
 const MonitorPage = lazy(() => import('./pages/MonitorPage').then(m => ({ default: m.MonitorPage })));
 const MemoryPage = lazy(() => import('./pages/MemoryPage').then(m => ({ default: m.MemoryPage })));
 const SkillsPage = lazy(() => import('./pages/SkillsPage').then(m => ({ default: m.SkillsPage })));
@@ -56,10 +55,11 @@ export function App() {
           }
         >
           <Route path="/chat/:groupFolder?" element={<Suspense fallback={null}><ChatPage /></Suspense>} />
+          <Route path="/workbench" element={<Suspense fallback={null}><WorkbenchPage /></Suspense>} />
           <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
           <Route path="/tasks" element={<Suspense fallback={null}><TasksPage /></Suspense>} />
-          <Route path="/todos" element={<Suspense fallback={null}><TodosPage /></Suspense>} />
-          <Route path="/decision-center" element={<Suspense fallback={null}><DecisionCenterPage /></Suspense>} />
+          <Route path="/todos" element={<Navigate to="/workbench" replace />} />
+          <Route path="/decision-center" element={<Navigate to="/workbench" replace />} />
           <Route path="/monitor" element={<Suspense fallback={null}><MonitorPage /></Suspense>} />
           <Route path="/memory" element={<Suspense fallback={null}><MemoryPage /></Suspense>} />
           <Route path="/skills" element={<Suspense fallback={null}><SkillsPage /></Suspense>} />

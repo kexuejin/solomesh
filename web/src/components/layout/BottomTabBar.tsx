@@ -1,33 +1,22 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { MessageSquare, Clock, Activity, Settings, Lightbulb, ListChecks } from 'lucide-react';
+import { MessageSquare, Clock, Settings, LayoutDashboard } from 'lucide-react';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { lightTap } from '../../hooks/useHaptic';
 import { useI18n } from '../../i18n';
 
 const DEFAULT_NAV_ITEMS = [
   { path: '/chat', icon: MessageSquare, labelKey: 'nav.workspace' as const },
+  { path: '/workbench', icon: LayoutDashboard, labelKey: 'nav.workbench' as const },
   { path: '/tasks', icon: Clock, labelKey: 'nav.tasks' as const },
-  { path: '/decision-center', icon: Lightbulb, labelKey: 'nav.decisionCenter' as const },
-  { path: '/monitor', icon: Activity, labelKey: 'nav.monitor' as const },
   { path: '/settings', icon: Settings, labelKey: 'nav.settings' as const },
 ];
-
-const TODO_NAV_ITEM = { path: '/todos', icon: ListChecks, labelKey: 'nav.todos' as const };
 
 export function BottomTabBar() {
   const location = useLocation();
   const scrollDir = useScrollDirection();
   const isCompact = scrollDir === 'down';
   const { t } = useI18n();
-  const navItems = location.pathname.startsWith('/todos')
-    ? [
-        DEFAULT_NAV_ITEMS[0],
-        TODO_NAV_ITEM,
-        DEFAULT_NAV_ITEMS[2],
-        DEFAULT_NAV_ITEMS[3],
-        DEFAULT_NAV_ITEMS[4],
-      ]
-    : DEFAULT_NAV_ITEMS;
+  const navItems = DEFAULT_NAV_ITEMS;
 
   return (
     <>
