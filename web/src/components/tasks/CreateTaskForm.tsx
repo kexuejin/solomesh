@@ -532,7 +532,7 @@ export function CreateTaskForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="surface-card w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+      <div className="surface-card w-full max-w-3xl max-h-[95vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
             <h2 className="text-xl font-bold text-foreground">{t('tasks.form.title')}</h2>
@@ -547,7 +547,7 @@ export function CreateTaskForm({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
+        <form onSubmit={handleSubmit} className="space-y-4 p-5">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground/80">
               {t('tasks.form.workspace')} <span className="text-red-500">*</span>
@@ -635,7 +635,7 @@ export function CreateTaskForm({
               onChange={(e) => {
                 setFormData({ ...formData, prompt: e.target.value });
               }}
-              rows={4}
+              rows={3}
               className={cn('resize-none', errors.prompt && 'border-red-500')}
               placeholder={t('tasks.form.promptPlaceholder')}
             />
@@ -659,42 +659,44 @@ export function CreateTaskForm({
             </div>
           )}
 
-          <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-3">
-            <label className="block text-sm font-medium text-foreground/80">
-              {t('tasks.form.schedule')} <span className="text-red-500">*</span>
-            </label>
+          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="block text-sm font-medium text-foreground/80">
+                {t('tasks.form.schedule')} <span className="text-red-500">*</span>
+              </label>
 
-            <div className="inline-flex rounded-xl border border-border/70 bg-card p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setScheduleMode('daily');
-                  clearScheduleError();
-                }}
-                className={cn(
-                  'rounded-lg px-3 py-1.5 text-sm transition-colors',
-                  scheduleMode === 'daily'
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                )}
-              >
-                {t('tasks.form.modeDaily')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setScheduleMode('interval');
-                  clearScheduleError();
-                }}
-                className={cn(
-                  'rounded-lg px-3 py-1.5 text-sm transition-colors',
-                  scheduleMode === 'interval'
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                )}
-              >
-                {t('tasks.form.modeInterval')}
-              </button>
+              <div className="inline-flex rounded-xl border border-border/70 bg-card p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleMode('daily');
+                    clearScheduleError();
+                  }}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-sm transition-colors',
+                    scheduleMode === 'daily'
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  )}
+                >
+                  {t('tasks.form.modeDaily')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleMode('interval');
+                    clearScheduleError();
+                  }}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-sm transition-colors',
+                    scheduleMode === 'interval'
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  )}
+                >
+                  {t('tasks.form.modeInterval')}
+                </button>
+              </div>
             </div>
 
             {scheduleMode === 'daily' && (
@@ -808,30 +810,6 @@ export function CreateTaskForm({
             {errors.scheduleValue && <p className="text-sm text-red-600">{errors.scheduleValue}</p>}
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-foreground/80">{t('tasks.form.contextMode')}</label>
-            <Select
-              value={formData.contextMode}
-              onValueChange={(value) =>
-                setFormData({
-                  ...formData,
-                  contextMode: value as ContextMode,
-                })
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="isolated">{t('tasks.form.contextIsolated')}</SelectItem>
-                <SelectItem value="group">{t('tasks.form.contextGroup')}</SelectItem>
-              </SelectContent>
-            </Select>
-            {formData.executionType !== 'script' && (
-              <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
-            )}
-          </div>
-
           <div className="rounded-xl border border-border/70 bg-muted/10">
             <button
               type="button"
@@ -858,6 +836,32 @@ export function CreateTaskForm({
 
             {isAdvancedOpen && (
               <div className="space-y-3 border-t border-border/60 px-3 py-3">
+                {formData.executionType !== 'script' && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground/80">
+                      {t('tasks.form.contextMode')}
+                    </label>
+                    <Select
+                      value={formData.contextMode}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          contextMode: value as ContextMode,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full bg-card">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="isolated">{t('tasks.form.contextIsolated')}</SelectItem>
+                        <SelectItem value="group">{t('tasks.form.contextGroup')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
+                  </div>
+                )}
+
                 {formData.executionType !== 'script' && (
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-foreground/80">
@@ -938,56 +942,56 @@ export function CreateTaskForm({
                     <p className="text-xs text-muted-foreground">{t('tasks.form.agentRuntimeOverrideHint')}</p>
                   </div>
                 )}
+
+                <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <div className="text-sm font-medium text-foreground/80">{t('tasks.form.failureRuleTitle')}</div>
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={onErrorTodoIngest}
+                      onChange={(e) => setOnErrorTodoIngest(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-border"
+                    />
+                    <span>{t('tasks.form.onErrorTodoIngest')}</span>
+                  </label>
+                  <p className="text-xs text-muted-foreground">{t('tasks.form.onErrorTodoIngestHint')}</p>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <div className="text-sm font-medium text-foreground/80">{t('tasks.form.successRuleTitle')}</div>
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={onSuccessDecisionIngest}
+                      onChange={(e) => setOnSuccessDecisionIngest(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-border"
+                    />
+                    <span>{t('tasks.form.onSuccessDecisionIngest')}</span>
+                  </label>
+                  <p className="text-xs text-muted-foreground">{t('tasks.form.onSuccessDecisionIngestHint')}</p>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <div className="text-sm font-medium text-foreground/80">{t('tasks.form.taskConfigJsonTitle')}</div>
+                  <p className="text-xs text-muted-foreground">{t('tasks.form.taskConfigJsonHint')}</p>
+                  <Textarea
+                    value={taskConfigJson}
+                    onChange={(e) => {
+                      setTaskConfigJson(e.target.value);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.taskConfigJson;
+                        return next;
+                      });
+                    }}
+                    rows={5}
+                    className={cn('resize-y font-mono text-xs', errors.taskConfigJson && 'border-red-500')}
+                    placeholder={t('tasks.form.taskConfigJsonPlaceholder')}
+                  />
+                  {errors.taskConfigJson && <p className="text-sm text-red-600">{errors.taskConfigJson}</p>}
+                </div>
               </div>
             )}
-          </div>
-
-          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
-            <div className="text-sm font-medium text-foreground/80">{t('tasks.form.failureRuleTitle')}</div>
-            <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={onErrorTodoIngest}
-                onChange={(e) => setOnErrorTodoIngest(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border"
-              />
-              <span>{t('tasks.form.onErrorTodoIngest')}</span>
-            </label>
-            <p className="text-xs text-muted-foreground">{t('tasks.form.onErrorTodoIngestHint')}</p>
-          </div>
-
-          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
-            <div className="text-sm font-medium text-foreground/80">{t('tasks.form.successRuleTitle')}</div>
-            <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={onSuccessDecisionIngest}
-                onChange={(e) => setOnSuccessDecisionIngest(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border"
-              />
-              <span>{t('tasks.form.onSuccessDecisionIngest')}</span>
-            </label>
-            <p className="text-xs text-muted-foreground">{t('tasks.form.onSuccessDecisionIngestHint')}</p>
-          </div>
-
-          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
-            <div className="text-sm font-medium text-foreground/80">{t('tasks.form.taskConfigJsonTitle')}</div>
-            <p className="text-xs text-muted-foreground">{t('tasks.form.taskConfigJsonHint')}</p>
-            <Textarea
-              value={taskConfigJson}
-              onChange={(e) => {
-                setTaskConfigJson(e.target.value);
-                setErrors((prev) => {
-                  const next = { ...prev };
-                  delete next.taskConfigJson;
-                  return next;
-                });
-              }}
-              rows={6}
-              className={cn('resize-y font-mono text-xs', errors.taskConfigJson && 'border-red-500')}
-              placeholder={t('tasks.form.taskConfigJsonPlaceholder')}
-            />
-            {errors.taskConfigJson && <p className="text-sm text-red-600">{errors.taskConfigJson}</p>}
           </div>
 
           <div className="flex items-center justify-end gap-3 border-t border-border pt-4">

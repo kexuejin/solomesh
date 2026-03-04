@@ -170,13 +170,13 @@ export function TasksPage() {
               {t('tasks.page.customCreate')}
             </Button>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1">
             {templates.map((template) => (
               <button
                 key={template.id}
                 type="button"
                 onClick={() => openCreateForm(template.id)}
-                className="rounded-xl border border-border/70 bg-card px-3 py-3 text-left transition-colors hover:bg-muted/35"
+                className="w-[250px] shrink-0 snap-start rounded-xl border border-border/70 bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted/35"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-foreground">{template.name}</div>
@@ -184,7 +184,7 @@ export function TasksPage() {
                     {template.cadence}
                   </span>
                 </div>
-                <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{template.summary}</p>
+                <p className="mt-1 line-clamp-1 text-xs leading-relaxed text-muted-foreground">{template.summary}</p>
               </button>
             ))}
           </div>
