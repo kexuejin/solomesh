@@ -25,3 +25,19 @@ test('radar subscription dialog uses radar subscription APIs', () => {
   assert.ok(dialog.includes("'/api/radar/subscriptions/feeds'"));
   assert.ok(dialog.includes('/api/radar/subscriptions/templates/${'));
 });
+
+test('workbench tracking tab supports radar tag filters', () => {
+  const page = read('web/src/pages/WorkbenchPage.tsx');
+  assert.ok(page.includes("'/api/radar/subscriptions'"));
+  assert.ok(page.includes('trackingTagFilter'));
+  assert.ok(page.includes("t('workbench.tracking.tagsLabel')"));
+  assert.ok(page.includes("t('workbench.tracking.allTags')"));
+});
+
+test('radar subscription dialog supports custom feed tags', () => {
+  const dialog = read('web/src/components/workbench/RadarSubscriptionDialog.tsx');
+  assert.ok(dialog.includes('newFeedTags'));
+  assert.ok(dialog.includes('parseTagInput(newFeedTags)'));
+  assert.ok(dialog.includes("t('workbench.radar.feedTagsPlaceholder')"));
+  assert.ok(dialog.includes('patchFeed(feed.id, { tags:'));
+});

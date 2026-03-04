@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 import { RadarSubscriptionDialog } from '@/components/workbench/RadarSubscriptionDialog';
 import { api } from '../api/client';
 import { localeForDateTime, useI18n } from '../i18n';
@@ -20,6 +21,43 @@ interface WorkbenchColumnProps {
   title: string;
   count: number;
   children: ReactNode;
+}
+
+interface RadarResolvedSourceMeta {
+  id: string;
+  name: string;
+  tags: string[];
+}
+
+interface RadarSubscriptionPayload {
+  resolved: RadarResolvedSourceMeta[];
+}
+
+interface TrackingDecisionCard {
+  item: DecisionItem;
+  sourceName: string | null;
+  tags: string[];
+}
+
+function parseRadarSourceRef(sourceId: string): string | null {
+  if (!sourceId.startsWith('radar:')) return null;
+  const raw = sourceId.slice('radar:'.length).trim();
+  return raw || null;
+}
+
+function normalizeTags(values: string[] | undefined): string[] {
+  if (!values || values.length === 0) return [];
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(trimmed);
+  }
+  return tags;
 }
 
 function WorkbenchColumn({ title, count, children }: WorkbenchColumnProps) {
@@ -47,6 +85,8 @@ export function WorkbenchPage() {
   const [radarDialogOpen, setRadarDialogOpen] = useState(false);
   const [decisionItems, setDecisionItems] = useState<DecisionItem[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [trackingTagFilter, setTrackingTagFilter] = useState<string>('all');
+  const [radarSourceMetaMap, setRadarSourceMetaMap] = useState<Record<string, RadarResolvedSourceMeta>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -57,6 +97,22 @@ export function WorkbenchPage() {
       ]);
       setDecisionItems(decisionRes.items);
       setTodos(todoRes.todos);
+
+      const nextRadarMetaMap: Record<string, RadarResolvedSourceMeta> = {};
+      try {
+        const radarRes = await api.get<RadarSubscriptionPayload>('/api/radar/subscriptions');
+        const resolvedSources = Array.isArray(radarRes.resolved) ? radarRes.resolved : [];
+        for (const source of resolvedSources) {
+          nextRadarMetaMap[source.id] = {
+            id: source.id,
+            name: source.name,
+            tags: normalizeTags(source.tags),
+          };
+        }
+      } catch {
+        // Do not block board rendering when radar subscriptions fail to load.
+      }
+      setRadarSourceMetaMap(nextRadarMetaMap);
       setError(null);
     } catch (err) {
       if (err && typeof err === 'object' && 'message' in err) {
@@ -88,6 +144,58 @@ export function WorkbenchPage() {
       + columns.tracking.length,
     [columns],
   );
+
+  const trackingCards = useMemo<TrackingDecisionCard[]>(
+    () =>
+      columns.tracking.map((item) => {
+        const sourceRef = parseRadarSourceRef(item.source_id);
+        if (!sourceRef) {
+          return {
+            item,
+            sourceName: null,
+            tags: [],
+          };
+        }
+        const sourceMeta = radarSourceMetaMap[sourceRef];
+        return {
+          item,
+          sourceName: sourceMeta?.name ?? null,
+          tags: sourceMeta?.tags ?? [],
+        };
+      }),
+    [columns.tracking, radarSourceMetaMap],
+  );
+
+  const trackingTagOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const tags: string[] = [];
+    for (const card of trackingCards) {
+      for (const tag of card.tags) {
+        const key = tag.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tags.push(tag);
+      }
+    }
+    return tags.sort((a, b) => a.localeCompare(b));
+  }, [trackingCards]);
+
+  useEffect(() => {
+    if (trackingTagFilter === 'all') return;
+    const exists = trackingTagOptions.some(
+      (tag) => tag.toLowerCase() === trackingTagFilter.toLowerCase(),
+    );
+    if (!exists) {
+      setTrackingTagFilter('all');
+    }
+  }, [trackingTagFilter, trackingTagOptions]);
+
+  const filteredTrackingCards = useMemo(() => {
+    if (trackingTagFilter === 'all') return trackingCards;
+    return trackingCards.filter((card) =>
+      card.tags.some((tag) => tag.toLowerCase() === trackingTagFilter.toLowerCase()),
+    );
+  }, [trackingCards, trackingTagFilter]);
 
   const formatDate = (timestamp: string | null | undefined): string => {
     if (!timestamp) return '-';
@@ -139,6 +247,9 @@ export function WorkbenchPage() {
 
   const renderDecisionCard = (item: DecisionItem, withTrackingHint = false) => {
     const pending = actingId === item.id;
+    const sourceRef = parseRadarSourceRef(item.source_id);
+    const sourceMeta = sourceRef ? radarSourceMetaMap[sourceRef] : null;
+    const sourceTags = sourceMeta?.tags ?? [];
     return (
       <article key={item.id} className="rounded-lg border border-border bg-background p-3">
         {withTrackingHint && (
@@ -153,8 +264,20 @@ export function WorkbenchPage() {
             {item.summary}
           </p>
         )}
+        {sourceTags.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {sourceTags.map((tag) => (
+              <span
+                key={`${item.id}:${tag}`}
+                className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] text-brand-700"
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="mb-2 text-[11px] text-muted-foreground">
-          {t('workbench.card.source')}: {item.source_type}
+          {t('workbench.card.source')}: {sourceMeta?.name ?? item.source_type}
         </div>
         <div className="mb-3 text-[11px] text-muted-foreground">
           {t('workbench.card.updatedAt')}: {formatDate(item.created_at)}
@@ -206,14 +329,64 @@ export function WorkbenchPage() {
       return columns.triage.map((item) => renderDecisionCard(item));
     }
     if (tabKey === 'tracking') {
-      if (columns.tracking.length === 0) {
+      if (trackingCards.length === 0) {
         return (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            {t('workbench.columns.empty')}
-          </p>
+          <div className="space-y-2 px-2 py-1">
+            <p className="text-xs text-muted-foreground">{t('workbench.columns.empty')}</p>
+            <Button size="sm" variant="outline" onClick={() => setRadarDialogOpen(true)}>
+              <Rss size={14} />
+              {t('workbench.tracking.addSources')}
+            </Button>
+          </div>
         );
       }
-      return columns.tracking.map((item) => renderDecisionCard(item, true));
+
+      return (
+        <div className="space-y-3">
+          {trackingTagOptions.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[11px] text-muted-foreground">{t('workbench.tracking.tagsLabel')}</div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                    trackingTagFilter === 'all'
+                      ? 'border-brand-300 bg-brand-50 text-brand-700'
+                      : 'border-border bg-background text-muted-foreground hover:bg-muted/70',
+                  )}
+                  onClick={() => setTrackingTagFilter('all')}
+                >
+                  {t('workbench.tracking.allTags')}
+                </button>
+                {trackingTagOptions.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={cn(
+                      'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                      trackingTagFilter.toLowerCase() === tag.toLowerCase()
+                        ? 'border-brand-300 bg-brand-50 text-brand-700'
+                        : 'border-border bg-background text-muted-foreground hover:bg-muted/70',
+                    )}
+                    onClick={() => setTrackingTagFilter(tag)}
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredTrackingCards.length === 0 ? (
+            <p className="px-1 py-1 text-xs text-muted-foreground">
+              {t('workbench.tracking.emptyFiltered')}
+            </p>
+          ) : (
+            filteredTrackingCards.map((card) => renderDecisionCard(card.item, true))
+          )}
+        </div>
+      );
     }
     if (tabKey === 'queued') {
       if (columns.queued.length === 0) {

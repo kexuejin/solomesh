@@ -17,6 +17,7 @@ interface RadarSourceTemplate {
   url: string;
   default_enabled: boolean;
   default_cadence: RadarCadence;
+  tags: string[];
 }
 
 interface RadarUserSourceOverride {
@@ -31,6 +32,7 @@ interface RadarUserCustomFeed {
   rss_url: string;
   enabled: boolean;
   cadence: RadarCadence;
+  tags: string[];
 }
 
 interface SubscriptionPayload {
@@ -52,6 +54,31 @@ function cadenceItems(t: (key: string) => string): Array<{ value: RadarCadence; 
   ];
 }
 
+function parseTagInput(raw: string): string[] {
+  const values = raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(value);
+  }
+  return tags;
+}
+
+function formatTagInput(tags: string[]): string {
+  return tags.join(', ');
+}
+
+function sameTags(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value.toLowerCase() === b[index]?.toLowerCase());
+}
+
 export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
   const { t } = useI18n();
   const cadenceOptions = useMemo(() => cadenceItems(t), [t]);
@@ -64,6 +91,8 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
   const [newFeedName, setNewFeedName] = useState('');
   const [newFeedUrl, setNewFeedUrl] = useState('');
   const [newFeedCadence, setNewFeedCadence] = useState<RadarCadence>('both');
+  const [newFeedTags, setNewFeedTags] = useState('');
+  const [feedTagDrafts, setFeedTagDrafts] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -72,6 +101,11 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
       setTemplates(res.templates);
       setOverrides(res.overrides);
       setCustomFeeds(res.customFeeds);
+      setFeedTagDrafts(
+        Object.fromEntries(
+          res.customFeeds.map((feed) => [feed.id, formatTagInput(feed.tags)]),
+        ),
+      );
       setError(null);
     } catch (err) {
       if (err && typeof err === 'object' && 'message' in err) {
@@ -136,11 +170,17 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
         name: newFeedName.trim(),
         rss_url: newFeedUrl.trim(),
         cadence: newFeedCadence,
+        tags: parseTagInput(newFeedTags),
       });
       setCustomFeeds((prev) => [res.feed, ...prev]);
+      setFeedTagDrafts((prev) => ({
+        ...prev,
+        [res.feed.id]: formatTagInput(res.feed.tags),
+      }));
       setNewFeedName('');
       setNewFeedUrl('');
       setNewFeedCadence('both');
+      setNewFeedTags('');
       setError(null);
     } catch (err) {
       if (err && typeof err === 'object' && 'message' in err) {
@@ -162,6 +202,10 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
           patch,
         );
         setCustomFeeds((prev) => prev.map((item) => (item.id === feedId ? res.feed : item)));
+        setFeedTagDrafts((prev) => ({
+          ...prev,
+          [feedId]: formatTagInput(res.feed.tags),
+        }));
         setError(null);
       } catch (err) {
         if (err && typeof err === 'object' && 'message' in err) {
@@ -182,6 +226,11 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
       try {
         await api.delete(`/api/radar/subscriptions/feeds/${encodeURIComponent(feedId)}`);
         setCustomFeeds((prev) => prev.filter((item) => item.id !== feedId));
+        setFeedTagDrafts((prev) => {
+          const next = { ...prev };
+          delete next[feedId];
+          return next;
+        });
         setError(null);
       } catch (err) {
         if (err && typeof err === 'object' && 'message' in err) {
@@ -228,6 +277,18 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
                         <div>
                           <div className="text-sm font-medium text-foreground">{template.name}</div>
                           <div className="text-xs text-muted-foreground">{template.url}</div>
+                          {template.tags.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {template.tags.map((tag) => (
+                                <span
+                                  key={`${template.id}:${tag}`}
+                                  className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] text-brand-700"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         {pending && <Loader2 size={14} className="mt-1 animate-spin text-muted-foreground" />}
                       </div>
@@ -274,7 +335,7 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
             <section className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">{t('workbench.radar.customFeeds')}</h3>
 
-              <div className="grid grid-cols-1 gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr,2fr,140px,auto]">
+              <div className="grid grid-cols-1 gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr,2fr,140px,1fr,auto]">
                 <Input
                   placeholder={t('workbench.radar.feedNamePlaceholder')}
                   value={newFeedName}
@@ -297,6 +358,11 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
+                <Input
+                  placeholder={t('workbench.radar.feedTagsPlaceholder')}
+                  value={newFeedTags}
+                  onChange={(e) => setNewFeedTags(e.target.value)}
+                />
                 <Button onClick={() => void addFeed()} disabled={savingKey === 'feed:new'}>
                   <Plus size={14} />
                   {t('workbench.radar.addFeed')}
@@ -363,6 +429,30 @@ export function RadarSubscriptionDialog({ open, onOpenChange }: Props) {
                             </SelectContent>
                           </Select>
                         </div>
+                        <Input
+                          placeholder={t('workbench.radar.feedTagsPlaceholder')}
+                          value={feedTagDrafts[feed.id] ?? formatTagInput(feed.tags)}
+                          disabled={pending}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFeedTagDrafts((prev) => ({
+                              ...prev,
+                              [feed.id]: value,
+                            }));
+                          }}
+                          onBlur={() => {
+                            const draft = feedTagDrafts[feed.id] ?? formatTagInput(feed.tags);
+                            const nextTags = parseTagInput(draft);
+                            if (sameTags(nextTags, feed.tags)) return;
+                            void patchFeed(feed.id, { tags: nextTags });
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              (event.currentTarget as HTMLInputElement).blur();
+                            }
+                          }}
+                        />
                       </article>
                     );
                   })

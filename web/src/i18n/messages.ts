@@ -1731,6 +1731,12 @@ export const zhCN = {
       tracking: '追踪中',
       empty: '暂无内容',
     },
+    tracking: {
+      tagsLabel: '按标签筛选',
+      allTags: '全部',
+      emptyFiltered: '当前标签下暂无内容',
+      addSources: '添加追踪源',
+    },
     card: {
       source: '来源',
       updatedAt: '更新时间',
@@ -1746,7 +1752,7 @@ export const zhCN = {
     },
     radar: {
       title: '资讯雷达订阅',
-      description: '系统默认源可按用户覆盖，自定义 RSS 可随时添加。',
+      description: '系统源默认关闭，按需启用并可随时添加自定义 RSS。',
       loading: '加载中...',
       systemSources: '系统默认源',
       customFeeds: '自定义 RSS',
@@ -1755,6 +1761,7 @@ export const zhCN = {
       deleteFeed: '删除源',
       feedNamePlaceholder: '来源名称',
       feedUrlPlaceholder: 'RSS/Atom 链接',
+      feedTagsPlaceholder: '标签（逗号分隔）',
       emptyFeeds: '还没有自定义订阅源。',
       cadence: {
         daily: '每日',
@@ -4310,6 +4317,12 @@ export const en = {
       tracking: 'Tracking',
       empty: 'No items',
     },
+    tracking: {
+      tagsLabel: 'Filter by tags',
+      allTags: 'All',
+      emptyFiltered: 'No items under this tag',
+      addSources: 'Add sources',
+    },
     card: {
       source: 'Source',
       updatedAt: 'Updated',
@@ -4325,7 +4338,7 @@ export const en = {
     },
     radar: {
       title: 'Radar Subscriptions',
-      description: 'Use system defaults with user overrides, and add custom RSS feeds anytime.',
+      description: 'System sources are off by default. Enable what you need and add custom RSS feeds anytime.',
       loading: 'Loading...',
       systemSources: 'System Sources',
       customFeeds: 'Custom RSS Feeds',
@@ -4334,6 +4347,7 @@ export const en = {
       deleteFeed: 'Delete feed',
       feedNamePlaceholder: 'Feed name',
       feedUrlPlaceholder: 'RSS/Atom URL',
+      feedTagsPlaceholder: 'Tags (comma separated)',
       emptyFeeds: 'No custom feeds yet.',
       cadence: {
         daily: 'Daily',
