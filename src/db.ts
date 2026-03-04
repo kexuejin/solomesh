@@ -129,7 +129,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     name: 'GitHub Trending',
     type: 'github_trending',
     url: 'https://mshibanami.github.io/GitHubTrendingRSS/daily/overall.xml',
-    default_enabled: true,
+    default_enabled: false,
     default_cadence: 'both',
     tags: ['agent', 'coding', 'tools'],
   },
@@ -138,7 +138,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     name: 'Product Hunt AI',
     type: 'producthunt',
     url: 'https://www.producthunt.com/feed',
-    default_enabled: true,
+    default_enabled: false,
     default_cadence: 'both',
     tags: ['launch', 'tools'],
   },
@@ -147,7 +147,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     name: 'Hacker News Show',
     type: 'hn',
     url: 'https://hnrss.org/show',
-    default_enabled: true,
+    default_enabled: false,
     default_cadence: 'daily',
     tags: ['launch', 'discussion'],
   },
@@ -156,7 +156,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     name: 'Hugging Face Papers',
     type: 'hf_papers',
     url: 'https://huggingface.co/papers/rss',
-    default_enabled: true,
+    default_enabled: false,
     default_cadence: 'both',
     tags: ['research', 'models'],
   },
@@ -165,7 +165,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     name: 'Reddit /r/LocalLLaMA',
     type: 'reddit',
     url: 'https://www.reddit.com/r/LocalLLaMA/new/.rss',
-    default_enabled: true,
+    default_enabled: false,
     default_cadence: 'daily',
     tags: ['community', 'oss'],
   },
@@ -174,7 +174,7 @@ const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
     name: 'Reddit /r/ChatGPT',
     type: 'reddit',
     url: 'https://www.reddit.com/r/ChatGPT/new/.rss',
-    default_enabled: true,
+    default_enabled: false,
     default_cadence: 'weekly',
     tags: ['community', 'apps'],
   },
@@ -964,7 +964,35 @@ export function initDatabase(): void {
 
   seedRadarSourceTemplates();
 
-  const SCHEMA_VERSION = '21';
+  // v22 migration: clear all template-based subscriptions for existing users.
+  // Keep custom RSS feeds intact; only template switches are reset to disabled.
+  const radarDefaultsOffVersion = getRouterStateInternal('schema_version');
+  if (!radarDefaultsOffVersion || parseInt(radarDefaultsOffVersion, 10) < 22) {
+    const nowIso = new Date().toISOString();
+    db.prepare(
+      `
+      INSERT INTO radar_user_source_overrides (
+        user_id, template_id, enabled_override, cadence_override, include_keywords, exclude_keywords, updated_at
+      )
+      SELECT
+        u.id AS user_id,
+        t.id AS template_id,
+        0 AS enabled_override,
+        NULL AS cadence_override,
+        '[]' AS include_keywords,
+        '[]' AS exclude_keywords,
+        ? AS updated_at
+      FROM users u
+      CROSS JOIN radar_source_templates t
+      WHERE u.status != 'deleted'
+      ON CONFLICT(user_id, template_id) DO UPDATE SET
+        enabled_override = excluded.enabled_override,
+        updated_at = excluded.updated_at
+    `,
+    ).run(nowIso);
+  }
+
+  const SCHEMA_VERSION = '22';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
