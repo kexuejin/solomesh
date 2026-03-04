@@ -21,3 +21,15 @@ test('chat i18n dictionaries include workspace remote-access entry labels', () =
   assert.ok(messages.includes('remoteAccess: \'远程访问\''));
   assert.ok(messages.includes('remoteAccess: \'Remote Access\''));
 });
+
+test('chat view action dictionaries include remote-access action label', () => {
+  const messages = read('web/src/i18n/messages.ts');
+
+  const zhActionBlock = /view:\s*\{[\s\S]*?actions:\s*\{[\s\S]*?newConversationPrompt:\s*'对话名称：',[\s\S]*?\}/m;
+  const enActionBlock = /view:\s*\{[\s\S]*?actions:\s*\{[\s\S]*?newConversationPrompt:\s*'Conversation name:',[\s\S]*?\}/m;
+
+  assert.match(messages, zhActionBlock, 'zh chat.view.actions block should exist');
+  assert.match(messages, enActionBlock, 'en chat.view.actions block should exist');
+  assert.match(messages, /newConversationPrompt:\s*'对话名称：',\s*remoteAccess:\s*'[^']+'/m);
+  assert.match(messages, /newConversationPrompt:\s*'Conversation name:',\s*remoteAccess:\s*'[^']+'/m);
+});
