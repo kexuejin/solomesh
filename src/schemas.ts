@@ -148,6 +148,15 @@ export const DECISION_ITEM_SCOPE_LEVEL_VALUES = [
   'global',
   'workspace',
 ] as const;
+export const RADAR_SOURCE_TYPE_VALUES = [
+  'github_trending',
+  'producthunt',
+  'hn',
+  'hf_papers',
+  'reddit',
+  'rss',
+] as const;
+export const RADAR_CADENCE_VALUES = ['daily', 'weekly', 'both'] as const;
 
 export const TodoPrioritySchema = z.enum(TODO_PRIORITY_VALUES);
 export const TodoStatusSchema = z.enum(TODO_STATUS_VALUES);
@@ -155,6 +164,8 @@ export const TodoSourceTypeSchema = z.enum(TODO_SOURCE_TYPE_VALUES);
 export const TodoTriggerModeSchema = z.enum(TODO_TRIGGER_MODE_VALUES);
 export const DecisionItemStatusSchema = z.enum(DECISION_ITEM_STATUS_VALUES);
 export const DecisionItemScopeLevelSchema = z.enum(DECISION_ITEM_SCOPE_LEVEL_VALUES);
+export const RadarSourceTypeSchema = z.enum(RADAR_SOURCE_TYPE_VALUES);
+export const RadarCadenceSchema = z.enum(RADAR_CADENCE_VALUES);
 
 export const TodoIngestSchema = z
   .object({
@@ -236,6 +247,72 @@ export const DecisionItemAcceptSchema = z
     priority: TodoPrioritySchema.optional(),
   })
   .strict();
+
+const RadarKeywordsSchema = z.array(z.string().trim().min(1).max(64)).max(50);
+const RadarTagsSchema = z.array(z.string().trim().min(1).max(32)).max(20);
+
+export const RadarTemplateOverrideUpdateSchema = z
+  .object({
+    enabled_override: z.boolean().nullable().optional(),
+    cadence_override: RadarCadenceSchema.nullable().optional(),
+    include_keywords: RadarKeywordsSchema.optional(),
+    exclude_keywords: RadarKeywordsSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (data) =>
+      data.enabled_override !== undefined
+      || data.cadence_override !== undefined
+      || data.include_keywords !== undefined
+      || data.exclude_keywords !== undefined,
+    { message: 'At least one override field is required' },
+  );
+
+export const RadarCustomFeedCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    rss_url: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2000)
+      .refine(isHttpUrlLike, 'Invalid RSS URL'),
+    enabled: z.boolean().optional(),
+    cadence: RadarCadenceSchema.optional(),
+    tags: RadarTagsSchema.optional(),
+    include_keywords: RadarKeywordsSchema.optional(),
+    exclude_keywords: RadarKeywordsSchema.optional(),
+  })
+  .strict();
+
+export const RadarCustomFeedUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    rss_url: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2000)
+      .refine(isHttpUrlLike, 'Invalid RSS URL')
+      .optional(),
+    enabled: z.boolean().optional(),
+    cadence: RadarCadenceSchema.optional(),
+    tags: RadarTagsSchema.optional(),
+    include_keywords: RadarKeywordsSchema.optional(),
+    exclude_keywords: RadarKeywordsSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (data) =>
+      data.name !== undefined
+      || data.rss_url !== undefined
+      || data.enabled !== undefined
+      || data.cadence !== undefined
+      || data.tags !== undefined
+      || data.include_keywords !== undefined
+      || data.exclude_keywords !== undefined,
+    { message: 'At least one field is required' },
+  );
 
 // 简单 cron 表达式验证：5 或 6 段，每段允许 * 和常见 cron 语法
 const CRON_REGEX = /^(\S+\s+){4,5}\S+$/;

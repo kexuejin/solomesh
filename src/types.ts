@@ -182,6 +182,14 @@ export type TodoTriggerMode = 'manual' | 'automation';
 export type TodoIngestAction = 'created' | 'merged' | 'ignored';
 export type DecisionItemStatus = 'pending' | 'accepted' | 'ignored';
 export type DecisionItemScopeLevel = 'global' | 'workspace';
+export type RadarSourceType =
+  | 'github_trending'
+  | 'producthunt'
+  | 'hn'
+  | 'hf_papers'
+  | 'reddit'
+  | 'rss';
+export type RadarCadence = 'daily' | 'weekly' | 'both';
 
 export interface Todo {
   id: string;
@@ -231,6 +239,61 @@ export interface DecisionItem {
   decided_at: string | null;
   decided_by: string | null;
   accepted_todo_id: string | null;
+}
+
+export interface RadarSourceTemplate {
+  id: string;
+  name: string;
+  type: RadarSourceType;
+  url: string;
+  default_enabled: boolean;
+  default_cadence: RadarCadence;
+  tags: string[];
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RadarUserSourceOverride {
+  user_id: string;
+  template_id: string;
+  enabled_override: boolean | null;
+  cadence_override: RadarCadence | null;
+  include_keywords: string[];
+  exclude_keywords: string[];
+  updated_at: string;
+}
+
+export interface RadarUserCustomFeed {
+  id: string;
+  user_id: string;
+  name: string;
+  rss_url: string;
+  enabled: boolean;
+  cadence: RadarCadence;
+  tags: string[];
+  include_keywords: string[];
+  exclude_keywords: string[];
+  consecutive_failures: number;
+  last_success_at: string | null;
+  last_error_at: string | null;
+  last_error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RadarResolvedSubscriptionSource {
+  id: string;
+  origin: 'template' | 'custom';
+  template_id: string | null;
+  source_type: RadarSourceType;
+  name: string;
+  url: string;
+  enabled: boolean;
+  cadence: RadarCadence;
+  tags: string[];
+  include_keywords: string[];
+  exclude_keywords: string[];
 }
 
 // --- Auth types ---

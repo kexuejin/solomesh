@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Check, CircleOff, Columns3, RefreshCw, Sparkles } from 'lucide-react';
+import { Check, CircleOff, Columns3, RefreshCw, Sparkles, Rss } from 'lucide-react';
 
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { Button } from '@/components/ui/button';
+import { RadarSubscriptionDialog } from '@/components/workbench/RadarSubscriptionDialog';
 import { api } from '../api/client';
 import { localeForDateTime, useI18n } from '../i18n';
 import {
@@ -39,6 +40,7 @@ export function WorkbenchPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [radarDialogOpen, setRadarDialogOpen] = useState(false);
   const [decisionItems, setDecisionItems] = useState<DecisionItem[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
 
@@ -128,10 +130,16 @@ export function WorkbenchPage() {
             subtitle={t('workbench.page.subtitle', { total: totalCount })}
             className="mb-4"
             actions={(
-              <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
-                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                {t('workbench.page.refresh')}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setRadarDialogOpen(true)}>
+                  <Rss size={16} />
+                  {t('workbench.page.manageRadar')}
+                </Button>
+                <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
+                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                  {t('workbench.page.refresh')}
+                </Button>
+              </div>
             )}
           />
         </div>
@@ -319,6 +327,7 @@ export function WorkbenchPage() {
           </div>
         )}
       </div>
+      <RadarSubscriptionDialog open={radarDialogOpen} onOpenChange={setRadarDialogOpen} />
     </div>
   );
 }

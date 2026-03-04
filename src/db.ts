@@ -25,6 +25,11 @@ import {
   DecisionItem,
   DecisionItemStatus,
   DecisionItemScopeLevel,
+  RadarCadence,
+  RadarSourceTemplate,
+  RadarSourceType,
+  RadarUserCustomFeed,
+  RadarUserSourceOverride,
   Todo,
   TodoPriority,
   TodoSourceEvent,
@@ -100,6 +105,96 @@ function getRouterStateInternal(key: string): string | undefined {
     return row?.value;
   } catch {
     return undefined; // Table may not exist yet on first run
+  }
+}
+
+const DEFAULT_RADAR_SOURCE_TEMPLATES: Array<{
+  id: string;
+  name: string;
+  type: RadarSourceType;
+  url: string;
+  default_enabled: boolean;
+  default_cadence: RadarCadence;
+  tags: string[];
+}> = [
+  {
+    id: 'default-github-trending',
+    name: 'GitHub Trending',
+    type: 'github_trending',
+    url: 'https://github.com/trending?since=daily',
+    default_enabled: true,
+    default_cadence: 'both',
+    tags: ['agent', 'coding', 'tools'],
+  },
+  {
+    id: 'default-producthunt-ai',
+    name: 'Product Hunt AI',
+    type: 'producthunt',
+    url: 'https://www.producthunt.com/topics/artificial-intelligence',
+    default_enabled: true,
+    default_cadence: 'both',
+    tags: ['launch', 'tools'],
+  },
+  {
+    id: 'default-hn-show',
+    name: 'Hacker News Show',
+    type: 'hn',
+    url: 'https://news.ycombinator.com/show',
+    default_enabled: true,
+    default_cadence: 'daily',
+    tags: ['launch', 'discussion'],
+  },
+  {
+    id: 'default-hf-papers',
+    name: 'Hugging Face Papers',
+    type: 'hf_papers',
+    url: 'https://huggingface.co/papers',
+    default_enabled: true,
+    default_cadence: 'both',
+    tags: ['research', 'models'],
+  },
+  {
+    id: 'default-reddit-localllama',
+    name: 'Reddit /r/LocalLLaMA',
+    type: 'reddit',
+    url: 'https://www.reddit.com/r/LocalLLaMA/new/.rss',
+    default_enabled: true,
+    default_cadence: 'daily',
+    tags: ['community', 'oss'],
+  },
+  {
+    id: 'default-reddit-chatgpt',
+    name: 'Reddit /r/ChatGPT',
+    type: 'reddit',
+    url: 'https://www.reddit.com/r/ChatGPT/new/.rss',
+    default_enabled: true,
+    default_cadence: 'weekly',
+    tags: ['community', 'apps'],
+  },
+];
+
+function seedRadarSourceTemplates(): void {
+  const now = new Date().toISOString();
+  const stmt = db.prepare(
+    `
+    INSERT OR IGNORE INTO radar_source_templates (
+      id, name, type, url, default_enabled, default_cadence, tags, active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+  `,
+  );
+
+  for (const template of DEFAULT_RADAR_SOURCE_TEMPLATES) {
+    stmt.run(
+      template.id,
+      template.name,
+      template.type,
+      template.url,
+      template.default_enabled ? 1 : 0,
+      template.default_cadence,
+      JSON.stringify(template.tags),
+      now,
+      now,
+    );
   }
 }
 
@@ -254,6 +349,54 @@ export function initDatabase(): void {
       ON decision_items(source_type, source_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_decision_items_scope
       ON decision_items(scope_level, scope_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS radar_source_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      url TEXT NOT NULL,
+      default_enabled INTEGER NOT NULL DEFAULT 1,
+      default_cadence TEXT NOT NULL DEFAULT 'both',
+      tags TEXT NOT NULL DEFAULT '[]',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_radar_source_templates_active
+      ON radar_source_templates(active);
+
+    CREATE TABLE IF NOT EXISTS radar_user_source_overrides (
+      user_id TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      enabled_override INTEGER,
+      cadence_override TEXT,
+      include_keywords TEXT NOT NULL DEFAULT '[]',
+      exclude_keywords TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, template_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_radar_overrides_user
+      ON radar_user_source_overrides(user_id);
+
+    CREATE TABLE IF NOT EXISTS radar_user_custom_feeds (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      rss_url TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      cadence TEXT NOT NULL DEFAULT 'both',
+      tags TEXT NOT NULL DEFAULT '[]',
+      include_keywords TEXT NOT NULL DEFAULT '[]',
+      exclude_keywords TEXT NOT NULL DEFAULT '[]',
+      consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      last_success_at TEXT,
+      last_error_at TEXT,
+      last_error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_radar_custom_feeds_user
+      ON radar_user_custom_feeds(user_id);
   `);
 
   // State tables (replacing JSON files)
@@ -523,6 +666,44 @@ export function initDatabase(): void {
     'evidence',
     'created_at',
   ]);
+  assertSchema('radar_source_templates', [
+    'id',
+    'name',
+    'type',
+    'url',
+    'default_enabled',
+    'default_cadence',
+    'tags',
+    'active',
+    'created_at',
+    'updated_at',
+  ]);
+  assertSchema('radar_user_source_overrides', [
+    'user_id',
+    'template_id',
+    'enabled_override',
+    'cadence_override',
+    'include_keywords',
+    'exclude_keywords',
+    'updated_at',
+  ]);
+  assertSchema('radar_user_custom_feeds', [
+    'id',
+    'user_id',
+    'name',
+    'rss_url',
+    'enabled',
+    'cadence',
+    'tags',
+    'include_keywords',
+    'exclude_keywords',
+    'consecutive_failures',
+    'last_success_at',
+    'last_error_at',
+    'last_error_message',
+    'created_at',
+    'updated_at',
+  ]);
   assertSchema(
     'registered_groups',
     [
@@ -695,7 +876,9 @@ export function initDatabase(): void {
     })();
   }
 
-  const SCHEMA_VERSION = '19';
+  seedRadarSourceTemplates();
+
+  const SCHEMA_VERSION = '20';
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run('schema_version', SCHEMA_VERSION);
@@ -1296,6 +1479,337 @@ function parseDecisionItemRow(row: Record<string, unknown>): DecisionItem {
     accepted_todo_id:
       typeof row.accepted_todo_id === 'string' ? row.accepted_todo_id : null,
   };
+}
+
+function parseJsonStringArray(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function parseRadarSourceTemplateRow(row: Record<string, unknown>): RadarSourceTemplate {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    type: row.type as RadarSourceType,
+    url: String(row.url),
+    default_enabled: Number(row.default_enabled ?? 0) === 1,
+    default_cadence: row.default_cadence as RadarCadence,
+    tags: parseJsonStringArray(row.tags),
+    active: Number(row.active ?? 0) === 1,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+function parseRadarUserSourceOverrideRow(
+  row: Record<string, unknown>,
+): RadarUserSourceOverride {
+  return {
+    user_id: String(row.user_id),
+    template_id: String(row.template_id),
+    enabled_override:
+      row.enabled_override === null || row.enabled_override === undefined
+        ? null
+        : Number(row.enabled_override) === 1,
+    cadence_override:
+      row.cadence_override === null || row.cadence_override === undefined
+        ? null
+        : (row.cadence_override as RadarCadence),
+    include_keywords: parseJsonStringArray(row.include_keywords),
+    exclude_keywords: parseJsonStringArray(row.exclude_keywords),
+    updated_at: String(row.updated_at),
+  };
+}
+
+function parseRadarUserCustomFeedRow(
+  row: Record<string, unknown>,
+): RadarUserCustomFeed {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    name: String(row.name),
+    rss_url: String(row.rss_url),
+    enabled: Number(row.enabled ?? 0) === 1,
+    cadence: row.cadence as RadarCadence,
+    tags: parseJsonStringArray(row.tags),
+    include_keywords: parseJsonStringArray(row.include_keywords),
+    exclude_keywords: parseJsonStringArray(row.exclude_keywords),
+    consecutive_failures: Number(row.consecutive_failures ?? 0),
+    last_success_at:
+      typeof row.last_success_at === 'string' ? row.last_success_at : null,
+    last_error_at:
+      typeof row.last_error_at === 'string' ? row.last_error_at : null,
+    last_error_message:
+      typeof row.last_error_message === 'string'
+        ? row.last_error_message
+        : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+export function listRadarSourceTemplates(
+  options: { activeOnly?: boolean } = {},
+): RadarSourceTemplate[] {
+  const activeOnly = options.activeOnly !== false;
+  const rows = activeOnly
+    ? (db
+        .prepare(
+          `
+      SELECT *
+      FROM radar_source_templates
+      WHERE active = 1
+      ORDER BY created_at ASC, id ASC
+    `,
+        )
+        .all() as Array<Record<string, unknown>>)
+    : (db
+        .prepare(
+          `
+      SELECT *
+      FROM radar_source_templates
+      ORDER BY created_at ASC, id ASC
+    `,
+        )
+        .all() as Array<Record<string, unknown>>);
+  return rows.map(parseRadarSourceTemplateRow);
+}
+
+export function getRadarSourceTemplateById(
+  id: string,
+): RadarSourceTemplate | undefined {
+  const row = db
+    .prepare('SELECT * FROM radar_source_templates WHERE id = ?')
+    .get(id) as Record<string, unknown> | undefined;
+  return row ? parseRadarSourceTemplateRow(row) : undefined;
+}
+
+export function listRadarUserSourceOverrides(
+  userId: string,
+): RadarUserSourceOverride[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_user_source_overrides
+      WHERE user_id = ?
+      ORDER BY template_id ASC
+    `,
+    )
+    .all(userId) as Array<Record<string, unknown>>;
+  return rows.map(parseRadarUserSourceOverrideRow);
+}
+
+export function getRadarUserSourceOverride(
+  userId: string,
+  templateId: string,
+): RadarUserSourceOverride | undefined {
+  const row = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_user_source_overrides
+      WHERE user_id = ? AND template_id = ?
+    `,
+    )
+    .get(userId, templateId) as Record<string, unknown> | undefined;
+  return row ? parseRadarUserSourceOverrideRow(row) : undefined;
+}
+
+export function updateRadarUserSourceOverride(
+  override: RadarUserSourceOverride,
+): void {
+  db.prepare(
+    `
+    INSERT INTO radar_user_source_overrides (
+      user_id, template_id, enabled_override, cadence_override, include_keywords, exclude_keywords, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, template_id) DO UPDATE SET
+      enabled_override = excluded.enabled_override,
+      cadence_override = excluded.cadence_override,
+      include_keywords = excluded.include_keywords,
+      exclude_keywords = excluded.exclude_keywords,
+      updated_at = excluded.updated_at
+  `,
+  ).run(
+    override.user_id,
+    override.template_id,
+    override.enabled_override === null
+      ? null
+      : (override.enabled_override ? 1 : 0),
+    override.cadence_override,
+    JSON.stringify(override.include_keywords),
+    JSON.stringify(override.exclude_keywords),
+    override.updated_at,
+  );
+}
+
+export function listRadarUserCustomFeeds(
+  userId: string,
+): RadarUserCustomFeed[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_user_custom_feeds
+      WHERE user_id = ?
+      ORDER BY created_at DESC, id DESC
+    `,
+    )
+    .all(userId) as Array<Record<string, unknown>>;
+  return rows.map(parseRadarUserCustomFeedRow);
+}
+
+export function createRadarUserCustomFeed(feed: RadarUserCustomFeed): void {
+  db.prepare(
+    `
+    INSERT INTO radar_user_custom_feeds (
+      id, user_id, name, rss_url, enabled, cadence, tags,
+      include_keywords, exclude_keywords, consecutive_failures,
+      last_success_at, last_error_at, last_error_message, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    feed.id,
+    feed.user_id,
+    feed.name,
+    feed.rss_url,
+    feed.enabled ? 1 : 0,
+    feed.cadence,
+    JSON.stringify(feed.tags),
+    JSON.stringify(feed.include_keywords),
+    JSON.stringify(feed.exclude_keywords),
+    feed.consecutive_failures,
+    feed.last_success_at,
+    feed.last_error_at,
+    feed.last_error_message,
+    feed.created_at,
+    feed.updated_at,
+  );
+}
+
+export function getRadarUserCustomFeedById(
+  userId: string,
+  id: string,
+): RadarUserCustomFeed | undefined {
+  const row = db
+    .prepare(
+      `
+      SELECT *
+      FROM radar_user_custom_feeds
+      WHERE user_id = ? AND id = ?
+    `,
+    )
+    .get(userId, id) as Record<string, unknown> | undefined;
+  return row ? parseRadarUserCustomFeedRow(row) : undefined;
+}
+
+export function updateRadarUserCustomFeed(
+  userId: string,
+  id: string,
+  patch: Partial<
+    Pick<
+      RadarUserCustomFeed,
+      | 'name'
+      | 'rss_url'
+      | 'enabled'
+      | 'cadence'
+      | 'tags'
+      | 'include_keywords'
+      | 'exclude_keywords'
+      | 'consecutive_failures'
+      | 'last_success_at'
+      | 'last_error_at'
+      | 'last_error_message'
+      | 'updated_at'
+    >
+  >,
+): boolean {
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  if (patch.name !== undefined) {
+    fields.push('name = ?');
+    params.push(patch.name);
+  }
+  if (patch.rss_url !== undefined) {
+    fields.push('rss_url = ?');
+    params.push(patch.rss_url);
+  }
+  if (patch.enabled !== undefined) {
+    fields.push('enabled = ?');
+    params.push(patch.enabled ? 1 : 0);
+  }
+  if (patch.cadence !== undefined) {
+    fields.push('cadence = ?');
+    params.push(patch.cadence);
+  }
+  if (patch.tags !== undefined) {
+    fields.push('tags = ?');
+    params.push(JSON.stringify(patch.tags));
+  }
+  if (patch.include_keywords !== undefined) {
+    fields.push('include_keywords = ?');
+    params.push(JSON.stringify(patch.include_keywords));
+  }
+  if (patch.exclude_keywords !== undefined) {
+    fields.push('exclude_keywords = ?');
+    params.push(JSON.stringify(patch.exclude_keywords));
+  }
+  if (patch.consecutive_failures !== undefined) {
+    fields.push('consecutive_failures = ?');
+    params.push(patch.consecutive_failures);
+  }
+  if (patch.last_success_at !== undefined) {
+    fields.push('last_success_at = ?');
+    params.push(patch.last_success_at);
+  }
+  if (patch.last_error_at !== undefined) {
+    fields.push('last_error_at = ?');
+    params.push(patch.last_error_at);
+  }
+  if (patch.last_error_message !== undefined) {
+    fields.push('last_error_message = ?');
+    params.push(patch.last_error_message);
+  }
+  if (fields.length === 0) return false;
+  fields.push('updated_at = ?');
+  params.push(patch.updated_at ?? new Date().toISOString());
+  params.push(userId, id);
+
+  const result = db
+    .prepare(
+      `
+      UPDATE radar_user_custom_feeds
+      SET ${fields.join(', ')}
+      WHERE user_id = ? AND id = ?
+    `,
+    )
+    .run(...params);
+
+  return result.changes > 0;
+}
+
+export function deleteRadarUserCustomFeed(userId: string, id: string): boolean {
+  const result = db
+    .prepare(
+      `
+      DELETE FROM radar_user_custom_feeds
+      WHERE user_id = ? AND id = ?
+    `,
+    )
+    .run(userId, id);
+  return result.changes > 0;
 }
 
 export function getTodoById(id: string): Todo | undefined {

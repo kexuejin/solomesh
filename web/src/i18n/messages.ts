@@ -1718,6 +1718,7 @@ export const zhCN = {
     page: {
       title: '工作看板',
       subtitle: '共 {{total}} 项，按统一执行流展示',
+      manageRadar: '订阅资讯',
       refresh: '刷新',
       emptyTitle: '暂无看板事项',
       emptyDescription: '当前没有待处理、追踪中或执行中的事项。',
@@ -1742,6 +1743,29 @@ export const zhCN = {
     errors: {
       loadFailed: '加载看板失败',
       actionFailed: '更新状态失败',
+    },
+    radar: {
+      title: '资讯雷达订阅',
+      description: '系统默认源可按用户覆盖，自定义 RSS 可随时添加。',
+      loading: '加载中...',
+      systemSources: '系统默认源',
+      customFeeds: '自定义 RSS',
+      enabled: '启用',
+      addFeed: '添加',
+      deleteFeed: '删除源',
+      feedNamePlaceholder: '来源名称',
+      feedUrlPlaceholder: 'RSS/Atom 链接',
+      emptyFeeds: '还没有自定义订阅源。',
+      cadence: {
+        daily: '每日',
+        weekly: '每周',
+        both: '每日 + 每周',
+      },
+      errors: {
+        loadFailed: '加载资讯订阅失败',
+        saveFailed: '保存资讯订阅失败',
+        feedRequired: '请填写来源名称和 RSS 链接',
+      },
     },
   },
   todos: {
@@ -4273,6 +4297,7 @@ export const en = {
     page: {
       title: 'Workbench Board',
       subtitle: '{{total}} items in a unified execution flow',
+      manageRadar: 'Subscribe Radar',
       refresh: 'Refresh',
       emptyTitle: 'No board items',
       emptyDescription: 'No triage, tracking, or execution items at the moment.',
@@ -4297,6 +4322,29 @@ export const en = {
     errors: {
       loadFailed: 'Failed to load workbench board',
       actionFailed: 'Failed to update item',
+    },
+    radar: {
+      title: 'Radar Subscriptions',
+      description: 'Use system defaults with user overrides, and add custom RSS feeds anytime.',
+      loading: 'Loading...',
+      systemSources: 'System Sources',
+      customFeeds: 'Custom RSS Feeds',
+      enabled: 'Enabled',
+      addFeed: 'Add',
+      deleteFeed: 'Delete feed',
+      feedNamePlaceholder: 'Feed name',
+      feedUrlPlaceholder: 'RSS/Atom URL',
+      emptyFeeds: 'No custom feeds yet.',
+      cadence: {
+        daily: 'Daily',
+        weekly: 'Weekly',
+        both: 'Daily + Weekly',
+      },
+      errors: {
+        loadFailed: 'Failed to load radar subscriptions',
+        saveFailed: 'Failed to save radar subscriptions',
+        feedRequired: 'Feed name and RSS URL are required',
+      },
     },
   },
   todos: {
