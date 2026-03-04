@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCardList } from '@/components/common/Skeletons';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadarSubscriptionDialog } from '@/components/workbench/RadarSubscriptionDialog';
 import { api } from '../api/client';
 import { localeForDateTime, useI18n } from '../i18n';
@@ -23,7 +24,7 @@ interface WorkbenchColumnProps {
 
 function WorkbenchColumn({ title, count, children }: WorkbenchColumnProps) {
   return (
-    <section className="flex min-h-[480px] w-[280px] flex-shrink-0 flex-col rounded-xl border border-border/70 bg-card/95 p-3">
+    <section className="flex min-h-[500px] flex-col rounded-xl border border-border/70 bg-card/95 p-3">
       <header className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
@@ -35,11 +36,14 @@ function WorkbenchColumn({ title, count, children }: WorkbenchColumnProps) {
   );
 }
 
+type WorkbenchTabKey = keyof WorkbenchColumns;
+
 export function WorkbenchPage() {
   const { t, locale } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<WorkbenchTabKey>('tracking');
   const [radarDialogOpen, setRadarDialogOpen] = useState(false);
   const [decisionItems, setDecisionItems] = useState<DecisionItem[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -121,6 +125,126 @@ export function WorkbenchPage() {
     }
   };
 
+  const tabConfigs: Array<{
+    key: WorkbenchTabKey;
+    title: string;
+    count: number;
+  }> = [
+    { key: 'tracking', title: t('workbench.columns.tracking'), count: columns.tracking.length },
+    { key: 'triage', title: t('workbench.columns.triage'), count: columns.triage.length },
+    { key: 'queued', title: t('workbench.columns.queued'), count: columns.queued.length },
+    { key: 'inProgress', title: t('workbench.columns.inProgress'), count: columns.inProgress.length },
+    { key: 'done', title: t('workbench.columns.done'), count: columns.done.length },
+  ];
+
+  const renderDecisionCard = (item: DecisionItem, withTrackingHint = false) => {
+    const pending = actingId === item.id;
+    return (
+      <article key={item.id} className="rounded-lg border border-border bg-background p-3">
+        {withTrackingHint && (
+          <div className="mb-1 flex items-center gap-1 text-[11px] text-brand-700">
+            <Sparkles size={12} />
+            <span>{t('workbench.card.trackingHint')}</span>
+          </div>
+        )}
+        <h4 className="mb-1 text-sm font-medium text-foreground">{item.title}</h4>
+        {item.summary && (
+          <p className="mb-2 line-clamp-2 text-xs text-muted-foreground">
+            {item.summary}
+          </p>
+        )}
+        <div className="mb-2 text-[11px] text-muted-foreground">
+          {t('workbench.card.source')}: {item.source_type}
+        </div>
+        <div className="mb-3 text-[11px] text-muted-foreground">
+          {t('workbench.card.updatedAt')}: {formatDate(item.created_at)}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => void handleDecisionAction(item.id, 'accept')}
+            disabled={pending}
+          >
+            <Check size={14} />
+            {t('workbench.actions.accept')}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void handleDecisionAction(item.id, 'ignore')}
+            disabled={pending}
+          >
+            <CircleOff size={14} />
+            {t('workbench.actions.ignore')}
+          </Button>
+        </div>
+      </article>
+    );
+  };
+
+  const renderTodoCard = (todo: TodoItem) => (
+    <article key={todo.id} className="rounded-lg border border-border bg-background p-3">
+      <h4 className="mb-1 text-sm font-medium text-foreground">{todo.title}</h4>
+      {todo.description && (
+        <p className="line-clamp-2 text-xs text-muted-foreground">{todo.description}</p>
+      )}
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        {t('workbench.card.updatedAt')}: {formatDate(todo.last_seen_at)}
+      </div>
+    </article>
+  );
+
+  const renderTabContent = (tabKey: WorkbenchTabKey) => {
+    if (tabKey === 'triage') {
+      if (columns.triage.length === 0) {
+        return (
+          <p className="px-2 py-1 text-xs text-muted-foreground">
+            {t('workbench.columns.empty')}
+          </p>
+        );
+      }
+      return columns.triage.map((item) => renderDecisionCard(item));
+    }
+    if (tabKey === 'tracking') {
+      if (columns.tracking.length === 0) {
+        return (
+          <p className="px-2 py-1 text-xs text-muted-foreground">
+            {t('workbench.columns.empty')}
+          </p>
+        );
+      }
+      return columns.tracking.map((item) => renderDecisionCard(item, true));
+    }
+    if (tabKey === 'queued') {
+      if (columns.queued.length === 0) {
+        return (
+          <p className="px-2 py-1 text-xs text-muted-foreground">
+            {t('workbench.columns.empty')}
+          </p>
+        );
+      }
+      return columns.queued.map((todo) => renderTodoCard(todo));
+    }
+    if (tabKey === 'inProgress') {
+      if (columns.inProgress.length === 0) {
+        return (
+          <p className="px-2 py-1 text-xs text-muted-foreground">
+            {t('workbench.columns.empty')}
+          </p>
+        );
+      }
+      return columns.inProgress.map((todo) => renderTodoCard(todo));
+    }
+    if (columns.done.length === 0) {
+      return (
+        <p className="px-2 py-1 text-xs text-muted-foreground">
+          {t('workbench.columns.empty')}
+        </p>
+      );
+    }
+    return columns.done.map((todo) => renderTodoCard(todo));
+  };
+
   return (
     <div className="min-h-full app-canvas p-4 lg:p-6">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-4">
@@ -159,171 +283,30 @@ export function WorkbenchPage() {
             description={t('workbench.page.emptyDescription')}
           />
         ) : (
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            <WorkbenchColumn
-              title={t('workbench.columns.triage')}
-              count={columns.triage.length}
+          <div className="rounded-xl border border-border/80 bg-card px-3 py-3">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as WorkbenchTabKey)}
             >
-              {columns.triage.length === 0 && (
-                <p className="px-2 py-1 text-xs text-muted-foreground">
-                  {t('workbench.columns.empty')}
-                </p>
-              )}
-              {columns.triage.map((item) => {
-                const pending = actingId === item.id;
-                return (
-                  <article key={item.id} className="rounded-lg border border-border bg-background p-3">
-                    <h4 className="mb-1 text-sm font-medium text-foreground">{item.title}</h4>
-                    {item.summary && (
-                      <p className="mb-2 line-clamp-3 text-xs text-muted-foreground">
-                        {item.summary}
-                      </p>
-                    )}
-                    <div className="mb-2 text-[11px] text-muted-foreground">
-                      {t('workbench.card.source')}: {item.source_type}
-                    </div>
-                    <div className="mb-3 text-[11px] text-muted-foreground">
-                      {t('workbench.card.updatedAt')}: {formatDate(item.created_at)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => void handleDecisionAction(item.id, 'accept')}
-                        disabled={pending}
-                      >
-                        <Check size={14} />
-                        {t('workbench.actions.accept')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleDecisionAction(item.id, 'ignore')}
-                        disabled={pending}
-                      >
-                        <CircleOff size={14} />
-                        {t('workbench.actions.ignore')}
-                      </Button>
-                    </div>
-                  </article>
-                );
-              })}
-            </WorkbenchColumn>
+              <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto bg-muted/70 p-1">
+                {tabConfigs.map((tab) => (
+                  <TabsTrigger key={tab.key} value={tab.key} className="flex-none px-3">
+                    <span>{tab.title}</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                      {tab.count}
+                    </span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
 
-            <WorkbenchColumn
-              title={t('workbench.columns.queued')}
-              count={columns.queued.length}
-            >
-              {columns.queued.length === 0 && (
-                <p className="px-2 py-1 text-xs text-muted-foreground">
-                  {t('workbench.columns.empty')}
-                </p>
-              )}
-              {columns.queued.map((todo) => (
-                <article key={todo.id} className="rounded-lg border border-border bg-background p-3">
-                  <h4 className="mb-1 text-sm font-medium text-foreground">{todo.title}</h4>
-                  {todo.description && (
-                    <p className="line-clamp-3 text-xs text-muted-foreground">{todo.description}</p>
-                  )}
-                  <div className="mt-2 text-[11px] text-muted-foreground">
-                    {t('workbench.card.updatedAt')}: {formatDate(todo.last_seen_at)}
-                  </div>
-                </article>
+              {tabConfigs.map((tab) => (
+                <TabsContent key={tab.key} value={tab.key} className="mt-3">
+                  <WorkbenchColumn title={tab.title} count={tab.count}>
+                    {renderTabContent(tab.key)}
+                  </WorkbenchColumn>
+                </TabsContent>
               ))}
-            </WorkbenchColumn>
-
-            <WorkbenchColumn
-              title={t('workbench.columns.inProgress')}
-              count={columns.inProgress.length}
-            >
-              {columns.inProgress.length === 0 && (
-                <p className="px-2 py-1 text-xs text-muted-foreground">
-                  {t('workbench.columns.empty')}
-                </p>
-              )}
-              {columns.inProgress.map((todo) => (
-                <article key={todo.id} className="rounded-lg border border-border bg-background p-3">
-                  <h4 className="mb-1 text-sm font-medium text-foreground">{todo.title}</h4>
-                  {todo.description && (
-                    <p className="line-clamp-3 text-xs text-muted-foreground">{todo.description}</p>
-                  )}
-                  <div className="mt-2 text-[11px] text-muted-foreground">
-                    {t('workbench.card.updatedAt')}: {formatDate(todo.last_seen_at)}
-                  </div>
-                </article>
-              ))}
-            </WorkbenchColumn>
-
-            <WorkbenchColumn title={t('workbench.columns.done')} count={columns.done.length}>
-              {columns.done.length === 0 && (
-                <p className="px-2 py-1 text-xs text-muted-foreground">
-                  {t('workbench.columns.empty')}
-                </p>
-              )}
-              {columns.done.map((todo) => (
-                <article key={todo.id} className="rounded-lg border border-border bg-background p-3">
-                  <h4 className="mb-1 text-sm font-medium text-foreground">{todo.title}</h4>
-                  {todo.description && (
-                    <p className="line-clamp-3 text-xs text-muted-foreground">{todo.description}</p>
-                  )}
-                  <div className="mt-2 text-[11px] text-muted-foreground">
-                    {t('workbench.card.updatedAt')}: {formatDate(todo.last_seen_at)}
-                  </div>
-                </article>
-              ))}
-            </WorkbenchColumn>
-
-            <WorkbenchColumn
-              title={t('workbench.columns.tracking')}
-              count={columns.tracking.length}
-            >
-              {columns.tracking.length === 0 && (
-                <p className="px-2 py-1 text-xs text-muted-foreground">
-                  {t('workbench.columns.empty')}
-                </p>
-              )}
-              {columns.tracking.map((item) => {
-                const pending = actingId === item.id;
-                return (
-                  <article key={item.id} className="rounded-lg border border-border bg-background p-3">
-                    <div className="mb-1 flex items-center gap-1 text-[11px] text-brand-700">
-                      <Sparkles size={12} />
-                      <span>{t('workbench.card.trackingHint')}</span>
-                    </div>
-                    <h4 className="mb-1 text-sm font-medium text-foreground">{item.title}</h4>
-                    {item.summary && (
-                      <p className="mb-2 line-clamp-3 text-xs text-muted-foreground">
-                        {item.summary}
-                      </p>
-                    )}
-                    <div className="mb-2 text-[11px] text-muted-foreground">
-                      {t('workbench.card.source')}: {item.source_type}
-                    </div>
-                    <div className="mb-3 text-[11px] text-muted-foreground">
-                      {t('workbench.card.updatedAt')}: {formatDate(item.created_at)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => void handleDecisionAction(item.id, 'accept')}
-                        disabled={pending}
-                      >
-                        <Check size={14} />
-                        {t('workbench.actions.accept')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleDecisionAction(item.id, 'ignore')}
-                        disabled={pending}
-                      >
-                        <CircleOff size={14} />
-                        {t('workbench.actions.ignore')}
-                      </Button>
-                    </div>
-                  </article>
-                );
-              })}
-            </WorkbenchColumn>
+            </Tabs>
           </div>
         )}
       </div>

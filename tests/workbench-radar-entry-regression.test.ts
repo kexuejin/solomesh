@@ -13,6 +13,12 @@ test('workbench page exposes radar subscription entry', () => {
   assert.ok(page.includes("t('workbench.page.manageRadar')"));
 });
 
+test('workbench page uses tab view and defaults to tracking tab', () => {
+  const page = read('web/src/pages/WorkbenchPage.tsx');
+  assert.ok(page.includes('TabsTrigger'));
+  assert.ok(page.includes("useState<WorkbenchTabKey>('tracking')"));
+});
+
 test('radar subscription dialog uses radar subscription APIs', () => {
   const dialog = read('web/src/components/workbench/RadarSubscriptionDialog.tsx');
   assert.ok(dialog.includes("'/api/radar/subscriptions'"));
