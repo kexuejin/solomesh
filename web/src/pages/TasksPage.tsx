@@ -17,11 +17,12 @@ import type { TaskConfig } from '../stores/tasks';
 export function TasksPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { tasks, loading, error, loadTasks, createTask, updateTaskStatus, deleteTask } = useTasksStore();
+  const { tasks, loading, error, loadTasks, createTask, updateTaskStatus, runTaskNow, deleteTask } = useTasksStore();
   const { groups, loadGroups } = useChatStore();
   const user = useAuthStore((s) => s.user);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null);
+  const [runNowPendingIds, setRunNowPendingIds] = useState<Record<string, boolean>>({});
   const isAdmin = user?.role === 'admin';
   const templates = getAutomationTemplates(t);
 
@@ -37,6 +38,9 @@ export function TasksPage() {
     scheduleType: 'cron' | 'interval' | 'once';
     scheduleValue: string;
     contextMode: 'group' | 'isolated';
+    operationPermissionMode: 'default' | 'bypass';
+    agentRuntimeOverride: 'claude' | 'codex' | 'gemini' | null;
+    executionEnvironment: 'local' | 'worktree';
     executionType: 'agent' | 'script';
     scriptCommand: string;
     taskConfig: TaskConfig | null;
@@ -48,11 +52,30 @@ export function TasksPage() {
       data.scheduleType,
       data.scheduleValue,
       data.contextMode,
+      data.operationPermissionMode,
+      data.agentRuntimeOverride,
+      data.executionEnvironment,
       data.executionType,
       data.scriptCommand,
       data.taskConfig,
     );
     setShowCreateForm(false);
+  };
+
+  const handleRunNow = async (id: string) => {
+    setRunNowPendingIds((prev) => ({
+      ...prev,
+      [id]: true,
+    }));
+    try {
+      await runTaskNow(id);
+    } finally {
+      setRunNowPendingIds((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
   const handlePause = async (id: string) => {
@@ -203,6 +226,8 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      onRunNow={handleRunNow}
+                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}
@@ -220,6 +245,8 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      onRunNow={handleRunNow}
+                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}
@@ -237,6 +264,8 @@ export function TasksPage() {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      onRunNow={handleRunNow}
+                      isRunNowPending={!!runNowPendingIds[task.id]}
                       onPause={handlePause}
                       onResume={handleResume}
                       onDelete={handleDelete}

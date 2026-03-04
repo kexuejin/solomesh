@@ -40,7 +40,7 @@ import {
   Permission,
   PermissionTemplateKey,
 } from './types.js';
-import type { AgentProvider } from './agent-providers.js';
+import { AGENT_PROVIDER_IDS, type AgentProvider } from './agent-providers.js';
 import { getDefaultPermissions, normalizePermissions } from './permissions.js';
 import { listRuntimePrimaryMemoryFileNames } from './memory-file-alias.js';
 import { parseMessageProvider } from './message-provider.js';
@@ -162,6 +162,9 @@ export function initDatabase(): void {
       schedule_type TEXT NOT NULL,
       schedule_value TEXT NOT NULL,
       context_mode TEXT DEFAULT 'isolated',
+      operation_permission_mode TEXT DEFAULT 'default',
+      agent_runtime_override TEXT,
+      execution_environment TEXT DEFAULT 'local',
       execution_type TEXT DEFAULT 'agent',
       script_command TEXT,
       task_config TEXT,
@@ -415,6 +418,9 @@ export function initDatabase(): void {
   ensureColumn('scheduled_tasks', 'created_by', 'TEXT');
   ensureColumn('scheduled_tasks', 'execution_type', "TEXT DEFAULT 'agent'");
   ensureColumn('scheduled_tasks', 'script_command', 'TEXT');
+  ensureColumn('scheduled_tasks', 'operation_permission_mode', "TEXT DEFAULT 'default'");
+  ensureColumn('scheduled_tasks', 'agent_runtime_override', 'TEXT');
+  ensureColumn('scheduled_tasks', 'execution_environment', "TEXT DEFAULT 'local'");
   ensureColumn('scheduled_tasks', 'task_config', 'TEXT');
   ensureColumn('scheduled_tasks', 'task_state', 'TEXT');
   ensureColumn('decision_items', 'scope_level', "TEXT NOT NULL DEFAULT 'global'");
@@ -478,6 +484,9 @@ export function initDatabase(): void {
     'schedule_type',
     'schedule_value',
     'context_mode',
+    'operation_permission_mode',
+    'agent_runtime_override',
+    'execution_environment',
     'execution_type',
     'script_command',
     'task_config',
@@ -900,9 +909,29 @@ function parseTaskJson(raw: unknown): Record<string, unknown> | null {
   return null;
 }
 
+function parseTaskOperationPermissionMode(raw: unknown): 'default' | 'bypass' {
+  return raw === 'bypass' ? 'bypass' : 'default';
+}
+
+function parseTaskRuntimeOverride(raw: unknown): AgentProvider | null {
+  if (typeof raw !== 'string') return null;
+  return AGENT_PROVIDER_IDS.includes(raw as AgentProvider)
+    ? (raw as AgentProvider)
+    : null;
+}
+
+function parseTaskExecutionEnvironment(raw: unknown): 'local' | 'worktree' {
+  return raw === 'worktree' ? 'worktree' : 'local';
+}
+
 function parseScheduledTaskRow(row: Record<string, unknown>): ScheduledTask {
   return {
     ...(row as unknown as ScheduledTask),
+    operation_permission_mode: parseTaskOperationPermissionMode(
+      row.operation_permission_mode,
+    ),
+    agent_runtime_override: parseTaskRuntimeOverride(row.agent_runtime_override),
+    execution_environment: parseTaskExecutionEnvironment(row.execution_environment),
     task_config: parseTaskJson(row.task_config) as TaskConfig | null,
     task_state: parseTaskJson(row.task_state) as TaskState | null,
   };
@@ -915,10 +944,11 @@ export function createTask(
     `
     INSERT INTO scheduled_tasks (
       id, group_folder, chat_jid, prompt, schedule_type, schedule_value,
-      context_mode, execution_type, script_command, task_config, task_state,
+      context_mode, operation_permission_mode, agent_runtime_override, execution_environment,
+      execution_type, script_command, task_config, task_state,
       next_run, status, created_at, created_by
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -928,6 +958,9 @@ export function createTask(
     task.schedule_type,
     task.schedule_value,
     task.context_mode || 'isolated',
+    task.operation_permission_mode === 'bypass' ? 'bypass' : 'default',
+    task.agent_runtime_override ?? null,
+    task.execution_environment === 'worktree' ? 'worktree' : 'local',
     task.execution_type || 'agent',
     task.script_command ?? null,
     task.task_config ? JSON.stringify(task.task_config) : null,
@@ -971,6 +1004,9 @@ export function updateTask(
       | 'schedule_type'
       | 'schedule_value'
       | 'context_mode'
+      | 'operation_permission_mode'
+      | 'agent_runtime_override'
+      | 'execution_environment'
       | 'execution_type'
       | 'script_command'
       | 'task_config'
@@ -998,6 +1034,18 @@ export function updateTask(
   if (updates.context_mode !== undefined) {
     fields.push('context_mode = ?');
     values.push(updates.context_mode);
+  }
+  if (updates.operation_permission_mode !== undefined) {
+    fields.push('operation_permission_mode = ?');
+    values.push(updates.operation_permission_mode === 'bypass' ? 'bypass' : 'default');
+  }
+  if (updates.agent_runtime_override !== undefined) {
+    fields.push('agent_runtime_override = ?');
+    values.push(updates.agent_runtime_override ?? null);
+  }
+  if (updates.execution_environment !== undefined) {
+    fields.push('execution_environment = ?');
+    values.push(updates.execution_environment === 'worktree' ? 'worktree' : 'local');
   }
   if (updates.execution_type !== undefined) {
     fields.push('execution_type = ?');
@@ -1086,6 +1134,20 @@ export function updateTaskAfterRun(
     WHERE id = ?
   `,
   ).run(nextRun, now, lastResult, nextRun, id);
+}
+
+export function updateTaskAfterManualRun(
+  id: string,
+  lastResult: string,
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `
+    UPDATE scheduled_tasks
+    SET last_run = ?, last_result = ?
+    WHERE id = ?
+  `,
+  ).run(now, lastResult, id);
 }
 
 export function logTaskRun(log: TaskRunLog): void {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock3, Loader2, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock3, Loader2, Sparkles, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -37,6 +37,9 @@ interface CreateTaskFormProps {
     scheduleType: ScheduleType;
     scheduleValue: string;
     contextMode: ContextMode;
+    operationPermissionMode: 'default' | 'bypass';
+    agentRuntimeOverride: 'claude' | 'codex' | 'gemini' | null;
+    executionEnvironment: 'local' | 'worktree';
     executionType: 'agent' | 'script';
     scriptCommand: string;
     taskConfig: TaskConfig | null;
@@ -248,6 +251,9 @@ export function CreateTaskForm({
     scheduleType: 'cron' as ScheduleType,
     scheduleValue: '',
     contextMode: 'isolated' as ContextMode,
+    operationPermissionMode: 'default' as 'default' | 'bypass',
+    agentRuntimeOverride: null as 'claude' | 'codex' | 'gemini' | null,
+    executionEnvironment: 'local' as 'local' | 'worktree',
     executionType: 'agent' as 'agent' | 'script',
     scriptCommand: '',
   });
@@ -264,6 +270,7 @@ export function CreateTaskForm({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [onErrorTodoIngest, setOnErrorTodoIngest] = useState(false);
   const [onSuccessDecisionIngest, setOnSuccessDecisionIngest] = useState(false);
   const [taskConfigJson, setTaskConfigJson] = useState('');
@@ -822,6 +829,116 @@ export function CreateTaskForm({
             </Select>
             {formData.executionType !== 'script' && (
               <p className="text-xs text-muted-foreground">{t('tasks.form.contextHint')}</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-border/70 bg-muted/10">
+            <button
+              type="button"
+              onClick={() => setIsAdvancedOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+            >
+              <div>
+                <div className="text-sm font-medium text-foreground/90">{t('tasks.form.advancedTitle')}</div>
+                <div className="text-xs text-muted-foreground">{t('tasks.form.advancedHint')}</div>
+              </div>
+              <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <span>
+                  {isAdvancedOpen
+                    ? t('tasks.form.advancedToggleClose')
+                    : t('tasks.form.advancedToggleOpen')}
+                </span>
+                {isAdvancedOpen ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </div>
+            </button>
+
+            {isAdvancedOpen && (
+              <div className="space-y-3 border-t border-border/60 px-3 py-3">
+                {formData.executionType !== 'script' && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground/80">
+                      {t('tasks.form.operationPermissionMode')}
+                    </label>
+                    <Select
+                      value={formData.operationPermissionMode}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          operationPermissionMode: value as 'default' | 'bypass',
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full bg-card">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">{t('tasks.form.permissionModeDefault')}</SelectItem>
+                        <SelectItem value="bypass">{t('tasks.form.permissionModeBypass')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{t('tasks.form.operationPermissionModeHint')}</p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-foreground/80">
+                    {t('tasks.form.executionEnvironment')}
+                  </label>
+                  <Select
+                    value={formData.executionEnvironment}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        executionEnvironment: value as 'local' | 'worktree',
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-full bg-card">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="local">{t('tasks.form.executionEnvironmentLocal')}</SelectItem>
+                      <SelectItem value="worktree">{t('tasks.form.executionEnvironmentWorktree')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{t('tasks.form.executionEnvironmentHint')}</p>
+                </div>
+
+                {formData.executionType !== 'script' && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground/80">
+                      {t('tasks.form.agentRuntimeOverride')}
+                    </label>
+                    <Select
+                      value={formData.agentRuntimeOverride ?? '__default__'}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          agentRuntimeOverride:
+                            value === '__default__'
+                              ? null
+                              : (value as 'claude' | 'codex' | 'gemini'),
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full bg-card">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">{t('tasks.form.runtimeSystemDefault')}</SelectItem>
+                        <SelectItem value="claude">Claude</SelectItem>
+                        <SelectItem value="codex">Codex</SelectItem>
+                        <SelectItem value="gemini">Gemini</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{t('tasks.form.agentRuntimeOverrideHint')}</p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

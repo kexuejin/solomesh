@@ -19,6 +19,7 @@ import type { AuthUser } from '../types.js';
 import { TIMEZONE } from '../config.js';
 import { isHostExecutionGroup, hasHostExecutionPermission, canAccessGroup } from '../web-context.js';
 import { isScriptTaskAdminOnlyMutation } from '../task-script-policy.js';
+import { triggerTaskRunNow } from '../task-scheduler.js';
 
 const tasksRoutes = new Hono<{ Variables: Variables }>();
 
@@ -55,6 +56,9 @@ tasksRoutes.post('/', authMiddleware, async (c) => {
     schedule_type,
     schedule_value,
     context_mode,
+    operation_permission_mode,
+    agent_runtime_override,
+    execution_environment,
     execution_type,
     script_command,
     task_config,
@@ -107,6 +111,9 @@ tasksRoutes.post('/', authMiddleware, async (c) => {
     schedule_type,
     schedule_value,
     context_mode: context_mode || 'isolated',
+    operation_permission_mode: operation_permission_mode || 'default',
+    agent_runtime_override: agent_runtime_override ?? null,
+    execution_environment: execution_environment || 'local',
     execution_type: execType,
     script_command: script_command ?? null,
     task_config: task_config ?? null,
@@ -186,6 +193,47 @@ tasksRoutes.delete('/:id', authMiddleware, (c) => {
   }
   deleteTask(id);
   return c.json({ success: true });
+});
+
+tasksRoutes.post('/:id/run-now', authMiddleware, (c) => {
+  const id = c.req.param('id');
+  const existing = getTaskById(id);
+  if (!existing) return c.json({ error: 'Task not found' }, 404);
+  const authUser = c.get('user') as AuthUser;
+  const group = getRegisteredGroup(existing.chat_jid);
+  if (!group) {
+    if (authUser.role !== 'admin') return c.json({ error: 'Task not found' }, 404);
+  } else {
+    if (!canAccessGroup({ id: authUser.id, role: authUser.role }, group)) {
+      return c.json({ error: 'Task not found' }, 404);
+    }
+    if (isHostExecutionGroup(group) && !hasHostExecutionPermission(authUser)) {
+      return c.json(
+        { error: 'Insufficient permissions for host execution mode' },
+        403,
+      );
+    }
+  }
+
+  try {
+    const result = triggerTaskRunNow(id);
+    if (!result.accepted) {
+      return c.json({ error: result.error || 'Task cannot run now' }, 409);
+    }
+    return c.json({
+      success: true,
+      mode: result.mode,
+      queued: result.queued,
+    });
+  } catch (error) {
+    return c.json(
+      {
+        error: 'Failed to trigger task run',
+        details: error instanceof Error ? error.message : String(error),
+      },
+      500,
+    );
+  }
 });
 
 tasksRoutes.get('/:id/logs', authMiddleware, (c) => {

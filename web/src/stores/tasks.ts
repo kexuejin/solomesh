@@ -67,6 +67,9 @@ interface TasksState {
     scheduleType: 'cron' | 'interval' | 'once',
     scheduleValue: string,
     contextMode: 'group' | 'isolated',
+    operationPermissionMode?: 'default' | 'bypass',
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini' | null,
+    executionEnvironment?: 'local' | 'worktree',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
     taskConfig?: TaskConfig | null,
@@ -78,6 +81,7 @@ interface TasksState {
   ) => Promise<void>;
   updateTaskOnErrorTodoRule: (id: string, enabled: boolean) => Promise<void>;
   updateTaskOnSuccessDecisionRule: (id: string, enabled: boolean) => Promise<void>;
+  runTaskNow: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   loadLogs: (taskId: string) => Promise<void>;
 }
@@ -87,6 +91,7 @@ type TasksStoreMessageKey =
   | 'tasks.store.createFailed'
   | 'tasks.store.updateStatusFailed'
   | 'tasks.store.updateRuleFailed'
+  | 'tasks.store.runNowFailed'
   | 'tasks.store.deleteFailed'
   | 'tasks.store.loadLogsFailed';
 
@@ -189,6 +194,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     scheduleType: 'cron' | 'interval' | 'once',
     scheduleValue: string,
     contextMode: 'group' | 'isolated',
+    operationPermissionMode?: 'default' | 'bypass',
+    agentRuntimeOverride?: 'claude' | 'codex' | 'gemini' | null,
+    executionEnvironment?: 'local' | 'worktree',
     executionType?: 'agent' | 'script',
     scriptCommand?: string,
     taskConfig?: TaskConfig | null,
@@ -206,6 +214,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         schedule_type: scheduleType,
         schedule_value: normalizedScheduleValue,
         context_mode: contextMode,
+        operation_permission_mode: operationPermissionMode || 'default',
+        agent_runtime_override: agentRuntimeOverride ?? null,
+        execution_environment: executionEnvironment || 'local',
       };
       if (executionType) {
         body.execution_type = executionType;
@@ -277,6 +288,16 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       await get().updateTaskConfig(id, next);
     } catch {
       set({ error: getStoreMessage('tasks.store.updateRuleFailed') });
+    }
+  },
+
+  runTaskNow: async (id: string) => {
+    try {
+      await api.post(`/api/tasks/${id}/run-now`, {});
+      set({ error: null });
+      await get().loadTasks();
+    } catch (err) {
+      set({ error: extractStoreErrorMessage(err) ?? getStoreMessage('tasks.store.runNowFailed') });
     }
   },
 
