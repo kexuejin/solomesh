@@ -47,7 +47,7 @@ export function WorkbenchPage() {
     try {
       const [decisionRes, todoRes] = await Promise.all([
         api.get<{ items: DecisionItem[] }>('/api/decision-items?status=pending&limit=200'),
-        api.get<{ todos: TodoItem[] }>('/api/todos?limit=300'),
+        api.get<{ todos: TodoItem[] }>('/api/todos?limit=200'),
       ]);
       setDecisionItems(decisionRes.items);
       setTodos(todoRes.todos);
