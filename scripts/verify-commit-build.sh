@@ -6,6 +6,7 @@ BASE_REF="dev"
 TARGET_REF="HEAD"
 SKIP_BUILD=0
 SKIP_INSTALL=0
+SKIP_TYPECHECK=0
 
 while (($# > 0)); do
   case "$1" in
@@ -25,9 +26,13 @@ while (($# > 0)); do
       SKIP_INSTALL=1
       shift 1
       ;;
+    --skip-typecheck)
+      SKIP_TYPECHECK=1
+      shift 1
+      ;;
     *)
       echo "Unknown argument: $1" >&2
-      echo "Usage: scripts/verify-commit-build.sh [--base <ref>] [--target <ref>] [--skip-build] [--skip-install]" >&2
+      echo "Usage: scripts/verify-commit-build.sh [--base <ref>] [--target <ref>] [--skip-build] [--skip-install] [--skip-typecheck]" >&2
       exit 1
       ;;
   esac
@@ -82,7 +87,9 @@ for COMMIT in "${COMMITS[@]}"; do
   echo
   echo "==> $SUBJECT"
   git -C "$VERIFY_WORKTREE" checkout --detach "$COMMIT" >/dev/null
-  make -C "$VERIFY_WORKTREE" typecheck
+  if ((SKIP_TYPECHECK == 0)); then
+    make -C "$VERIFY_WORKTREE" typecheck
+  fi
   if ((SKIP_BUILD == 0)); then
     make -C "$VERIFY_WORKTREE" build
   fi
